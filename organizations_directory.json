@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Massachusetts Institute of Technology",
+    "abbreviation": "MIT",
+    "address": "77 Massachusetts Ave, Cambridge, MA 02139",
+    "type": "school",
+    "popularity": 100
+  },
+  {
+    "name": "Link Studio",
+    "abbreviation": "",
+    "address": "One Kendall Square Building 200 - Suite B2201 Cambridge, MA 02139",
+    "type": "company",
+    "popularity": 50
+  },
+  {
+    "name": "PhiAI",
+    "abbreviation": "",
+    "address": "189 Vassar St, Cambridge, MA 02139",
+    "type": "company",
+    "popularity": 50
+  },
+  {
+    "name": "Greenwich Country Day School",
+    "abbreviation": "GCDS",
+    "address": "257 Stanwich Road Greenwich, CT 06830",
+    "type": "school",
+    "popularity": 0
+  }
+]

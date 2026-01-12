@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Connect Google Drive — Phi AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --bg-tertiary: #fafafa;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #86868b;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body{
+      margin:0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .wrap{
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 48px 20px 80px;
+    }
+
+    .topbar{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin: -32px -20px 32px -20px;
+      padding: 16px 20px;
+      background: #1d1d1f;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .brand{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand a{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    .brand a:hover{
+      opacity: 0.8;
+    }
+
+    .logo-img{
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .title h1{
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+      color: white;
+      letter-spacing: -0.5px;
+    }
+
+    .title .tag{
+      margin-top: 4px;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 32px;
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    .card h2{
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      letter-spacing: -0.3px;
+    }
+
+    .card p{
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+
+    button, .btn{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 28px;
+      background: var(--accent-blue);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+      text-decoration: none;
+    }
+
+    button:hover, .btn:hover{
+      background: var(--accent-blue-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-hover);
+    }
+
+    button:disabled{
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .spinner{
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s ease-in-out infinite;
+      margin-right: 8px;
+    }
+
+    @keyframes spin{
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <a href="{{ url_for('account_home') }}">
+        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi AI Logo" class="logo-img" onerror="this.style.display='none';">
+        <div class="title">
+          <h1><span class="phi-ai">PHI AI</span></h1>
+          <div class="tag">Connect Google Drive</div>
+        </div>
+        </a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Complete Google Drive Connection</h2>
+      <p>You're now logged in. Click the button below to authorize Phi AI to access your Google Drive account.</p>
+      <button id="connectBtn" onclick="connectGoogleDrive()">Connect to Google Drive</button>
+    </div>
+  </div>
+
+<script>
+function connectGoogleDrive() {
+  const btn = document.getElementById('connectBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Connecting...';
+  
+  // Redirect to Google Drive authorization
+  window.location.href = "{{ url_for('googledrive_authorize') }}";
+}
+</script>
+</body>
+</html>

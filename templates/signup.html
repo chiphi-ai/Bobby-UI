@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Sign up — Phi AI</title>
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --bg-tertiary: #fafafa;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #86868b;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    /* Dropdown Content (Hidden by Default) */
+    .dropdown-content {
+      display: none !important;
+    }
+
+    /* Show the dropdown menu */
+    .dropdown-content.show {
+      display: block !important;
+    }
+    
+    /* Ensure buttons are clickable */
+    .dropbtn {
+      pointer-events: auto !important;
+      z-index: 1;
+    }
+    
+    .dropdown {
+      z-index: 100;
+    }
+
+    /* Change color of dropdown links on hover */
+    .dropdown-content a:hover {
+      background-color: var(--bg-secondary);
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body{
+      margin:0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a{ 
+      color: var(--accent-blue);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    a:hover{
+      color: var(--accent-blue-hover);
+    }
+
+    .wrap{
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 48px 20px 80px;
+    }
+
+    /* ---- Header ---- */
+    .topbar{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin: 0;
+      margin-left: calc(-50vw + 50%);
+      margin-right: calc(-50vw + 50%);
+      margin-bottom: 48px;
+      padding: 20px max(20px, calc((100vw - 480px) / 2));
+      background: #000000;
+      border-bottom: 1px solid rgba(255,255,255,0.15);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .brand{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand a{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    .brand a:hover{
+      opacity: 0.8;
+    }
+
+    .logo-img{
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .title h1{
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+      color: white;
+      letter-spacing: -0.8px;
+      text-transform: uppercase;
+      font-family: "Inter", -apple-system, sans-serif;
+    }
+
+    .title h1 .phi-ai{
+      background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: inline-block;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+
+    .title .tag{
+      margin-top: 4px;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    /* ---- Card ---- */
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 32px;
+      margin: 24px 0;
+    }
+
+    .card h2{
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 24px;
+      letter-spacing: -0.5px;
+    }
+
+    /* ---- Form ---- */
+    form label, form > div:not(.info-box){
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      margin-top: 16px;
+    }
+
+    form > div:first-child{
+      margin-top: 0;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    select{
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 16px;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input:focus,
+    select:focus{
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 4px rgba(0,122,255,0.1);
+    }
+
+    input::placeholder{
+      color: var(--text-tertiary);
+    }
+
+    select{
+      background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%236e6e73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 16px center;
+      padding-right: 40px;
+      cursor: pointer;
+    }
+
+    button, .btn{
+      width: 100%;
+      padding: 14px 24px;
+      background: var(--accent-blue);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-top: 24px;
+      font-family: inherit;
+    }
+
+    button:hover, .btn:hover{
+      background: var(--accent-blue-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-hover);
+    }
+
+    button:disabled{
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .info-box{
+      margin: 16px 0;
+      padding: 14px;
+      background: #f0f7ff;
+      border: 1px solid #d0e7ff;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
+
+    .link{
+      display: inline-block;
+      margin-top: 24px;
+      color: var(--accent-blue);
+      font-size: 15px;
+    }
+
+    /* ---- Messages ---- */
+    .card .error,
+    .card .success{
+      padding: 14px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+
+    .card .error{
+      background: #fff0f0;
+      border: 1px solid #ffd0d0;
+      color: #d32f2f;
+    }
+
+    .card .success{
+      background: #f0fff4;
+      border: 1px solid #c0ffc0;
+      color: #2e7d32;
+    }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 768px){
+      .wrap{
+        padding: 32px 16px 60px;
+      }
+
+      .card{
+        padding: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <a href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi Ai Logo" class="logo-img" onerror="this.style.display='none';">
+        <div class="title">
+          <h1><span class="phi-ai">PHI AI</span></h1>
+          <div class="tag">Create Account</div>
+        </div>
+        </a>
+      </div>
+    </div>
+
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div class="card">
+          {% for m in messages %}
+            <div class="error">{{ m }}</div>
+          {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" class="card">
+      <h2>Create Account</h2>
+      
+      <div class="info-box">
+        Create your account to start using Phi AI's automated transcription service.
+      </div>
+
+      <div>First name</div>
+      <input name="first" type="text" required placeholder="John">
+
+      <div>Last name</div>
+      <input name="last" type="text" required placeholder="Doe">
+
+      <div>Email</div>
+      <input name="email" type="email" required placeholder="john.doe@example.com">
+
+      <div>Confirm email</div>
+      <input name="email2" type="email" required placeholder="john.doe@example.com">
+
+      <div>Username</div>
+      <input name="username" type="text" required placeholder="johndoe" pattern="[a-zA-Z0-9_-]+" minlength="3" maxlength="30" title="Username can only contain letters, numbers, underscores, and hyphens. No spaces or special characters.">
+      <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+        Choose a unique username (3-30 characters, letters, numbers, underscores, and hyphens only). This will be used to identify your voice recordings.
+      </div>
+
+      <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-light);">
+
+      <div class="section-label" style="margin-bottom: 16px;">
+        Organizations (Required - you can add up to 10)
+        <div style="font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-top: 4px;">
+          Add at least one organization where you work, study, or participate. This helps others find and invite you to meetings.
+        </div>
+      </div>
+
+      <div id="organizationsContainer"></div>
+      <input type="hidden" id="orgCount" name="org_count" value="0">
+      
+      <button type="button" id="addOrgBtn" class="btn" style="margin-top: 12px; margin-bottom: 8px;" onclick="addOrganization()">
+        + Add Organization
+      </button>
+      <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+        At least one organization is required. You can add up to 10 organizations where you work, study, or participate.
+      </div>
+
+      <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-light);">
+
+      <div>Password (8+ characters)</div>
+      <input name="password" type="password" required minlength="8" placeholder="Enter password">
+
+      <div>Confirm password</div>
+      <input name="password2" type="password" required minlength="8" placeholder="Confirm password">
+
+      <button type="submit" onclick="return validateForm()">Create Account</button>
+  </form>
+
+    <a href="{{ url_for('index') }}" class="link">← Back to Home</a>
+  </div>
+
+<script type="application/json" id="org-types-data">{{ org_types | tojson | safe }}</script>
+<script type="application/json" id="org-directory-data">{{ organizations_directory | tojson | safe }}</script>
+<script>
+let orgCount = 0;
+// Load organization types and directory from template
+const orgTypes = JSON.parse(document.getElementById('org-types-data').textContent);
+const orgDirectory = JSON.parse(document.getElementById('org-directory-data').textContent);
+
+function addOrganization() {
+  if (orgCount >= 10) {
+    alert("You can add up to 10 organizations.");
+    return;
+  }
+
+  const container = document.getElementById("organizationsContainer");
+  const orgIndex = orgCount;
+  orgCount++;
+  document.getElementById("orgCount").value = orgCount;
+
+  const orgDiv = document.createElement("div");
+  orgDiv.className = "org-entry";
+  orgDiv.style.cssText = "margin-bottom: 16px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-light);";
+  orgDiv.id = `org_${orgIndex}`;
+
+  const orgTypeKeys = Object.keys(orgTypes);
+  
+  orgDiv.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <strong style="font-size: 14px; color: var(--text-primary);">Organization ${orgIndex + 1}</strong>
+      ${orgIndex === 0 ? '<span style="font-size: 12px; color: var(--text-secondary);">Required</span>' : `<button type="button" onclick="removeOrganization(${orgIndex})" style="background: #FF3B30; color: #ffffff; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight: 500; transition: background 0.2s; width: auto; min-width: auto;" onmouseover="this.style.background='#e0291f'" onmouseout="this.style.background='#FF3B30'">Remove</button>`}
+    </div>
+    
+    <div style="margin-bottom: 12px;">
+      <label style="display: block; margin-bottom: 4px; font-size: 13px; font-weight: 500;">Organization Name</label>
+      <div class="dropdown" style="position: relative; display: inline-block; width: 100%;">
+        <button type="button" id="org_dropbtn_${orgIndex}" class="dropbtn" onclick="toggleOrgDropdown(${orgIndex}); return false;" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; background: white; color: var(--text-primary); text-align: left; cursor: pointer; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1;">
+          <span id="org_dropbtn_text_${orgIndex}">Select or search organizations...</span>
+          <span style="color: var(--text-secondary);">▼</span>
+        </button>
+          <div id="org_dropdown_${orgIndex}" class="dropdown-content" style="display: none; position: absolute; background-color: white; min-width: 100%; width: 100%; border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow-hover); z-index: 1000; max-height: 300px; overflow-y: auto; top: 100%; left: 0;">
+            <input type="text" placeholder="Search organizations..." id="org_search_${orgIndex}" autocomplete="off" style="box-sizing: border-box; background-image: url('data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'16\\' height=\\'16\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'%236e6e73\\' stroke-width=\\'2\\'><circle cx=\\'11\\' cy=\\'11\\' r=\\'8\\'/><path d=\\'m21 21-4.35-4.35\\'/></svg>'); background-position: 14px 12px; background-repeat: no-repeat; font-size: 14px; padding: 14px 20px 12px 45px; border: none; border-bottom: 1px solid var(--border-light); width: 100%;">
+          <div id="org_dropdown_list_${orgIndex}"></div>
+        </div>
+        <input type="hidden" name="org_name_${orgIndex}" id="org_name_${orgIndex}" required>
+        <input type="hidden" name="org_address_${orgIndex}" id="org_address_${orgIndex}">
+      </div>
+      <div style="margin-top: 8px;">
+        <a href="#" onclick="event.preventDefault(); openAddOrgModal(${orgIndex}); return false;" style="font-size: 12px; color: var(--accent-blue); text-decoration: none;">Don't see your organization/school? Add it here</a>
+      </div>
+    </div>
+    
+    <div style="margin-bottom: 12px;">
+      <label style="display: block; margin-bottom: 4px; font-size: 13px; font-weight: 500;">Type</label>
+      <select name="org_type_${orgIndex}" required onchange="updateRoleOptions(${orgIndex})" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;">
+        <option value="">Select type...</option>
+        ${orgTypeKeys.map(key => `<option value="${key}">${orgTypes[key].name}</option>`).join("")}
+      </select>
+    </div>
+    
+    <div id="roles_container_${orgIndex}">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <label style="display: block; font-size: 13px; font-weight: 500;">Roles</label>
+        <button type="button" onclick="addRole(${orgIndex})" style="background: var(--accent-blue); color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight: 500; width: auto; min-width: auto;">+ Add Role</button>
+      </div>
+      <div id="roles_list_${orgIndex}">
+        <div class="role-entry" style="margin-bottom: 8px;">
+          <select name="org_roles_${orgIndex}[]" required class="role-select" data-org-index="${orgIndex}" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;">
+            <option value="">Select organization type first...</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  `;
+
+  container.appendChild(orgDiv);
+}
+
+// Confirmation Modal
+function showConfirmModal(title, message, okText = "OK", cancelText = "Cancel") {
+  return new Promise((resolve) => {
+    // Create modal if it doesn't exist
+    let modal = document.getElementById("confirmModal");
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'confirmModal';
+      modal.style.cssText = 'display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1001; align-items: center; justify-content: center;';
+      document.body.appendChild(modal);
+    }
+    
+    modal.innerHTML = `
+      <div style="background: white; border-radius: var(--radius); padding: 24px; max-width: 400px; width: 90%; box-shadow: var(--shadow-hover);">
+        <h3 style="margin-bottom: 16px; font-size: 18px; color: var(--text-primary);">${title}</h3>
+        <p style="margin-bottom: 20px; font-size: 15px; color: var(--text-secondary);">${message}</p>
+        <div style="display: flex; justify-content: flex-end; gap: 12px;">
+          <button type="button" id="confirmCancel" class="btn" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);">${cancelText}</button>
+          <button type="button" id="confirmOk" class="btn btnPrimary">${okText}</button>
+        </div>
+      </div>
+    `;
+    
+    modal.style.display = 'flex';
+    
+    const okBtn = document.getElementById('confirmOk');
+    const cancelBtn = document.getElementById('confirmCancel');
+    
+    const handleOk = () => {
+      modal.style.display = 'none';
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(true);
+    };
+    
+    const handleCancel = () => {
+      modal.style.display = 'none';
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(false);
+    };
+    
+    okBtn.onclick = handleOk;
+    cancelBtn.onclick = handleCancel;
+    
+    modal.onclick = (e) => {
+      if (e.target === modal) {
+        handleCancel();
+      }
+    };
+  });
+}
+
+async function removeOrganization(index) {
+  const orgDiv = document.getElementById(`org_${index}`);
+  if (!orgDiv) return;
+  
+  // Prevent removing the first organization (index 0)
+  if (index === 0) {
+    await showConfirmModal("Cannot Remove Organization", "You cannot remove the first organization. You must have at least one organization.", "OK");
+    return;
+  }
+  
+  const confirmed = await showConfirmModal(
+    "Remove Organization",
+    "Are you sure you want to remove this organization?",
+    "Remove",
+    "Cancel"
+  );
+  
+  if (!confirmed) {
+    return;
+  }
+  
+  orgDiv.remove();
+  orgCount--;
+  document.getElementById("orgCount").value = orgCount;
+  
+  // Reindex remaining organizations
+  reindexOrganizations();
+}
+
+function reindexOrganizations() {
+  const container = document.getElementById("organizationsContainer");
+  const entries = container.querySelectorAll(".org-entry");
+  entries.forEach((entry, newIndex) => {
+    entry.id = `org_${newIndex}`;
+    const title = entry.querySelector("strong");
+    if (title) title.textContent = `Organization ${newIndex + 1}`;
+    
+    // Update all inputs and selects
+    const inputs = entry.querySelectorAll("input, select, button");
+    inputs.forEach(input => {
+      const name = input.getAttribute("name");
+      const id = input.getAttribute("id");
+      const onclick = input.getAttribute("onclick");
+      if (name) {
+        const parts = name.split("_");
+        if (parts.length >= 2 && !isNaN(parts[parts.length - 1])) {
+          const newName = name.substring(0, name.lastIndexOf("_") + 1) + newIndex;
+          input.setAttribute("name", newName);
+        }
+      }
+      if (id && id.startsWith("org_role_")) {
+        input.setAttribute("id", `org_role_${newIndex}`);
+        const typeSelect = entry.querySelector(`select[name*="org_type"]`);
+        if (typeSelect) {
+          typeSelect.setAttribute("onchange", `updateRoleOptions(${newIndex})`);
+        }
+      }
+      if (onclick && onclick.includes("removeOrganization")) {
+        input.setAttribute("onclick", `removeOrganization(${newIndex})`);
+      }
+    });
+  });
+}
+
+function updateRoleOptions(index) {
+  const typeSelect = document.querySelector(`select[name="org_type_${index}"]`);
+  const roleSelect = document.getElementById(`org_role_${index}`);
+  
+  if (!typeSelect || !roleSelect) return;
+  
+  const selectedType = typeSelect.value;
+  if (!selectedType) {
+    roleSelect.innerHTML = '<option value="">Select organization type first...</option>';
+    return;
+  }
+  
+  const roles = orgTypes[selectedType]?.roles || [];
+  roleSelect.innerHTML = roles.map(role => 
+    `<option value="${role}">${role}</option>`
+  ).join("");
+}
+
+function toggleOrgDropdown(index) {
+  const dropdown = document.getElementById(`org_dropdown_${index}`);
+  if (!dropdown) {
+    return;
+  }
+  
+  const isShowing = dropdown.classList.contains("show");
+  
+  // Close all other dropdowns first
+  document.querySelectorAll('.dropdown-content.show').forEach(dd => {
+    if (dd.id !== `org_dropdown_${index}`) {
+      dd.classList.remove("show");
+      dd.style.display = "none";
+    }
+  });
+  
+  if (isShowing) {
+    dropdown.classList.remove("show");
+    dropdown.style.display = "none";
+  } else {
+    dropdown.classList.add("show");
+    dropdown.style.display = "block";
+    populateOrgDropdown(index);
+  }
+}
+
+// Store all organizations for each dropdown (in-memory copy)
+const orgDropdownDataSignup = {};
+
+function populateOrgDropdown(index) {
+  const listDiv = document.getElementById(`org_dropdown_list_${index}`);
+  const searchInput = document.getElementById(`org_search_${index}`);
+  
+  if (!listDiv) {
+    return;
+  }
+  
+  if (typeof orgDirectory === 'undefined' || !orgDirectory || orgDirectory.length === 0) {
+    listDiv.innerHTML = '<div style="padding: 12px; color: var(--text-secondary); text-align: center;">No organizations available</div>';
+    return;
+  }
+  
+  const typeSelect = document.querySelector(`select[name="org_type_${index}"]`);
+  const orgType = typeSelect ? typeSelect.value : null;
+  
+  // Filter by type if selected
+  let filteredOrgs = orgDirectory;
+  if (orgType) {
+    filteredOrgs = orgDirectory.filter(org => org.type === orgType);
+  }
+  
+  // Sort by popularity
+  filteredOrgs.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  
+  // Store all options in memory for this dropdown
+  orgDropdownDataSignup[index] = filteredOrgs.map(org => ({
+    name: org.name,
+    abbreviation: org.abbreviation || '',
+    address: org.address || '',
+    displayName: org.abbreviation ? `${org.name} (${org.abbreviation})` : org.name
+  }));
+  
+  // Render all options initially
+  renderOrgDropdownSignup(index, orgDropdownDataSignup[index]);
+  
+  // Set up search input listener
+  if (searchInput) {
+    searchInput.value = "";
+    
+    // Remove all existing event listeners by replacing the input
+    const parent = searchInput.parentNode;
+    const newInput = searchInput.cloneNode(false); // Clone without children/events
+    parent.replaceChild(newInput, searchInput);
+    
+    // Attach event listener to the new input
+    newInput.addEventListener('input', function(e) {
+      e.stopPropagation();
+      filterOrgDropdown(index);
+    });
+    
+    // Also attach on keyup as backup
+    newInput.addEventListener('keyup', function(e) {
+      e.stopPropagation();
+      filterOrgDropdown(index);
+    });
+    
+    setTimeout(() => newInput.focus(), 100);
+  }
+}
+
+function renderOrgDropdownSignup(index, orgs) {
+  const listDiv = document.getElementById(`org_dropdown_list_${index}`);
+  if (!listDiv) return;
+  
+  if (orgs.length === 0) {
+    listDiv.innerHTML = '<div style="padding: 12px; color: var(--text-secondary); text-align: center;">No organizations found</div>';
+    return;
+  }
+  
+  // Render all provided organizations
+  listDiv.innerHTML = orgs.map(org => {
+    const escapedName = org.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const escapedAddress = (org.address || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return `
+      <a href="#" data-org-name="${escapedName}" data-org-address="${escapedAddress}" data-org-index="${index}" style="color: var(--text-primary); padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid var(--border-light); cursor: pointer;">
+        <div style="font-weight: 500; color: var(--text-primary); font-size: 14px;">${org.displayName}</div>
+        <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px; line-height: 1.4;">${org.address}</div>
+      </a>
+    `;
+  }).join("");
+  
+  // Attach click handlers
+  listDiv.querySelectorAll('a[data-org-name]').forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const name = this.getAttribute('data-org-name');
+      const address = this.getAttribute('data-org-address');
+      const idx = parseInt(this.getAttribute('data-org-index'));
+      selectOrg(idx, name, address);
+    });
+  });
+}
+
+function filterOrgDropdown(index) {
+  const searchInput = document.getElementById(`org_search_${index}`);
+  if (!searchInput) return;
+  
+  const q = searchInput.value.trim().toLowerCase();
+  
+  // Get all organizations from memory
+  const all = orgDropdownDataSignup[index] || [];
+  
+  if (!q) {
+    // Show all if search is empty
+    renderOrgDropdownSignup(index, all);
+    return;
+  }
+  
+  // Filter organizations that match the search query
+  const filtered = all.filter(org => {
+    const searchText = `${org.name} ${org.abbreviation} ${org.address}`.toLowerCase();
+    return searchText.includes(q);
+  });
+  
+  // Render filtered results
+  renderOrgDropdownSignup(index, filtered);
+}
+
+function selectOrg(index, name, address) {
+  const nameInput = document.getElementById(`org_name_${index}`);
+  const addressInput = document.getElementById(`org_address_${index}`);
+  const dropdown = document.getElementById(`org_dropdown_${index}`);
+  const dropbtnText = document.getElementById(`org_dropbtn_text_${index}`);
+  
+  // Find the org in directory to get display name with abbreviation
+  const org = orgDirectory.find(o => o.name === name);
+  const displayName = org && org.abbreviation ? `${org.name} (${org.abbreviation})` : name;
+  
+  // Update button text
+  dropbtnText.textContent = displayName;
+  nameInput.value = name;
+  addressInput.value = address;
+  dropdown.classList.remove("show");
+}
+
+// Close dropdown when clicking outside
+window.onclick = function(event) {
+  if (!event.target.matches('.dropbtn') && !event.target.closest('.dropdown-content') && !event.target.closest('.dropdown')) {
+    const dropdowns = document.getElementsByClassName("dropdown-content");
+    for (let i = 0; i < dropdowns.length; i++) {
+      const openDropdown = dropdowns[i];
+      if (openDropdown.classList.contains('show')) {
+        openDropdown.classList.remove('show');
+      }
+    }
+  }
+}
+
+function openAddOrgModal(index) {
+  // Open modal for adding organization (no login required during signup)
+  const modal = document.getElementById("addOrgModal");
+  const orgIndexInput = document.getElementById("addOrgModalIndex");
+  if (orgIndexInput) orgIndexInput.value = index;
+  
+  // Reset form
+  const form = document.getElementById("addOrgForm");
+  if (form) form.reset();
+  
+  // Hide role container initially
+  const roleContainer = document.getElementById("roleContainer");
+  if (roleContainer) roleContainer.style.display = "none";
+  
+  modal.style.display = "flex";
+}
+
+function closeAddOrgModal() {
+  const modal = document.getElementById("addOrgModal");
+  modal.style.display = "none";
+}
+
+async function saveNewOrganization() {
+  const form = document.getElementById("addOrgForm");
+  const formData = new FormData(form);
+  const orgIndex = parseInt(document.getElementById("addOrgModalIndex").value);
+  
+  try {
+    const response = await fetch("/api/add_organization", {
+      method: "POST",
+      body: formData
+    });
+    
+    const result = await response.json();
+    
+    if (response.ok && result.success) {
+      // Add to directory in memory
+      const newOrg = {
+        name: formData.get("org_name"),
+        abbreviation: formData.get("org_abbreviation") || "",
+        address: result.address,
+        type: formData.get("org_type") || "other",
+        popularity: 0
+      };
+      orgDirectory.push(newOrg);
+      
+      // Select it in the dropdown
+      const nameInput = document.getElementById(`org_name_${orgIndex}`);
+      const addressInput = document.getElementById(`org_address_${orgIndex}`);
+      const dropbtnText = document.getElementById(`org_dropbtn_text_${orgIndex}`);
+      const typeSelect = document.querySelector(`select[name="org_type_${orgIndex}"]`);
+      
+      if (nameInput && addressInput && dropbtnText) {
+        const displayName = newOrg.abbreviation ? `${newOrg.name} (${newOrg.abbreviation})` : newOrg.name;
+        dropbtnText.textContent = displayName;
+        nameInput.value = newOrg.name;
+        addressInput.value = newOrg.address;
+        
+        // Set type and roles if provided
+        if (typeSelect && newOrg.type) {
+          typeSelect.value = newOrg.type;
+          updateRoleOptions(orgIndex);
+          
+          // Set roles
+          const roles = formData.getAll("org_roles[]");
+          if (roles.length > 0) {
+            setTimeout(() => {
+              const roleSelects = document.querySelectorAll(`#roles_list_${orgIndex} .role-select`);
+              roles.forEach((role, idx) => {
+                if (idx < roleSelects.length) {
+                  roleSelects[idx].value = role;
+                } else if (idx > 0) {
+                  addRole(orgIndex);
+                  setTimeout(() => {
+                    const newSelects = document.querySelectorAll(`#roles_list_${orgIndex} .role-select`);
+                    if (newSelects[newSelects.length - 1]) {
+                      newSelects[newSelects.length - 1].value = role;
+                    }
+                  }, 0);
+                }
+              });
+            }, 100);
+          }
+        }
+      }
+      
+      closeAddOrgModal();
+    } else {
+      alert(result.error || "Failed to add organization");
+    }
+  } catch (err) {
+    console.error("Error adding organization:", err);
+    alert("Error adding organization. Please try again.");
+  }
+}
+
+// Handle return from add organization page
+window.addEventListener('DOMContentLoaded', function() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const addedOrg = urlParams.get('added_org');
+  const orgIndex = urlParams.get('org_index');
+  
+  if (addedOrg && orgIndex !== null) {
+    // Find the organization in directory
+    const org = orgDirectory.find(o => o.name === addedOrg);
+    if (org) {
+      // Select it in the dropdown at the specified index
+      const index = parseInt(orgIndex);
+      const nameInput = document.getElementById(`org_name_${index}`);
+      const addressInput = document.getElementById(`org_address_${index}`);
+      const dropbtnText = document.getElementById(`org_dropbtn_text_${index}`);
+      
+      if (nameInput && addressInput && dropbtnText) {
+        const displayName = org.abbreviation ? `${org.name} (${org.abbreviation})` : org.name;
+        dropbtnText.textContent = displayName;
+        nameInput.value = org.name;
+        addressInput.value = org.address || "";
+        
+        // Set type and role if provided
+        const orgType = urlParams.get('org_type');
+        const orgRole = urlParams.get('org_role');
+        if (orgType) {
+          const typeSelect = document.querySelector(`select[name="org_type_${index}"]`);
+          if (typeSelect) {
+            typeSelect.value = orgType;
+            updateRoleOptions(index);
+            if (orgRole) {
+              setTimeout(() => {
+                const roleSelect = document.getElementById(`org_role_${index}`);
+                if (roleSelect) roleSelect.value = orgRole;
+              }, 100);
+            }
+          }
+        }
+      }
+    }
+    
+    // Clean up URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+});
+
+function validateForm() {
+  const orgCount = parseInt(document.getElementById("orgCount").value || "0");
+  if (orgCount === 0) {
+    alert("You must add at least one organization before creating your account.");
+    return false;
+  }
+  
+  // Check that at least one organization has a name
+  let hasOrgWithName = false;
+  for (let i = 0; i < orgCount; i++) {
+    const orgName = document.getElementById(`org_name_${i}`);
+    if (orgName && orgName.value && orgName.value.trim()) {
+      hasOrgWithName = true;
+      break;
+    }
+  }
+  
+  if (!hasOrgWithName) {
+    alert("You must select at least one organization before creating your account.");
+    return false;
+  }
+  
+  return true;
+}
+</script>
+</body>
+</html>

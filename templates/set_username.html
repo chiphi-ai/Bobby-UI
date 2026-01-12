@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Set Username — Phi AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --bg-tertiary: #fafafa;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #86868b;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin:0;
+      padding:0;
+    }
+
+    body{
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+      padding: 0;
+      margin: 0;
+    }
+
+    .header{
+      background: #000000;
+      color: white;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      width: 100%;
+      margin: 0;
+    }
+
+    .header h1{
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0;
+      background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header a{
+      color: white;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .container{
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 0 24px;
+    }
+
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 32px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .card h2{
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 24px;
+      color: var(--text-primary);
+    }
+
+    input[type="text"]{
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 15px;
+      font-family: inherit;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      margin-top: 8px;
+      margin-bottom: 16px;
+    }
+
+    input[type="text"]:focus{
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+    }
+
+    .btn{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 24px;
+      background: var(--accent-blue);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    .btn:hover:not(:disabled){
+      background: var(--accent-blue-hover);
+    }
+
+    .btn:disabled{
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .info-box{
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    label{
+      display: block;
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 4px;
+      color: var(--text-primary);
+    }
+
+    .link{
+      color: var(--accent-blue);
+      text-decoration: none;
+      font-size: 14px;
+      display: inline-block;
+      margin-top: 16px;
+    }
+
+    .link:hover{
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><a href="{{ url_for('account_home') }}" style="text-decoration: none; background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">PHI AI</a></h1>
+    <a href="{{ url_for('logout') }}">Logout</a>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <h2>Set Your Username</h2>
+      <p style="color: var(--text-secondary); margin-bottom: 24px;">
+        Your username is required before you can record enrollment audio. This unique identifier will be used to match your voice in meetings.
+      </p>
+
+      <form method="POST" action="{{ url_for('set_username_post') }}">
+        <label for="username">Username</label>
+        <input 
+          type="text" 
+          id="username" 
+          name="username" 
+          required 
+          placeholder="johndoe" 
+          pattern="[a-zA-Z0-9_-]+" 
+          minlength="3" 
+          maxlength="30"
+          title="Username can only contain letters, numbers, underscores, and hyphens. No spaces or special characters."
+          value="{{ user.username if user.username else '' }}"
+        >
+        <div class="info-box">
+          <b>Requirements:</b><br>
+          • 3-30 characters<br>
+          • Letters, numbers, underscores (_), and hyphens (-) only<br>
+          • No spaces or special characters<br>
+          • Case-insensitive (usernames are stored in lowercase)<br>
+          • Must be unique across all users
+        </div>
+
+        <button type="submit" class="btn">Set Username</button>
+      </form>
+
+      <a href="{{ url_for('account_home') }}" class="link">← Back to Home</a>
+    </div>
+  </div>
+</body>
+</html>

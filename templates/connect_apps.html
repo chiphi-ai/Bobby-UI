@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Connect Apps — Phi AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --accent-green: #34C759;
+      --accent-red: #FF3B30;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body{
+      margin:0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .wrap{
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 20px 80px;
+    }
+
+    .topbar{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 0 -20px 32px -20px;
+      padding: 16px 20px;
+      background: #000000;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .brand{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand a{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .logo-img{
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+
+    .title h1{
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+      color: white;
+      background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .title .tag{
+      margin-top: 4px;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .nav-tabs{
+      display: flex;
+      gap: 8px;
+      margin-bottom: 32px;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .nav-tabs a{
+      padding: 12px 20px;
+      color: var(--text-secondary);
+      font-size: 15px;
+      font-weight: 500;
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .nav-tabs a:hover{
+      color: var(--text-primary);
+    }
+
+    .nav-tabs a.active{
+      color: var(--accent-blue);
+      border-bottom-color: var(--accent-blue);
+    }
+
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin: 20px 0;
+    }
+
+    .card h2{
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+    }
+
+    .app-card{
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 20px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .app-info{
+      flex: 1;
+    }
+
+    .app-info h3{
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .app-info p{
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin: 0;
+    }
+
+    .app-status{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-badge{
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .status-connected{
+      background: rgba(52, 199, 89, 0.1);
+      color: var(--accent-green);
+    }
+
+    .btn{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 20px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      font-family: inherit;
+    }
+
+    .btn:hover{
+      background: var(--bg-secondary);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-hover);
+    }
+
+    .btnPrimary{
+      background: var(--accent-blue);
+      color: white;
+      border-color: var(--accent-blue);
+    }
+
+    .btnPrimary:hover{
+      background: var(--accent-blue-hover);
+      border-color: var(--accent-blue-hover);
+      color: white;
+    }
+
+    .btnDanger{
+      background: var(--accent-red);
+      color: white;
+      border-color: var(--accent-red);
+    }
+
+    .btnDanger:hover{
+      background: #d32f2f;
+      border-color: #d32f2f;
+    }
+
+    .config-section{
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-light);
+    }
+
+    .config-section label{
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .config-section input{
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      margin-top: 8px;
+    }
+
+    .config-section button{
+      margin-top: 12px;
+    }
+
+    .info-box{
+      background: #f0f7ff;
+      border: 1px solid #d0e7ff;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <a href="{{ url_for('account_home') }}">
+        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi AI Logo" class="logo-img" onerror="this.style.display='none';">
+        <div class="title">
+          <h1>Phi AI</h1>
+          <div class="tag">Connect Apps</div>
+        </div>
+        </a>
+      </div>
+    </div>
+
+    <div class="nav-tabs">
+      <a href="{{ url_for('account_home') }}">Dashboard</a>
+      <a href="{{ url_for('account_meetings') }}">Past Meetings</a>
+      <a href="{{ url_for('connect_apps_get') }}" class="active">Connect Apps</a>
+      <a href="{{ url_for('account_get') }}">Settings</a>
+      <a href="{{ url_for('logout') }}">Logout</a>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="card">
+          {% for m in messages %}
+            <div style="padding: 12px; background: #f0fff4; border: 1px solid #c0ffc0; border-radius: 8px; color: #2e7d32; margin-bottom: 8px;">{{ m }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="card">
+      <h2>Cloud Storage Integrations</h2>
+      <p>Connect your cloud storage accounts to automatically save meeting transcripts and PDFs. Files will be uploaded to your personal account after each meeting is processed.</p>
+    </div>
+
+    <!-- Dropbox Card -->
+    <div class="card">
+      <div class="app-card">
+        <div class="app-info">
+          <h3>📦 Dropbox</h3>
+          <p>Save meetings to your Dropbox folder</p>
+        </div>
+        <div class="app-status">
+          {% if connected_apps.get('dropbox') %}
+          <span class="status-badge status-connected">✓ Connected</span>
+          <button onclick="disconnectApp('dropbox')" class="btn btnDanger">Disconnect</button>
+          {% else %}
+          <a href="{{ url_for('dropbox_authorize') }}" class="btn btnPrimary">Connect Dropbox</a>
+          {% endif %}
+        </div>
+      </div>
+      
+      {% if connected_apps.get('dropbox') %}
+      <div class="config-section">
+        <label>Folder Path</label>
+        <input type="text" id="dropbox_folder" value="{{ connected_apps['dropbox'].get('folder_path', '/PhiAI/Meetings') }}" placeholder="/PhiAI/Meetings">
+        <button onclick="updateAppConfig('dropbox')" class="btn btnPrimary">Update Folder Path</button>
+        <div class="info-box">
+          <strong>Connected:</strong> {{ connected_apps['dropbox'].get('connected_at', '')[:10] }}<br>
+          Files will be saved to this folder path in your Dropbox account.
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Google Drive Card -->
+    <div class="card">
+      <div class="app-card">
+        <div class="app-info">
+          <h3>☁️ Google Drive</h3>
+          <p>Save meetings to your Google Drive</p>
+        </div>
+        <div class="app-status">
+          {% if connected_apps.get('googledrive') %}
+          <span class="status-badge status-connected">✓ Connected</span>
+          <button onclick="disconnectApp('googledrive')" class="btn btnDanger">Disconnect</button>
+          {% else %}
+          <a href="{{ url_for('googledrive_authorize') }}" class="btn btnPrimary">Connect Google Drive</a>
+          {% endif %}
+        </div>
+      </div>
+      
+      {% if connected_apps.get('googledrive') %}
+      <div class="config-section">
+        <label>Folder Name</label>
+        <input type="text" id="googledrive_folder" value="{{ connected_apps['googledrive'].get('folder_name', 'PhiAI Meetings') }}" placeholder="PhiAI Meetings">
+        <button onclick="updateAppConfig('googledrive')" class="btn btnPrimary">Update Folder Name</button>
+        <div class="info-box">
+          <strong>Connected:</strong> {{ connected_apps['googledrive'].get('connected_at', '')[:10] }}<br>
+          A folder with this name will be created in your Google Drive (if it doesn't exist).
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Box Card -->
+    <div class="card">
+      <div class="app-card">
+        <div class="app-info">
+          <h3>📁 Box</h3>
+          <p>Save meetings to your Box folder</p>
+        </div>
+        <div class="app-status">
+          {% if connected_apps.get('box') %}
+          <span class="status-badge status-connected">✓ Connected</span>
+          <button onclick="disconnectApp('box')" class="btn btnDanger">Disconnect</button>
+          {% else %}
+          <a href="{{ url_for('box_authorize') }}" class="btn btnPrimary">Connect Box</a>
+          {% endif %}
+        </div>
+      </div>
+      
+      {% if connected_apps.get('box') %}
+      <div class="config-section">
+        <label>Folder Name</label>
+        <input type="text" id="box_folder" value="{{ connected_apps['box'].get('folder_name', 'PhiAI Meetings') }}" placeholder="PhiAI Meetings">
+        <button onclick="updateAppConfig('box')" class="btn btnPrimary">Update Folder Name</button>
+        <div class="info-box">
+          <strong>Connected:</strong> {{ connected_apps['box'].get('connected_at', '')[:10] }}<br>
+          A folder with this name will be created in your Box account (if it doesn't exist).
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: var(--radius); padding: 24px; max-width: 400px; width: 90%; box-shadow: var(--shadow-hover);">
+      <h2 id="confirmTitle" style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);"></h2>
+      <p id="confirmMessage" style="font-size: 15px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5;"></p>
+      <div style="display: flex; gap: 12px; justify-content: flex-end;">
+        <button id="confirmCancel" class="btn" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);"></button>
+        <button id="confirmOk" class="btn btnPrimary"></button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showConfirmModal(title, message, okText = "OK", cancelText = "Cancel") {
+      return new Promise((resolve) => {
+        const modal = document.getElementById("confirmModal");
+        const titleEl = document.getElementById("confirmTitle");
+        const messageEl = document.getElementById("confirmMessage");
+        const okBtn = document.getElementById("confirmOk");
+        const cancelBtn = document.getElementById("confirmCancel");
+        
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        okBtn.textContent = okText;
+        cancelBtn.textContent = cancelText;
+        
+        modal.style.display = "flex";
+        
+        const handleOk = () => {
+          modal.style.display = "none";
+          okBtn.onclick = null;
+          cancelBtn.onclick = null;
+          resolve(true);
+        };
+        
+        const handleCancel = () => {
+          modal.style.display = "none";
+          okBtn.onclick = null;
+          cancelBtn.onclick = null;
+          resolve(false);
+        };
+        
+        okBtn.onclick = handleOk;
+        cancelBtn.onclick = handleCancel;
+        
+        modal.onclick = (e) => {
+          if (e.target === modal) {
+            handleCancel();
+          }
+        };
+      });
+    }
+
+    async function disconnectApp(appName) {
+      const appDisplayName = appName === 'googledrive' ? 'Google Drive' : appName.charAt(0).toUpperCase() + appName.slice(1);
+      const confirmed = await showConfirmModal(
+        `Disconnect ${appDisplayName}`,
+        `Are you sure you want to disconnect ${appDisplayName}? Meeting files will no longer be automatically saved to your account.`,
+        "Disconnect",
+        "Cancel"
+      );
+      
+      if (!confirmed) return;
+      
+      try {
+        const response = await fetch(`/connect/${appName}/disconnect`, { method: "POST" });
+        const result = await response.json();
+        
+        if (response.ok) {
+          window.location.reload();
+        } else {
+          await showConfirmModal("Error", result.error || "Failed to disconnect. Please try again.", "OK");
+        }
+      } catch (err) {
+        await showConfirmModal("Error", "An error occurred. Please try again.", "OK");
+      }
+    }
+
+    async function updateAppConfig(appName) {
+      let folderValue;
+      if (appName === 'dropbox') {
+        folderValue = document.getElementById('dropbox_folder').value.trim();
+        if (!folderValue) {
+          await showConfirmModal("Error", "Folder path is required.", "OK");
+          return;
+        }
+      } else {
+        folderValue = document.getElementById(`${appName}_folder`).value.trim();
+        if (!folderValue) {
+          await showConfirmModal("Error", "Folder name is required.", "OK");
+          return;
+        }
+      }
+      
+      const formData = new FormData();
+      if (appName === 'dropbox') {
+        formData.append('folder_path', folderValue);
+      } else {
+        formData.append('folder_name', folderValue);
+      }
+      
+      try {
+        const response = await fetch(`/connect/${appName}/update`, {
+          method: "POST",
+          body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+          await showConfirmModal("Success", "Configuration updated successfully!", "OK");
+          window.location.reload();
+        } else {
+          await showConfirmModal("Error", result.error || "Failed to update configuration.", "OK");
+        }
+      } catch (err) {
+        await showConfirmModal("Error", "An error occurred. Please try again.", "OK");
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+Carter: Let’s align on next steps for launch readiness and confirm what we’re shipping.
+James: I’ll circulate the final feature scope by Friday morning so we can lock requirements.
+Theo: Engineering can deliver the updated test report by Wednesday, but we need the final scope to avoid rework.
+Bobby: Once scope is locked, marketing will finalize messaging and draft the launch email.
+Carter: Great. Next check-in is Monday. Please share updates in the channel as you complete them.

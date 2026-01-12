@@ -1,0 +1,55 @@
+import sys
+import assemblyai as aai
+from pathlib import Path
+import json
+
+# Uses ASSEMBLYAI_API_KEY from environment
+aai.settings.api_key = None
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python transcribe_assemblyai.py <video>")
+        sys.exit(1)
+
+    video_path = Path(sys.argv[1]).resolve()
+    output_dir = Path("output")
+    output_dir.mkdir(exist_ok=True)
+
+    print("Uploading and transcribing with AssemblyAI (dynamic speakers)...")
+
+    config = aai.TranscriptionConfig(
+        speaker_labels=True,   # ✅ unlimited speakers
+        punctuate=True,
+        format_text=True
+    )
+
+    transcriber = aai.Transcriber()
+    transcript = transcriber.transcribe(str(video_path), config)
+
+    if transcript.status == aai.TranscriptStatus.error:
+        raise RuntimeError(transcript.error)
+
+    utterances = []
+    if transcript.utterances:
+        for u in transcript.utterances:
+            utterances.append({
+                "start": round(u.start / 1000, 2),
+                "end": round(u.end / 1000, 2),
+                "speaker": f"Speaker {u.speaker}",
+                "text": u.text.strip()
+            })
+    else:
+        # fallback if utterances not returned
+        utterances.append({
+            "speaker": "Speaker 1",
+            "text": transcript.text.strip()
+        })
+
+    out_json = output_dir / "assemblyai_utterances.json"
+    with open(out_json, "w", encoding="utf-8") as f:
+        json.dump(utterances, f, indent=2)
+
+    print(f"Wrote: {out_json}")
+
+if __name__ == "__main__":
+    main()

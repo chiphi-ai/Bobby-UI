@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Add Members — Phi Ai</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --bg-tertiary: #fafafa;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #86868b;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    /* Dropdown Content (Hidden by Default) */
+    .dropdown-content {
+      display: none !important;
+    }
+
+    /* Show the dropdown menu */
+    .dropdown-content.show {
+      display: block !important;
+    }
+
+    /* Change color of dropdown links on hover */
+    .dropdown-content a:hover {
+      background-color: var(--bg-secondary);
+    }
+    
+    /* Ensure buttons are clickable */
+    .dropbtn {
+      pointer-events: auto !important;
+      z-index: 1;
+      position: relative;
+    }
+    
+    .dropdown {
+      z-index: 100;
+      position: relative;
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body{
+      margin:0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a{ 
+      color: var(--accent-blue);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    a:hover{
+      color: var(--accent-blue-hover);
+    }
+
+    .wrap{
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 48px 20px 80px;
+    }
+
+    /* ---- Header ---- */
+    .topbar{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin: -32px -20px 32px -20px;
+      padding: 16px 20px;
+      background: #1d1d1f;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .brand{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand a{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    .brand a:hover{
+      opacity: 0.8;
+    }
+
+    .logo-img{
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .title h1{
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+      color: white;
+      letter-spacing: -0.8px;
+      text-transform: uppercase;
+      font-family: "Inter", -apple-system, sans-serif;
+    }
+
+    .title h1 .phi-ai{
+      background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: inline-block;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+
+    .title .tag{
+      margin-top: 4px;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    /* ---- Card ---- */
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 32px;
+      margin: 24px 0;
+    }
+
+    .card h2{
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 24px;
+      letter-spacing: -0.5px;
+    }
+
+    .info-box{
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .btn{
+      background: var(--accent-blue);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+      width: 100%;
+      margin-top: 24px;
+    }
+
+    .btn:hover{
+      background: var(--accent-blue-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-hover);
+    }
+
+    .btn:active{
+      transform: translateY(0);
+    }
+
+    .btn-secondary{
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover{
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .link{
+      display: block;
+      text-align: center;
+      margin: 16px 0;
+      color: var(--accent-blue);
+      font-size: 15px;
+      font-weight: 500;
+    }
+
+    .selected-member{
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 8px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .selected-member-name{
+      font-weight: 500;
+      color: var(--text-primary);
+      font-size: 14px;
+    }
+
+    .selected-member-role{
+      font-size: 12px;
+      color: var(--text-tertiary);
+      margin-top: 4px;
+    }
+
+    .remove-member{
+      background: #FF3B30;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: background 0.2s;
+      width: auto;
+      min-width: auto;
+    }
+
+    .remove-member:hover{
+      background: #e0291f;
+    }
+
+    @media (max-width: 600px){
+      .wrap{
+        padding: 24px 16px 60px;
+      }
+
+      .card{
+        padding: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <a href="{{ url_for('account_home') }}">
+        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi Ai Logo" class="logo-img" onerror="this.style.display='none';">
+        <div class="title">
+          <h1><span class="phi-ai">PHI AI</span></h1>
+          <div class="tag">Add Members</div>
+        </div>
+        </a>
+      </div>
+    </div>
+
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div class="card">
+          {% for m in messages %}
+            <div class="success">{{ m }}</div>
+          {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+      <h2>{{ org_name }}</h2>
+      
+      <div class="info-box">
+        Select members from this organization to add as meeting participants. They will receive the meeting transcript.
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <label style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px;">Search Members</label>
+        <div class="dropdown" style="position: relative; display: inline-block; width: 100%;">
+          <button type="button" id="memberDropbtn" class="dropbtn" onclick="toggleMemberDropdown(); return false;" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: white; color: var(--text-primary); text-align: left; cursor: pointer; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1;">
+            <span id="memberDropbtnText">Select or search members...</span>
+            <span style="color: var(--text-secondary);">▼</span>
+          </button>
+          <div id="memberDropdown" class="dropdown-content" style="display: none; position: absolute; background-color: white; min-width: 100%; width: 100%; border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-hover); z-index: 1000; max-height: 300px; overflow-y: auto; top: 100%; left: 0;">
+            <input type="text" placeholder="Search members..." id="memberSearch" autocomplete="off" style="box-sizing: border-box; background-image: url('data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'16\\' height=\\'16\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'%236e6e73\\' stroke-width=\\'2\\'><circle cx=\\'11\\' cy=\\'11\\' r=\\'8\\'/><path d=\\'m21 21-4.35-4.35\\'/></svg>'); background-position: 14px 12px; background-repeat: no-repeat; font-size: 14px; padding: 14px 20px 12px 45px; border: none; border-bottom: 1px solid var(--border-light); width: 100%;">
+            <div id="memberDropdownList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="selectedMembersContainer" style="margin-top: 24px;">
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">Selected Members</h3>
+        <div id="selectedMembersList"></div>
+        <div id="noMembersMessage" style="padding: 20px; text-align: center; color: var(--text-secondary); font-size: 14px; background: var(--bg-secondary); border-radius: 8px; border: 1px dashed var(--border-light);">
+          No members selected yet
+        </div>
+      </div>
+
+      <button type="button" onclick="saveAndReturn()" class="btn">Save & Return</button>
+      <button type="button" onclick="cancelAndReturn()" class="btn btn-secondary" style="margin-top: 12px;">Cancel</button>
+  </div>
+
+    <a href="{{ return_to or url_for('record_meeting') }}" class="link">← Back</a>
+  </div>
+
+<script type="application/json" id="members-data">{{ members | tojson | safe }}</script>
+<script type="application/json" id="return-to-data">{{ return_to | tojson | safe }}</script>
+<script>
+let selectedMembers = [];
+const allMembers = JSON.parse(document.getElementById('members-data').textContent);
+const returnTo = JSON.parse(document.getElementById('return-to-data').textContent) || '{{ url_for("record_meeting") }}';
+
+// Store all members in memory for filtering
+let allMembersData = [];
+
+function populateMemberDropdown() {
+  const listDiv = document.getElementById("memberDropdownList");
+  const searchInput = document.getElementById("memberSearch");
+  
+  if (!listDiv) {
+    return;
+  }
+  
+  if (!allMembers || allMembers.length === 0) {
+    listDiv.innerHTML = '<div style="padding: 12px; color: var(--text-secondary); text-align: center;">No members available</div>';
+    allMembersData = [];
+    return;
+  }
+  
+  // Store all members in memory
+  allMembersData = allMembers.map(member => ({
+    email: member.email,
+    name: member.name,
+    role: member.role || null
+  }));
+  
+  // Render all members initially
+  renderMemberDropdown(allMembersData);
+  
+  // Set up search input listener
+  if (searchInput) {
+    searchInput.value = "";
+    
+    // Remove all existing event listeners by replacing the input
+    const parent = searchInput.parentNode;
+    const newInput = searchInput.cloneNode(false); // Clone without children/events
+    parent.replaceChild(newInput, searchInput);
+    
+    // Attach event listener to the new input
+    newInput.addEventListener('input', function(e) {
+      e.stopPropagation();
+      filterMemberDropdown();
+    });
+    
+    // Also attach on keyup as backup
+    newInput.addEventListener('keyup', function(e) {
+      e.stopPropagation();
+      filterMemberDropdown();
+    });
+    
+    setTimeout(() => newInput.focus(), 100);
+  }
+}
+
+function renderMemberDropdown(members) {
+  const listDiv = document.getElementById("memberDropdownList");
+  if (!listDiv) return;
+  
+  if (members.length === 0) {
+    listDiv.innerHTML = '<div style="padding: 12px; color: var(--text-secondary); text-align: center;">No members found</div>';
+    return;
+  }
+  
+  // Render all provided members
+  listDiv.innerHTML = members.map(member => {
+    const isSelected = selectedMembers.find(m => m.email.toLowerCase() === member.email.toLowerCase());
+    const escapedEmail = member.email.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const escapedName = member.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const escapedRole = (member.role || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return `
+      <a href="#" data-member-email="${escapedEmail}" data-member-name="${escapedName}" data-member-role="${escapedRole}" style="color: var(--text-primary); padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid var(--border-light); cursor: pointer; ${isSelected ? 'background: rgba(0, 122, 255, 0.1);' : ''}">
+        <div style="font-weight: 500; color: var(--text-primary); font-size: 14px;">${member.name}${isSelected ? ' ✓' : ''}</div>
+        ${member.role ? `<div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px; line-height: 1.4;">${escapedRole}</div>` : ''}
+      </a>
+    `;
+  }).join("");
+  
+  // Attach click handlers
+  listDiv.querySelectorAll('a[data-member-email]').forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const email = this.getAttribute('data-member-email');
+      const name = this.getAttribute('data-member-name');
+      const role = this.getAttribute('data-member-role');
+      selectMember(email, name, role);
+    });
+  });
+}
+
+function filterMemberDropdown() {
+  const searchInput = document.getElementById("memberSearch");
+  if (!searchInput) return;
+  
+  const q = searchInput.value.trim().toLowerCase();
+  
+  // Get all members from memory
+  const all = allMembersData || [];
+  
+  if (!q) {
+    // Show all if search is empty
+    renderMemberDropdown(all);
+    return;
+  }
+  
+  // Filter members that match the search query
+  const filtered = all.filter(member => {
+    const searchText = `${member.name} ${member.email} ${member.role || ''}`.toLowerCase();
+    return searchText.includes(q);
+  });
+  
+  // Render filtered results
+  renderMemberDropdown(filtered);
+}
+
+function toggleMemberDropdown() {
+  const dropdown = document.getElementById("memberDropdown");
+  if (!dropdown) {
+    return;
+  }
+  
+  const isShowing = dropdown.classList.contains("show");
+  
+  // Close all other dropdowns first
+  document.querySelectorAll('.dropdown-content.show').forEach(dd => {
+    if (dd.id !== "memberDropdown") {
+      dd.classList.remove("show");
+      dd.style.display = "none";
+    }
+  });
+  
+  if (isShowing) {
+    dropdown.classList.remove("show");
+    dropdown.style.display = "none";
+  } else {
+    dropdown.classList.add("show");
+    dropdown.style.display = "block";
+    populateMemberDropdown();
+  }
+}
+
+function selectMember(email, name, role) {
+  // Check if already selected
+  if (!selectedMembers.find(m => m.email.toLowerCase() === email.toLowerCase())) {
+    selectedMembers.push({
+      email: email,
+      name: name,
+      role: role || null
+    });
+    updateSelectedMembersDisplay();
+    populateMemberDropdown(); // Refresh to show checkmark
+  }
+  
+  // Close dropdown
+  const dropdown = document.getElementById("memberDropdown");
+  dropdown.classList.remove("show");
+  dropdown.style.display = "none";
+}
+
+function removeMember(email) {
+  selectedMembers = selectedMembers.filter(m => m.email.toLowerCase() !== email.toLowerCase());
+  updateSelectedMembersDisplay();
+  populateMemberDropdown(); // Refresh to remove checkmark
+}
+
+function updateSelectedMembersDisplay() {
+  const container = document.getElementById("selectedMembersList");
+  const noMembersMsg = document.getElementById("noMembersMessage");
+  
+  if (!container) return;
+  
+  if (selectedMembers.length === 0) {
+    container.innerHTML = '';
+    if (noMembersMsg) noMembersMsg.style.display = 'block';
+    return;
+  }
+  
+  if (noMembersMsg) noMembersMsg.style.display = 'none';
+  
+  container.innerHTML = selectedMembers.map(member => {
+    const escapedEmail = member.email.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return `
+      <div class="selected-member">
+        <div>
+          <div class="selected-member-name">${member.name}</div>
+          ${member.role ? `<div class="selected-member-role">${member.role}</div>` : ''}
+        </div>
+        <button type="button" onclick="removeMember('${escapedEmail}')" class="remove-member">Remove</button>
+      </div>
+    `;
+  }).join("");
+}
+
+function saveAndReturn() {
+  // Store selected members in sessionStorage to pass back to record_meeting
+  sessionStorage.setItem('selectedMembers', JSON.stringify(selectedMembers));
+  window.location.href = returnTo;
+}
+
+function cancelAndReturn() {
+  window.location.href = returnTo;
+}
+
+// Close dropdown when clicking outside
+window.onclick = function(event) {
+  if (!event.target.matches('.dropbtn') && !event.target.closest('.dropdown-content') && !event.target.closest('.dropdown')) {
+    const dropdowns = document.getElementsByClassName("dropdown-content");
+    for (let i = 0; i < dropdowns.length; i++) {
+      const openDropdown = dropdowns[i];
+      if (openDropdown.classList.contains('show')) {
+        openDropdown.classList.remove('show');
+        openDropdown.style.display = 'none';
+      }
+    }
+  }
+}
+</script>
+</body>
+</html>

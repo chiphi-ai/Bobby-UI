@@ -1,0 +1,1004 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Enrollment audio — Phi AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #86868b;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --accent-red: #FF3B30;
+      --accent-green: #34C759;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body{
+      margin:0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a{ 
+      color: var(--accent-blue);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    a:hover{
+      color: var(--accent-blue-hover);
+    }
+
+    .wrap{
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 20px 80px;
+    }
+
+    .topbar{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: -32px -20px 32px -20px;
+      padding: 16px 20px;
+      background: #1d1d1f;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .brand{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand a{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    .brand a:hover{
+      opacity: 0.8;
+    }
+
+    .logo-img{
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .title h1{
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+      color: white;
+      letter-spacing: -0.5px;
+    }
+
+    .title .tag{
+      margin-top: 4px;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin: 20px 0;
+    }
+
+    .card h2{
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      letter-spacing: -0.3px;
+    }
+
+    .user-info{
+      padding: 16px;
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .user-info b{
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    pre{
+      white-space: pre-wrap;
+      background: var(--bg-secondary);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border-light);
+      color: var(--text-primary);
+      line-height: 1.6;
+      font-size: 15px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+      margin: 12px 0;
+    }
+
+    .info-box{
+      margin: 12px 0;
+      padding: 12px;
+      background: #f0f7ff;
+      border: 1px solid #d0e7ff;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
+
+    button, .btn{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 20px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin: 6px 6px 6px 0;
+      font-family: inherit;
+    }
+
+    button:hover:not(:disabled), .btn:hover{
+      background: var(--bg-secondary);
+      border-color: var(--border);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-hover);
+    }
+
+    button:disabled{
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btnPrimary{
+      background: var(--accent-blue);
+      color: white;
+      border-color: var(--accent-blue);
+    }
+
+    .btnPrimary:hover:not(:disabled){
+      background: var(--accent-blue-hover);
+      border-color: var(--accent-blue-hover);
+      color: white;
+    }
+
+    .btnDanger{
+      background: #fff0f0;
+      border-color: #ffd0d0;
+      color: var(--accent-red);
+    }
+
+    .btnDanger:hover{
+      background: #ffe0e0;
+      border-color: var(--accent-red);
+    }
+
+    .btnSuccess{
+      background: #f0fff4;
+      border-color: #c0ffc0;
+      color: var(--accent-green);
+    }
+
+    .btnSuccess:hover{
+      background: #e0ffe0;
+      border-color: var(--accent-green);
+    }
+
+    .btnSecondary{
+      background: var(--bg-secondary);
+      border-color: var(--border);
+      color: var(--text-primary);
+    }
+
+    .btnSecondary:hover{
+      background: var(--bg-tertiary);
+      border-color: var(--border-light);
+    }
+
+    input[type="file"]{
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-primary);
+      font-size: 14px;
+      color: var(--text-primary);
+      margin: 8px 0;
+      cursor: pointer;
+    }
+
+    input[type="file"]:hover{
+      border-color: var(--accent-blue);
+    }
+
+    audio{
+      width: 100%;
+      margin: 12px 0;
+      border-radius: 8px;
+    }
+
+    #status{
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: none;
+    }
+
+    #status.ok{
+      background: #f0fff4;
+      border: 1px solid #c0ffc0;
+      color: var(--accent-green);
+      display: block;
+    }
+
+    #status.err, #status.error{
+      background: #fff0f0;
+      border: 1px solid #ffd0d0;
+      color: var(--accent-red);
+      display: block;
+    }
+
+    .recordings-list{
+      margin-top: 16px;
+    }
+
+    .recording-item{
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .recording-item-header{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .recording-item-label{
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    .recording-item-timestamp{
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .recording-item-audio{
+      width: 100%;
+      margin: 0;
+    }
+
+    .recording-item-footer{
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .recording-item .delete-btn{
+      padding: 8px 12px;
+      font-size: 14px;
+      margin: 0;
+      flex-shrink: 0;
+      width: auto;
+      min-width: auto;
+    }
+
+    .action-buttons{
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+    }
+
+    .action-buttons button{
+      flex: 1;
+      min-width: 200px;
+      margin: 0;
+    }
+
+    .link{
+      display: inline-block;
+      margin-top: 24px;
+      color: var(--accent-blue);
+      font-size: 15px;
+    }
+
+    @media (max-width: 768px){
+      .wrap{
+        padding: 24px 16px 60px;
+      }
+      .card{
+        padding: 20px;
+      }
+      .action-buttons{
+        flex-direction: column;
+      }
+      .action-buttons button{
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <a href="{{ url_for('account_home') }}">
+        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi Ai Logo" class="logo-img" onerror="this.style.display='none';">
+        <div class="title">
+          <h1>Phi AI</h1>
+          <div class="tag">Voice Enrollment</div>
+        </div>
+        </a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="user-info">
+        Logged in as <b>{{ user.email }}</b><br/>
+        {% if user.username %}
+        <span style="font-size: 13px;">Username: <b>@{{ user.username }}</b></span><br/>
+        <span style="font-size: 13px;">Enrollment files: <b>{{ user.username }}.wav</b> (and variations)</span>
+        {% else %}
+        <span style="font-size: 13px; color: var(--accent-red);">⚠️ Username not set. Please set your username to record enrollment audio.</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📝 Read This Script While Recording</h2>
+      <div style="background: var(--bg-secondary); border: 2px solid var(--accent-blue); border-radius: 8px; padding: 20px; margin: 16px 0; font-size: 16px; line-height: 1.8; color: var(--text-primary);">
+        {{ prompt_script }}
+      </div>
+      <div class="info-box">
+        <b>💡 Instructions:</b> Read this script naturally at a comfortable pace. This should take approximately 30-45 seconds to complete. Speak clearly and use your normal conversational voice.<br><br>
+        <b>⚠️ Important:</b> Your enrollment recording must be at least 30 seconds long to be valid. You can record multiple times and delete poor recordings, but you must have at least one recording that is 30 seconds or longer.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Record Audio</h2>
+      <button id="start" class="btnPrimary">Start Recording</button>
+      <button id="stop" disabled>Stop</button>
+      <audio id="playback" controls style="display:none;"></audio>
+      <div id="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>Or Upload File</h2>
+      <input type="file" id="file" accept="audio/*">
+      <button id="uploadFile" class="btnPrimary">Upload File</button>
+    </div>
+
+    <div class="card" id="recordingsCard" {% if not recordings %}style="display:none;"{% endif %}>
+      <h2>Your Recordings</h2>
+      <div class="recordings-list" id="recordingsList">
+        {% for rec in recordings %}
+        <div class="recording-item" data-filename="{{ rec.filename }}">
+          <div class="recording-item-header">
+            <div>
+              <div class="recording-item-label">Recording {{ loop.index }}: {{ rec.filename }}</div>
+              <div class="recording-item-timestamp">📅 {{ rec.modified[:19].replace('T', ' at ') }}</div>
+            </div>
+          </div>
+          <audio controls class="recording-item-audio" src="/enroll_audio/{{ rec.filename }}"></audio>
+          <div class="recording-item-footer">
+            <button class="delete-btn btnDanger" onclick="deleteRecording('{{ rec.filename }}')">Delete</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="action-buttons" style="display: flex; flex-direction: column; gap: 12px;">
+      <button id="submitBtn" class="btnSuccess">Submit</button>
+    </div>
+
+  </div>
+
+<script>
+let mediaRecorder;
+let chunks = [];
+let recordedBlob = null;
+let currentRecordingFilename = null;
+
+const startBtn = document.getElementById("start");
+const stopBtn = document.getElementById("stop");
+const playback = document.getElementById("playback");
+const statusDiv = document.getElementById("status");
+const submitBtn = document.getElementById("submitBtn");
+
+// Ensure submit button is always enabled
+if (submitBtn) {
+  submitBtn.disabled = false;
+}
+
+function setStatus(msg, cls="") {
+  statusDiv.className = cls;
+  statusDiv.textContent = msg;
+}
+
+function addRecordingToList(filename) {
+  const card = document.getElementById("recordingsCard");
+  const list = document.getElementById("recordingsList");
+  
+  if (!card || !list) {
+    const newCard = document.createElement("div");
+    newCard.className = "card";
+    newCard.id = "recordingsCard";
+    newCard.innerHTML = `
+      <h2>Your Recordings</h2>
+      <div class="recordings-list" id="recordingsList"></div>
+    `;
+    document.querySelector(".action-buttons").parentElement.insertBefore(newCard, document.querySelector(".action-buttons"));
+  }
+  
+  const recordingsList = document.getElementById("recordingsList");
+  const item = document.createElement("div");
+  item.className = "recording-item";
+  item.setAttribute("data-filename", filename);
+  
+  // Get current timestamp for display
+  const now = new Date();
+  const timestamp = now.toISOString().slice(0, 19).replace('T', ' at ');
+  const index = recordingsList.children.length + 1;
+  
+  item.innerHTML = `
+    <div class="recording-item-header">
+      <div>
+        <div class="recording-item-label">Recording ${index}: ${filename}</div>
+        <div class="recording-item-timestamp">📅 ${timestamp}</div>
+      </div>
+    </div>
+    <audio controls class="recording-item-audio" src="/enroll_audio/${filename}"></audio>
+    <div class="recording-item-footer">
+      <button class="delete-btn btnDanger" onclick="deleteRecording('${filename}')">Delete</button>
+    </div>
+  `;
+  recordingsList.prepend(item);
+  document.getElementById("recordingsCard").style.display = "block";
+  submitBtn.disabled = false;
+}
+
+async function checkBlobDuration(blob) {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio();
+    const url = URL.createObjectURL(blob);
+    
+    let resolved = false;
+    
+    const checkDuration = () => {
+      // For WebM files, duration might be NaN or Infinity initially
+      // Check if we have a valid duration
+      if (!resolved && audio.duration && isFinite(audio.duration) && audio.duration > 0 && !isNaN(audio.duration)) {
+        resolved = true;
+        const duration = audio.duration;
+        URL.revokeObjectURL(url);
+        resolve(duration);
+        return true;
+      }
+      return false;
+    };
+    
+    // Try loadedmetadata event
+    audio.addEventListener('loadedmetadata', () => {
+      checkDuration();
+    });
+    
+    // Try durationchange event (fires when duration becomes available)
+    audio.addEventListener('durationchange', () => {
+      checkDuration();
+    });
+    
+    // Try loadeddata event
+    audio.addEventListener('loadeddata', () => {
+      checkDuration();
+    });
+    
+    // Try canplay event
+    audio.addEventListener('canplay', () => {
+      checkDuration();
+    });
+    
+    // Try canplaythrough event (more reliable for WebM)
+    audio.addEventListener('canplaythrough', () => {
+      checkDuration();
+    });
+    
+    audio.addEventListener('error', (e) => {
+      if (!resolved) {
+        resolved = true;
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to load audio: ' + (e.message || 'Unknown error')));
+      }
+    });
+    
+    // Set src and load
+    audio.src = url;
+    audio.preload = 'metadata';
+    audio.load();
+    
+    // Poll for duration as a fallback (WebM sometimes doesn't fire events properly)
+    let pollCount = 0;
+    const pollInterval = setInterval(() => {
+      pollCount++;
+      if (checkDuration()) {
+        clearInterval(pollInterval);
+      } else if (pollCount > 100) { // 5 seconds of polling (50ms * 100)
+        clearInterval(pollInterval);
+        if (!resolved) {
+          resolved = true;
+          URL.revokeObjectURL(url);
+          reject(new Error('Could not determine audio duration'));
+        }
+      }
+    }, 50);
+    
+    // Timeout after 10 seconds
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      if (!resolved) {
+        resolved = true;
+        URL.revokeObjectURL(url);
+        reject(new Error('Timeout loading audio metadata'));
+      }
+    }, 10000);
+  });
+}
+
+// uploadBlob function removed - uploads now happen only on Submit button click
+
+startBtn.onclick = async () => {
+  chunks = [];
+  recordedBlob = null;
+  setStatus("", "");
+  playback.style.display = "none";
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      recordedBlob = new Blob(chunks, { type: "audio/webm" });
+      playback.src = URL.createObjectURL(recordedBlob);
+      playback.style.display = "block";
+      setStatus("Recording complete. Click Submit to save.", "ok");
+      stream.getTracks().forEach(track => track.stop());
+    };
+
+    mediaRecorder.start();
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    setStatus("Recording...", "");
+  } catch (err) {
+    setStatus("Error accessing microphone: " + err.message, "err");
+  }
+};
+
+stopBtn.onclick = () => {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  setStatus("Processing...", "");
+};
+
+document.getElementById("uploadFile").onclick = async () => {
+  const f = document.getElementById("file").files[0];
+  if (!f) return setStatus("Pick a file first.", "err");
+  
+  // Check duration before uploading
+  try {
+    const duration = await checkBlobDuration(f);
+    if (duration < 30.0) {
+      await showConfirmModal(
+        "File Too Short",
+        `The audio file "${f.name}" is only ${Math.round(duration)} seconds long. Enrollment audio must be at least 30 seconds. Please upload a longer audio file.`,
+        "OK"
+      );
+      // Clear file input
+      document.getElementById("file").value = "";
+      return;
+    }
+  } catch (error) {
+    console.warn("Could not check duration:", error);
+    // Continue with upload - server will validate
+  }
+  
+  const fd = new FormData();
+  fd.append("audio", f, f.name);
+  setStatus("Uploading...", "");
+  const res = await fetch("/upload_audio", { method: "POST", body: fd });
+  const result = await res.json();
+  if (res.ok && result.status === "saved") {
+    const filename = result.filename;
+    setStatus("Audio uploaded successfully. Please record an audio using the Record Audio section and click Submit.", "ok");
+    addRecordingToList(filename);
+    // Clear file input
+    document.getElementById("file").value = "";
+  } else {
+    const errorMsg = result.error || "Upload failed";
+    setStatus("Upload failed: " + errorMsg, "err");
+  }
+};
+
+async function deleteRecording(filename) {
+  // Check how many recordings exist
+  const recordingsList = document.getElementById("recordingsList");
+  const recordingItems = recordingsList.querySelectorAll(".recording-item");
+  
+  if (recordingItems.length <= 1) {
+    await showConfirmModal(
+      "Cannot Delete",
+      "You must have at least one enrollment recording. Please record or upload a new one before deleting this one.",
+      "OK"
+    );
+    return;
+  }
+  
+  const confirmed = await showConfirmModal(
+    "Delete Recording",
+    "Are you sure you want to delete this recording? This cannot be undone.",
+    "Delete",
+    "Cancel"
+  );
+  
+  if (!confirmed) return;
+  
+  const fd = new FormData();
+  fd.append("filename", filename);
+  const res = await fetch("/delete_recording", { method: "POST", body: fd });
+  const result = await res.json();
+  
+  if (res.ok && result.status === "deleted") {
+    const item = document.querySelector(`[data-filename="${filename}"]`);
+    if (item) item.remove();
+    const list = document.getElementById("recordingsList");
+    if (list && list.children.length === 0) {
+      submitBtn.disabled = true;
+      const card = document.getElementById("recordingsCard");
+      if (card) card.style.display = "none";
+    }
+  } else {
+    const errorMsg = result.error || "Failed to delete recording";
+    await showConfirmModal("Error", errorMsg, "OK");
+  }
+}
+
+async function checkRecordingDurations() {
+  const recordingsList = document.getElementById("recordingsList");
+  const recordingItems = recordingsList ? recordingsList.querySelectorAll(".recording-item") : [];
+  
+  // Check if there are any uploaded recordings OR a pending recorded blob
+  if (recordingItems.length === 0 && !recordedBlob) {
+    return { valid: false, message: "You must have at least one enrollment recording before submitting. Please record or upload an audio file first." };
+  }
+  
+  // Check duration of each uploaded recording
+  for (const item of recordingItems) {
+    const audioElement = item.querySelector("audio");
+    if (audioElement && audioElement.src) {
+      try {
+        const duration = await new Promise((resolve, reject) => {
+          const audio = new Audio(audioElement.src);
+          let resolved = false;
+          
+          audio.addEventListener('loadedmetadata', () => {
+            if (!resolved && audio.duration && isFinite(audio.duration) && audio.duration > 0) {
+              resolved = true;
+              resolve(audio.duration);
+            }
+          });
+          
+          audio.addEventListener('canplaythrough', () => {
+            if (!resolved && audio.duration && isFinite(audio.duration) && audio.duration > 0) {
+              resolved = true;
+              resolve(audio.duration);
+            }
+          });
+          
+          audio.addEventListener('error', () => {
+            if (!resolved) {
+              resolved = true;
+              reject(new Error('Failed to load audio'));
+            }
+          });
+          
+          // Timeout after 10 seconds
+          setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              reject(new Error('Timeout'));
+            }
+          }, 10000);
+        });
+        
+        if (duration < 30.0) {
+          const filename = item.getAttribute("data-filename") || "recording";
+          return { 
+            valid: false, 
+            message: `Your recording "${filename}" is only ${Math.round(duration)} seconds long. Enrollment audio must be at least 30 seconds. Please record or upload a longer audio file.` 
+          };
+        }
+      } catch (error) {
+        // If we can't check duration client-side, let server validate
+        console.warn("Could not check duration client-side:", error);
+      }
+    }
+  }
+  
+  return { valid: true };
+}
+
+submitBtn.onclick = async () => {
+  if (submitBtn.disabled) return;
+  
+  // Must have a recorded blob to submit
+  if (!recordedBlob) {
+    await showConfirmModal(
+      "No Recording",
+      "Please record an enrollment audio before submitting.",
+      "OK"
+    );
+    return;
+  }
+  
+  // Check duration before uploading
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Checking duration...";
+  setStatus("Checking recording duration...", "");
+  
+  let duration;
+  
+  // First, try to get duration from the playback element (it's already loaded)
+  if (playback && playback.src) {
+    // Wait a bit for metadata to load if needed
+    if (playback.readyState < 2) {
+      // Wait for metadata to load
+      await new Promise((resolve) => {
+        if (playback.readyState >= 2) {
+          resolve();
+        } else {
+          const checkReady = () => {
+            if (playback.readyState >= 2) {
+              playback.removeEventListener('loadedmetadata', checkReady);
+              playback.removeEventListener('canplay', checkReady);
+              resolve();
+            }
+          };
+          playback.addEventListener('loadedmetadata', checkReady);
+          playback.addEventListener('canplay', checkReady);
+          // Timeout after 2 seconds
+          setTimeout(() => {
+            playback.removeEventListener('loadedmetadata', checkReady);
+            playback.removeEventListener('canplay', checkReady);
+            resolve();
+          }, 2000);
+        }
+      });
+    }
+    
+    // Check playback duration
+    if (playback.duration && isFinite(playback.duration) && playback.duration > 0 && !isNaN(playback.duration) && playback.duration !== Infinity) {
+      duration = playback.duration;
+      console.log("Duration from playback element:", duration, "seconds");
+    }
+  }
+  
+  // If we don't have duration from playback, check the blob
+  if (!duration || !isFinite(duration) || isNaN(duration) || duration <= 0 || duration === Infinity) {
+    try {
+      duration = await checkBlobDuration(recordedBlob);
+      console.log("Duration from blob check:", duration, "seconds");
+    } catch (error) {
+      console.error("Could not check duration:", error);
+      // If we can't verify duration client-side, proceed and let server validate
+      // Server uses ffprobe which is more reliable for WebM files
+      duration = null;
+    }
+  }
+  
+  // Validate duration if we got one
+  if (duration && isFinite(duration) && !isNaN(duration) && duration > 0 && duration !== Infinity) {
+    if (duration < 30.0) {
+      await showConfirmModal(
+        "Recording Too Short",
+        "Less than 30 seconds. Please record a different audio take.",
+        "OK"
+      );
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit";
+      setStatus("", "");
+      return;
+    }
+    console.log("Duration check passed:", duration, "seconds");
+  } else {
+    // If we couldn't get duration client-side, proceed and let server validate
+    // Server will check and reject if < 30 seconds
+    console.log("Could not determine duration client-side, proceeding - server will validate");
+  }
+  
+  // Duration is valid (>= 30 seconds), upload it
+  submitBtn.textContent = "Uploading...";
+  setStatus("Uploading recording...", "");
+  
+  const fd = new FormData();
+  fd.append("audio", recordedBlob, "enroll.webm");
+  
+  let uploadRes;
+  let uploadResult;
+  
+  try {
+    uploadRes = await fetch("/upload_audio", { method: "POST", body: fd });
+    
+    // Check if response is JSON
+    const contentType = uploadRes.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      uploadResult = await uploadRes.json();
+    } else {
+      // If not JSON, read as text
+      const text = await uploadRes.text();
+      throw new Error(text || "Upload failed - server returned non-JSON response");
+    }
+  } catch (error) {
+    console.error("Upload error:", error);
+    await showConfirmModal(
+      "Upload Failed",
+      error.message || "Failed to upload recording. Please try again.",
+      "OK"
+    );
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Submit";
+    setStatus("", "");
+    return;
+  }
+  
+  if (!uploadRes.ok || uploadResult.status !== "saved") {
+    const errorMsg = uploadResult.error || "Upload failed";
+    await showConfirmModal(
+      "Upload Failed",
+      errorMsg,
+      "OK"
+    );
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Submit";
+    setStatus("", "");
+    return;
+  }
+  
+  // Upload successful, now save/validate recordings
+  submitBtn.textContent = "Submitting...";
+  setStatus("Submitting enrollment...", "");
+  
+  const res = await fetch("/save_recordings", { method: "POST" });
+  const result = await res.json();
+  
+  if (res.ok && result.status === "saved") {
+    setStatus("Enrollment audio submitted successfully! Redirecting to home page...", "ok");
+    submitBtn.textContent = "Submitted ✓";
+    // Redirect to home page - enrollment check will now pass
+    setTimeout(() => {
+      window.location.href = "{{ url_for('account_home') }}";
+    }, 1500);
+  } else {
+    const errorMsg = result.error || "Failed to submit";
+    await showConfirmModal(
+      "Submission Failed",
+      errorMsg,
+      "OK"
+    );
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Submit";
+    setStatus("", "");
+  }
+};
+
+// Confirmation Modal
+function showConfirmModal(title, message, okText = "OK", cancelText = "Cancel") {
+  return new Promise((resolve) => {
+    // Create modal if it doesn't exist
+    let modal = document.getElementById("confirmModal");
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'confirmModal';
+      modal.style.cssText = 'display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1001; align-items: center; justify-content: center;';
+      document.body.appendChild(modal);
+    }
+    
+    modal.innerHTML = `
+      <div style="background: white; border-radius: var(--radius); padding: 24px; max-width: 400px; width: 90%; box-shadow: var(--shadow-hover);">
+        <h3 style="margin-bottom: 16px; font-size: 18px; color: var(--text-primary);">${title}</h3>
+        <p style="margin-bottom: 20px; font-size: 15px; color: var(--text-secondary);">${message}</p>
+        <div style="display: flex; justify-content: flex-end; gap: 12px;">
+          <button type="button" id="confirmCancel" class="btn" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);">${cancelText}</button>
+          <button type="button" id="confirmOk" class="btn btnPrimary">${okText}</button>
+        </div>
+      </div>
+    `;
+    
+    modal.style.display = 'flex';
+    
+    const okBtn = document.getElementById('confirmOk');
+    const cancelBtn = document.getElementById('confirmCancel');
+    
+    const handleOk = () => {
+      modal.style.display = 'none';
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(true);
+    };
+    
+    const handleCancel = () => {
+      modal.style.display = 'none';
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(false);
+    };
+    
+    okBtn.onclick = handleOk;
+    cancelBtn.onclick = handleCancel;
+    
+    modal.onclick = (e) => {
+      if (e.target === modal) {
+        handleCancel();
+      }
+    };
+  });
+}
+</script>
+</body>
+</html>

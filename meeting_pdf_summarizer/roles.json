@@ -1,0 +1,22 @@
+{
+  "roles": [
+    { "role": "Executive / Leadership", "description": "High-level decisions, outcomes, priorities, and next steps." },
+    { "role": "Product Manager", "description": "Scope, requirements, tradeoffs, customer feedback, roadmap implications." },
+    { "role": "Engineering", "description": "Implementation details, technical risks, dependencies, timelines." },
+    { "role": "Operations", "description": "Execution plan, handoffs, staffing, process, coordination." },
+    { "role": "Sales / BD", "description": "Customer status, pipeline impacts, commitments, deals, pricing signals." },
+    { "role": "Marketing", "description": "Positioning, messaging, launch plan, content deliverables." },
+    { "role": "Legal / Compliance", "description": "Policy, privacy/security, contractual needs, compliance risks." },
+    { "role": "Finance", "description": "Costs, budget, revenue implications, ROI, forecasts." }
+  ],
+  "name_to_role": {
+    "James": "Product Manager",
+    "Theo": "Engineering",
+    "Bobby": "Marketing",
+    "Carter": "Executive / Leadership",
+    "Olivia": "Operations",
+    "Sam": "Sales / BD",
+    "Lena": "Legal / Compliance",
+    "Priya": "Finance"
+  }
+}

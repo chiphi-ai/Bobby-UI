@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Add Organization — Phi Ai</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --bg-tertiary: #fafafa;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #86868b;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body{
+      margin:0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .wrap{
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .topbar{
+      background: #000000;
+      width: 100%;
+      padding: 16px 0;
+      margin: -24px -24px 24px -24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .topbar .brand{
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .topbar .brand a{
+      text-decoration: none;
+      color: white;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-img{
+      height: 32px;
+      width: auto;
+    }
+
+    .topbar .title h1{
+      font-size: 24px;
+      font-weight: 700;
+      margin: 0;
+      color: white;
+    }
+
+    .topbar .title .tag{
+      font-size: 12px;
+      color: rgba(255,255,255,0.7);
+      font-weight: 400;
+      margin-top: -4px;
+    }
+
+    .phi-ai{
+      background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-weight: 800;
+    }
+
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .card h2{
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: var(--text-primary);
+    }
+
+    .card label{
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .card input, .card select{
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      margin-bottom: 16px;
+      transition: border-color 0.2s;
+    }
+
+    .card input:focus, .card select:focus{
+      outline: none;
+      border-color: var(--accent-blue);
+    }
+
+    .card .required{
+      color: #FF3B30;
+    }
+
+    .btn{
+      padding: 12px 24px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      text-decoration: none;
+      display: inline-block;
+      transition: all 0.2s;
+    }
+
+    .btn:hover{
+      background: var(--border-light);
+    }
+
+    .btnPrimary{
+      background: var(--accent-blue);
+      color: white;
+      border-color: var(--accent-blue);
+    }
+
+    .btnPrimary:hover{
+      background: var(--accent-blue-hover);
+      border-color: var(--accent-blue-hover);
+    }
+
+    .btnRow{
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .info-box{
+      background: var(--bg-secondary);
+      border-left: 3px solid var(--accent-blue);
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .link{
+      color: var(--accent-blue);
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+
+    .link:hover{
+      color: var(--accent-blue-hover);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <a href="{{ url_for('account_get') if session.get('user_email') else url_for('index') }}">
+          <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi Ai Logo" class="logo-img" onerror="this.style.display='none';">
+          <div class="title">
+            <h1><span class="phi-ai">PHI AI</span></h1>
+            <div class="tag">Add Organization</div>
+          </div>
+        </a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Add New Organization</h2>
+      <form method="POST" action="{{ url_for('add_organization_post') }}">
+        <input type="hidden" name="return_to" value="{{ return_to }}">
+        <input type="hidden" name="org_index" value="{{ org_index }}">
+        
+        <label>Organization Name <span class="required">*</span></label>
+        <input type="text" name="org_name" required placeholder="e.g., Harvard University">
+        
+        <label>Abbreviation (Optional)</label>
+        <input type="text" name="org_abbreviation" placeholder="e.g., HU">
+        
+        <label>Address <span class="required">*</span></label>
+        <input type="text" name="org_address" required placeholder="e.g., 1 Harvard Way">
+        
+        <label>City <span class="required">*</span></label>
+        <input type="text" name="org_city" required placeholder="e.g., Cambridge">
+        
+        <label>State <span class="required">*</span></label>
+        <select name="org_state" required>
+          <option value="">Select state...</option>
+          <option value="AL">AL</option>
+          <option value="AK">AK</option>
+          <option value="AZ">AZ</option>
+          <option value="AR">AR</option>
+          <option value="CA">CA</option>
+          <option value="CO">CO</option>
+          <option value="CT">CT</option>
+          <option value="DE">DE</option>
+          <option value="FL">FL</option>
+          <option value="GA">GA</option>
+          <option value="HI">HI</option>
+          <option value="ID">ID</option>
+          <option value="IL">IL</option>
+          <option value="IN">IN</option>
+          <option value="IA">IA</option>
+          <option value="KS">KS</option>
+          <option value="KY">KY</option>
+          <option value="LA">LA</option>
+          <option value="ME">ME</option>
+          <option value="MD">MD</option>
+          <option value="MA">MA</option>
+          <option value="MI">MI</option>
+          <option value="MN">MN</option>
+          <option value="MS">MS</option>
+          <option value="MO">MO</option>
+          <option value="MT">MT</option>
+          <option value="NE">NE</option>
+          <option value="NV">NV</option>
+          <option value="NH">NH</option>
+          <option value="NJ">NJ</option>
+          <option value="NM">NM</option>
+          <option value="NY">NY</option>
+          <option value="NC">NC</option>
+          <option value="ND">ND</option>
+          <option value="OH">OH</option>
+          <option value="OK">OK</option>
+          <option value="OR">OR</option>
+          <option value="PA">PA</option>
+          <option value="RI">RI</option>
+          <option value="SC">SC</option>
+          <option value="SD">SD</option>
+          <option value="TN">TN</option>
+          <option value="TX">TX</option>
+          <option value="UT">UT</option>
+          <option value="VT">VT</option>
+          <option value="VA">VA</option>
+          <option value="WA">WA</option>
+          <option value="WV">WV</option>
+          <option value="WI">WI</option>
+          <option value="WY">WY</option>
+          <option value="DC">DC</option>
+        </select>
+        
+        <label>Zip Code <span class="required">*</span></label>
+        <input type="text" name="org_zip" required placeholder="e.g., 02138" pattern="[0-9]{5}(-[0-9]{4})?" maxlength="10">
+        
+        <label>Organization Type</label>
+        <select name="org_type">
+          <option value="">Select type...</option>
+          {% for key, type_data in org_types.items() %}
+          <option value="{{ key }}">{{ type_data.name }}</option>
+          {% endfor %}
+        </select>
+        
+        <div id="roleContainer" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label>Your Position/Role <span class="required">*</span></label>
+            <button type="button" onclick="addRole()" style="background: var(--accent-blue); color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight: 500; width: auto; min-width: auto;">+ Add Role</button>
+          </div>
+          <div id="roles_list">
+            <div class="role-entry" style="margin-bottom: 8px;">
+              <select name="org_roles[]" required class="role-select" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;">
+                <option value="">Select organization type first...</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        
+        <div class="btnRow">
+          <a href="{{ return_to }}" class="btn">Cancel</a>
+          <button type="submit" class="btn btnPrimary">Save Organization</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+<script type="application/json" id="org-types-data">{{ org_types | tojson | safe }}</script>
+<script>
+const orgTypes = JSON.parse(document.getElementById('org-types-data').textContent);
+const typeSelect = document.querySelector('select[name="org_type"]');
+const roleContainer = document.getElementById('roleContainer');
+
+typeSelect.addEventListener('change', function() {
+  const selectedType = this.value;
+  if (selectedType && orgTypes[selectedType]) {
+    const roles = orgTypes[selectedType].roles || [];
+    const roleOptions = roles.map(role => `<option value="${role}">${role}</option>`).join('');
+    
+    // Update all role selects
+    const roleSelects = document.querySelectorAll('#roles_list .role-select');
+    roleSelects.forEach(select => {
+      select.innerHTML = '<option value="">Select your position/role...</option>' + roleOptions;
+    });
+    
+    roleContainer.style.display = 'block';
+  } else {
+    roleContainer.style.display = 'none';
+    const roleSelects = document.querySelectorAll('#roles_list .role-select');
+    roleSelects.forEach(select => {
+      select.innerHTML = '<option value="">Select organization type first...</option>';
+    });
+  }
+});
+
+function addRole() {
+  const rolesList = document.getElementById('roles_list');
+  if (!rolesList) return;
+  
+  const typeSelect = document.querySelector('select[name="org_type"]');
+  if (!typeSelect || !typeSelect.value) {
+    alert("Please select an organization type first.");
+    return;
+  }
+  
+  const selectedType = typeSelect.value;
+  const roles = orgTypes[selectedType].roles || [];
+  const roleOptions = roles.map(role => `<option value="${role}">${role}</option>`).join("");
+  
+  const roleEntry = document.createElement("div");
+  roleEntry.className = "role-entry";
+  roleEntry.style.cssText = "margin-bottom: 8px; display: flex; gap: 8px; align-items: center;";
+  roleEntry.innerHTML = `
+    <select name="org_roles[]" required class="role-select" style="flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;">
+      <option value="">Select your position/role...</option>
+      ${roleOptions}
+    </select>
+    <button type="button" onclick="removeRole(this)" style="background: #FF3B30; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight: 500; width: auto; min-width: auto;">Remove</button>
+  `;
+  
+  rolesList.appendChild(roleEntry);
+}
+
+function removeRole(button) {
+  const rolesList = document.getElementById('roles_list');
+  const roleEntries = rolesList.querySelectorAll('.role-entry');
+  
+  if (roleEntries.length <= 1) {
+    alert("You must have at least one role.");
+    return;
+  }
+  
+  button.closest('.role-entry').remove();
+}
+</script>
+</body>
+</html>

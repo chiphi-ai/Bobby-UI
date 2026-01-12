@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Past Meetings — Phi AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body{
+      margin:0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a{ 
+      color: var(--accent-blue);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    a:hover{
+      color: var(--accent-blue-hover);
+    }
+
+    .wrap{
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 20px 80px;
+    }
+
+    .topbar{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 0 -20px 32px -20px;
+      padding: 16px 20px;
+      background: #1d1d1f;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .brand{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand a{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    .brand a:hover{
+      opacity: 0.8;
+    }
+
+    .logo-img{
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .title h1{
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+      color: white;
+      letter-spacing: -0.5px;
+    }
+
+    .title .tag{
+      margin-top: 4px;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .nav-tabs{
+      display: flex;
+      gap: 8px;
+      margin-bottom: 32px;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .nav-tabs a{
+      padding: 12px 20px;
+      color: var(--text-secondary);
+      font-size: 15px;
+      font-weight: 500;
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .nav-tabs a:hover{
+      color: var(--text-primary);
+    }
+
+    .nav-tabs a.active{
+      color: var(--accent-blue);
+      border-bottom-color: var(--accent-blue);
+    }
+
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin: 20px 0;
+    }
+
+    .card h2{
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      letter-spacing: -0.3px;
+    }
+
+    .meeting-list{
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .meeting-item{
+      padding: 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .meeting-item:hover{
+      background: var(--bg-primary);
+      box-shadow: var(--shadow);
+    }
+
+    .meeting-item h3{
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .meeting-item .meta{
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      line-height: 1.8;
+    }
+
+    .meeting-item .meta span{
+      display: inline-block;
+      margin-right: 16px;
+      margin-bottom: 4px;
+    }
+
+    .meeting-item .meta .speakers{
+      display: block;
+      margin-top: 4px;
+      font-weight: 500;
+    }
+
+    .meeting-item .actions{
+      display: flex;
+      gap: 12px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .meeting-item .actions a{
+      font-size: 14px;
+      color: var(--accent-blue);
+      padding: 8px 12px;
+      border: 1px solid var(--border-light);
+      border-radius: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .meeting-item .actions a:hover{
+      background: var(--bg-secondary);
+      border-color: var(--accent-blue);
+    }
+
+    .empty-state{
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state h3{
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    @media (max-width: 768px){
+      .wrap{
+        padding: 0 16px 60px;
+      }
+      .card{
+        padding: 20px;
+      }
+      .nav-tabs{
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .nav-tabs a{
+        white-space: nowrap;
+      }
+      .meeting-item .meta span{
+        display: block;
+        margin-bottom: 4px;
+      }
+    }
+
+    .delete-btn{
+      color: var(--accent-red) !important;
+    }
+
+    .delete-btn:hover{
+      background: #fff0f0 !important;
+      border-color: var(--accent-red) !important;
+    }
+  </style>
+  <script>
+    async function deleteMeeting(meetingId, meetingName) {
+      const confirmed = await showConfirmModal(
+        "Delete Meeting",
+        `Are you sure you want to delete "${meetingName}"?\n\nThis action cannot be undone.`,
+        "Delete",
+        "Cancel"
+      );
+      
+      if (!confirmed) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/meeting/${meetingId}/delete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        
+        if (response.ok) {
+          await showConfirmModal("Success", "Meeting deleted successfully!", "OK");
+          window.location.reload();
+        } else {
+          const error = await response.text();
+          await showConfirmModal("Error", `Failed to delete meeting: ${error}`, "OK");
+        }
+      } catch (error) {
+        await showConfirmModal("Error", `An error occurred: ${error.message}`, "OK");
+      }
+    }
+
+    // Confirmation Modal
+    function showConfirmModal(title, message, okText = "OK", cancelText = "Cancel") {
+      return new Promise((resolve) => {
+        // Create modal if it doesn't exist
+        let modal = document.getElementById("confirmModal");
+        if (!modal) {
+          modal = document.createElement('div');
+          modal.id = 'confirmModal';
+          modal.style.cssText = 'display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1001; align-items: center; justify-content: center;';
+          document.body.appendChild(modal);
+        }
+        
+        modal.innerHTML = `
+          <div style="background: white; border-radius: var(--radius); padding: 24px; max-width: 400px; width: 90%; box-shadow: var(--shadow-hover);">
+            <h3 style="margin-bottom: 16px; font-size: 18px; color: var(--text-primary);">${title}</h3>
+            <p style="margin-bottom: 20px; font-size: 15px; color: var(--text-secondary); white-space: pre-line;">${message}</p>
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+              <button type="button" id="confirmCancel" class="btn" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);">${cancelText}</button>
+              <button type="button" id="confirmOk" class="btn btnPrimary">${okText}</button>
+            </div>
+          </div>
+        `;
+        
+        modal.style.display = 'flex';
+        
+        const okBtn = document.getElementById('confirmOk');
+        const cancelBtn = document.getElementById('confirmCancel');
+        
+        const handleOk = () => {
+          modal.style.display = 'none';
+          okBtn.onclick = null;
+          cancelBtn.onclick = null;
+          resolve(true);
+        };
+        
+        const handleCancel = () => {
+          modal.style.display = 'none';
+          okBtn.onclick = null;
+          cancelBtn.onclick = null;
+          resolve(false);
+        };
+        
+        okBtn.onclick = handleOk;
+        cancelBtn.onclick = handleCancel;
+        
+        modal.onclick = (e) => {
+          if (e.target === modal) {
+            handleCancel();
+          }
+        };
+      });
+    }
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <a href="{{ url_for('account_home') }}">
+        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi Ai Logo" class="logo-img" onerror="this.style.display='none';">
+        <div class="title">
+          <h1>Phi AI</h1>
+          <div class="tag">Past Meetings</div>
+        </div>
+        </a>
+      </div>
+    </div>
+
+    <div class="nav-tabs">
+      <a href="{{ url_for('account_home') }}">Dashboard</a>
+      <a href="{{ url_for('account_meetings') }}" class="active">Past Meetings</a>
+      <a href="{{ url_for('connect_apps_get') }}">Connect Apps</a>
+      <a href="{{ url_for('account_get') }}">Settings</a>
+      <a href="{{ url_for('logout') }}">Logout</a>
+    </div>
+
+    <div class="card">
+      <h2>All Meetings ({{ meetings|length }})</h2>
+      {% if meetings %}
+        <div class="meeting-list">
+          {% for meeting in meetings %}
+          <div class="meeting-item">
+            <h3>{{ meeting.name or meeting.id }}</h3>
+            <div class="meta">
+              <span>📅 Date: {{ meeting.processed_at[:10] if meeting.processed_at else 'N/A' }}</span>
+              <span>⏰ Time: {{ meeting.processed_at[11:16] if meeting.processed_at and 'T' in meeting.processed_at else 'N/A' }}</span>
+              <span>👥 Speakers: {{ meeting.speaker_count }}</span>
+              {% if meeting.participants %}
+              <span class="speakers">Participants: {{ meeting.participants|length }}</span>
+              {% endif %}
+              {% if meeting.speakers %}
+              <span class="speakers">Identified voices: {{ meeting.speakers|join(', ') }}</span>
+              {% endif %}
+              {% if meeting.audio_size_bytes %}
+              <span>💾 Size: {{ (meeting.audio_size_bytes / 1024 / 1024)|round(2) }} MB</span>
+              {% endif %}
+            </div>
+            <div class="actions">
+              {% if meeting.transcript_path %}
+              <a href="{{ url_for('meeting_transcript', meeting_id=meeting.id) }}" target="_blank">📄 View Transcript</a>
+              {% endif %}
+              <a href="{{ url_for('meeting_pdf', meeting_id=meeting.id) }}" target="_blank">📑 View PDF</a>
+              {% if meeting.audio_path %}
+              <a href="{{ url_for('meeting_audio', meeting_id=meeting.id) }}">🎵 Download Audio</a>
+              {% endif %}
+              <a href="#" onclick="deleteMeeting('{{ meeting.id }}', '{{ meeting.name or meeting.id }}'); return false;" style="color: var(--accent-red); padding: 6px 10px; display: inline-block;">🗑️ Delete</a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty-state">
+          <h3>No meetings found</h3>
+          <p>Record your first meeting to get started.</p>
+          <div style="margin-top: 16px;">
+            <a class="btn btnPrimary" href="{{ url_for('record_meeting') }}">Record Meeting</a>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

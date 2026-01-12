@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Phi AI</title>
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --bg-tertiary: #fafafa;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #86868b;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body{
+      margin:0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    a{ 
+      color: var(--accent-blue);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    a:hover{
+      color: var(--accent-blue-hover);
+    }
+
+    .wrap{
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 32px 20px 80px;
+    }
+
+    /* ---- Header ---- */
+    .topbar{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 0;
+      margin-left: calc(-50vw + 50%);
+      margin-right: calc(-50vw + 50%);
+      margin-bottom: 48px;
+      padding: 20px max(20px, calc((100vw - 980px) / 2));
+      background: #000000;
+      border-bottom: 1px solid rgba(255,255,255,0.15);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .brand{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand a{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    .brand a:hover{
+      opacity: 0.8;
+    }
+
+    .logo-img{
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .title h1{
+      margin: 0;
+      font-size: 26px;
+      font-weight: 700;
+      color: white;
+      letter-spacing: -0.8px;
+      text-transform: uppercase;
+      font-family: "Inter", -apple-system, sans-serif;
+    }
+
+    .title h1 .phi-ai{
+      background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: inline-block;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+
+    .title .tag{
+      margin-top: 4px;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .pill{
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.9);
+    }
+
+    .pill{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 20px;
+      background: var(--bg-secondary);
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .dot{
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #34C759;
+    }
+
+    /* ---- Card ---- */
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 32px;
+      margin: 24px 0;
+    }
+
+    .card h2{
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      letter-spacing: -0.8px;
+      line-height: 1.2;
+    }
+
+    .card p{
+      font-size: 17px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+
+    /* ---- Buttons ---- */
+    .ctaRow{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 24px 0;
+    }
+
+    .btn, button{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 24px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn:hover, button:hover:not(:disabled){
+      background: var(--bg-secondary);
+      border-color: var(--border);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-hover);
+    }
+
+    .btn:disabled, button:disabled{
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btnPrimary{
+      background: var(--accent-blue);
+      color: white;
+      border-color: var(--accent-blue);
+    }
+
+    .btnPrimary:hover:not(:disabled){
+      background: var(--accent-blue-hover);
+      border-color: var(--accent-blue-hover);
+      color: white;
+    }
+
+    /* ---- Info Box ---- */
+    .info-box{
+      margin-top: 24px;
+      padding: 16px;
+      background: #f0f7ff;
+      border: 1px solid #d0e7ff;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
+
+    .info-box b{
+      color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    /* ---- Toast ---- */
+    .toast{
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      max-width: 400px;
+      padding: 16px;
+      border-radius: 12px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      display: none;
+      z-index: 9999;
+    }
+
+    .toast.show{
+      display: block;
+    }
+
+    .toast .tTitle{
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+      font-size: 15px;
+    }
+
+    .toast .tBody{
+      color: var(--text-secondary);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ---- Stats ---- */
+    .stats{
+      margin-top: 24px;
+    }
+
+    .stat{
+      padding: 16px 0;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .stat:last-child{
+      border-bottom: none;
+    }
+
+    .stat b{
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .stat span{
+      display: block;
+      font-size: 15px;
+      color: var(--text-primary);
+      line-height: 1.5;
+    }
+
+    .mono{
+      font-family: "SF Mono", Menlo, Monaco, "Courier New", monospace;
+      font-size: 13px;
+      color: var(--text-tertiary);
+    }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 768px){
+      .wrap{
+        padding: 24px 16px 60px;
+      }
+
+      .topbar{
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .card{
+        padding: 24px;
+      }
+
+      .card h2{
+        font-size: 28px;
+      }
+
+      .ctaRow{
+        flex-direction: column;
+      }
+
+      .btn, button{
+        width: 100%;
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        {% if logged_in %}
+        <a href="{{ url_for('account_home') }}">
+        {% endif %}
+        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi Ai Logo" class="logo-img" onerror="this.style.display='none';">
+        <div class="title">
+          <h1><span class="phi-ai">PHI AI</span></h1>
+          <div class="tag">Auto transcripts • Named speakers • Instant email</div>
+        </div>
+        {% if logged_in %}
+        </a>
+        {% endif %}
+      </div>
+      <div class="pill">
+        <span class="dot"></span>
+        System Active
+      </div>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="toast show" id="toast">
+          <div class="tTitle">System Message</div>
+          <div class="tBody">
+            {% for m in messages %}{{ m }}{% if not loop.last %}<br/>{% endif %}{% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="card">
+      <h2>Turn a meeting into a named script, automatically.</h2>
+      <p>
+        Record or upload meeting audio directly through the website. Phi AI automatically transcribes it, matches voices to enrolled speakers,
+        and emails the right people. No manual steps. No chaos. Just clean output.
+      </p>
+
+      <div class="ctaRow">
+        {% if logged_in %}
+          <a class="btn btnPrimary" href="{{ url_for('record_meeting') }}">Record Meeting</a>
+          <a class="btn" href="{{ url_for('enroll_get') }}">Voice Enrollment</a>
+          <a class="btn" href="{{ url_for('account_get') }}">Account Settings</a>
+          <a class="btn" href="{{ url_for('logout') }}">Logout</a>
+        {% else %}
+          <a class="btn btnPrimary" href="{{ url_for('signup_get') }}">Create Account</a>
+          <a class="btn" href="{{ url_for('login_get') }}">Login</a>
+        {% endif %}
+      </div>
+
+      <div class="info-box">
+        <b>Getting Started:</b> First, <a href="{{ url_for('enroll_get') }}">enroll your voice</a> so the system can recognize you in meetings. Then use <a href="{{ url_for('record_meeting') }}">Record Meeting</a> to process your audio files automatically.
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const toast = document.getElementById("toast");
+    if (toast) {
+      setTimeout(() => toast.classList.remove("show"), 6500);
+    }
+  </script>
+</body>
+</html>

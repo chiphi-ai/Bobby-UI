@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Account — Phi AI</title>
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body{
+      margin:0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a{ 
+      color: var(--accent-blue);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    a:hover{
+      color: var(--accent-blue-hover);
+    }
+
+    .wrap{
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 0 20px 80px;
+    }
+
+    .topbar{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 0 -20px 32px -20px;
+      padding: 16px 20px;
+      background: #1d1d1f;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .brand{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand a{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    .brand a:hover{
+      opacity: 0.8;
+    }
+
+    .logo-img{
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .title h1{
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+      color: white;
+      letter-spacing: -0.5px;
+    }
+
+    .title .tag{
+      margin-top: 4px;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .nav-tabs{
+      display: flex;
+      gap: 8px;
+      margin-bottom: 32px;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .nav-tabs a{
+      padding: 12px 20px;
+      color: var(--text-secondary);
+      font-size: 15px;
+      font-weight: 500;
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .nav-tabs a:hover{
+      color: var(--text-primary);
+    }
+
+    .nav-tabs a.active{
+      color: var(--accent-blue);
+      border-bottom-color: var(--accent-blue);
+    }
+
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin: 20px 0;
+    }
+
+    .card h2{
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      letter-spacing: -0.3px;
+    }
+
+    .card p{
+      font-size: 15px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      line-height: 1.6;
+    }
+
+    .ctaRow{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 24px 0;
+    }
+
+    .btn, button{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 20px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin: 6px 6px 6px 0;
+      font-family: inherit;
+      text-decoration: none;
+    }
+
+    .btn:hover, button:hover{
+      background: var(--bg-secondary);
+      border-color: var(--border);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-hover);
+    }
+
+    .btnPrimary{
+      background: var(--accent-blue);
+      color: white;
+      border-color: var(--accent-blue);
+    }
+
+    .btnPrimary:hover{
+      background: var(--accent-blue-hover);
+      border-color: var(--accent-blue-hover);
+      color: white;
+    }
+
+    .meeting-list{
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .meeting-item{
+      padding: 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-light);
+      border-radius: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .meeting-item:hover{
+      background: var(--bg-primary);
+      box-shadow: var(--shadow);
+    }
+
+    .meeting-item h3{
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .meeting-item .meta{
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .meeting-item .meta span{
+      margin-right: 16px;
+    }
+
+    .meeting-item .actions{
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .meeting-item .actions a{
+      font-size: 14px;
+      color: var(--accent-blue);
+    }
+
+    .empty-state{
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state h3{
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    @media (max-width: 768px){
+      .wrap{
+        padding: 0 16px 60px;
+      }
+      .card{
+        padding: 20px;
+      }
+      .nav-tabs{
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .nav-tabs a{
+        white-space: nowrap;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <a href="{{ url_for('account_home') }}">
+        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi Ai Logo" class="logo-img" onerror="this.style.display='none';">
+        <div class="title">
+          <h1>Phi AI</h1>
+          <div class="tag">Account Dashboard</div>
+        </div>
+        </a>
+      </div>
+    </div>
+
+    <div class="nav-tabs">
+      <a href="{{ url_for('account_home') }}" class="active">Dashboard</a>
+      <a href="{{ url_for('account_meetings') }}">Past Meetings</a>
+      <a href="{{ url_for('connect_apps_get') }}">Connect Apps</a>
+      <a href="{{ url_for('account_get') }}">Settings</a>
+      <a href="{{ url_for('logout') }}">Logout</a>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="card">
+          {% for m in messages %}
+            <div style="padding: 12px; background: #f0fff4; border: 1px solid #c0ffc0; border-radius: 8px; color: #2e7d32; margin-bottom: 8px;">{{ m }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% if not has_enrollment %}
+    <div class="card" style="background: #fff3cd; border: 1px solid #ffc107; border-left: 4px solid #ffc107;">
+      <h2 style="color: #856404; margin-bottom: 12px;">⚠️ Voice Enrollment Required</h2>
+      <p style="color: #856404; margin-bottom: 16px;">You haven't recorded your voice enrollment yet. Please complete voice enrollment so the system can identify you in meeting transcripts.</p>
+      <a class="btn btnPrimary" href="{{ url_for('enroll_get') }}" style="background: #ffc107; color: #000; border-color: #ffc107;">Record Voice Enrollment</a>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2>Welcome, {{ user.first }} {{ user.last }}</h2>
+      <p>Manage your account, record meetings, and view past transcripts.</p>
+      <div class="ctaRow">
+        <a class="btn btnPrimary" href="{{ url_for('record_meeting') }}">Record Meeting</a>
+        <a class="btn" href="{{ url_for('enroll_get') }}">Voice Enrollment</a>
+        <a class="btn" href="{{ url_for('account_get') }}">Account Settings</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

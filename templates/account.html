@@ -1,0 +1,981 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Account — Phi Ai</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --bg-tertiary: #fafafa;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #86868b;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    /* Dropdown Content (Hidden by Default) */
+    .dropdown-content {
+      display: none !important;
+    }
+
+    /* Show the dropdown menu */
+    .dropdown-content.show {
+      display: block !important;
+    }
+
+    /* Change color of dropdown links on hover */
+    .dropdown-content a:hover {
+      background-color: var(--bg-secondary);
+    }
+    
+    /* Ensure buttons are clickable */
+    .dropbtn {
+      pointer-events: auto !important;
+      z-index: 1;
+      position: relative;
+    }
+    
+    .dropdown {
+      z-index: 100;
+      position: relative;
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body{
+      margin:0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a{ 
+      color: var(--accent-blue);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    a:hover{
+      color: var(--accent-blue-hover);
+    }
+
+    .wrap{
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 48px 20px 80px;
+    }
+
+    /* ---- Header ---- */
+    .topbar{
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin: -32px -20px 32px -20px;
+      padding: 16px 20px;
+      background: #1d1d1f;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .brand{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand a{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    .brand a:hover{
+      opacity: 0.8;
+    }
+
+    .logo-img{
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .title h1{
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+      color: white;
+      letter-spacing: -0.8px;
+      text-transform: uppercase;
+      font-family: "Inter", -apple-system, sans-serif;
+    }
+
+    .title h1 .phi-ai{
+      background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: inline-block;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+
+    .title .tag{
+      margin-top: 4px;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    /* ---- Card ---- */
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 32px;
+      margin: 24px 0;
+    }
+
+    .card h2{
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 24px;
+      letter-spacing: -0.5px;
+    }
+
+    /* ---- Form ---- */
+    form label, form > div:not(.info-box){
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      margin-top: 16px;
+    }
+
+    form > div:first-child{
+      margin-top: 0;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    select{
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 16px;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input:focus,
+    select:focus{
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 4px rgba(0,122,255,0.1);
+    }
+
+    input::placeholder{
+      color: var(--text-tertiary);
+    }
+
+    select{
+      background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%236e6e73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 16px center;
+      padding-right: 40px;
+      cursor: pointer;
+    }
+
+    hr{
+      margin: 24px 0;
+      border: none;
+      border-top: 1px solid var(--border-light);
+    }
+
+    .section-label{
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      margin-top: 24px;
+    }
+
+    button, .btn{
+      width: 100%;
+      padding: 14px 24px;
+      background: var(--accent-blue);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-top: 24px;
+      font-family: inherit;
+    }
+
+    button:hover, .btn:hover{
+      background: var(--accent-blue-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-hover);
+    }
+
+    .info-box{
+      margin: 16px 0;
+      padding: 14px;
+      background: #f0f7ff;
+      border: 1px solid #d0e7ff;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
+
+    .link{
+      display: inline-block;
+      margin: 8px 0;
+      color: var(--accent-blue);
+      font-size: 15px;
+    }
+
+    /* ---- Messages ---- */
+    .card .error,
+    .card .success{
+      padding: 14px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+
+    .card .error{
+      background: #fff0f0;
+      border: 1px solid #ffd0d0;
+      color: #d32f2f;
+    }
+
+    .card .success{
+      background: #f0fff4;
+      border: 1px solid #c0ffc0;
+      color: #2e7d32;
+    }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 768px){
+      .wrap{
+        padding: 32px 16px 60px;
+      }
+
+      .card{
+        padding: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <a href="{{ url_for('account_home') }}">
+        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi Ai Logo" class="logo-img" onerror="this.style.display='none';">
+        <div class="title">
+          <h1><span class="phi-ai">PHI AI</span></h1>
+          <div class="tag">Account Settings</div>
+        </div>
+        </a>
+      </div>
+    </div>
+
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div class="card">
+          {% for m in messages %}
+            <div class="success">{{ m }}</div>
+          {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <form method="post" action="{{ url_for('account_post') }}" class="card">
+      <h2>Account Settings</h2>
+      
+      <div class="info-box">
+        Update your account information and voice enrollment settings.
+      </div>
+
+      <button type="submit" style="margin-top: 0; margin-bottom: 24px;">Save Changes</button>
+
+      <div>First name</div>
+      <input name="first" type="text" value="{{ user.first }}" required placeholder="First name">
+
+      <div>Last name</div>
+      <input name="last" type="text" value="{{ user.last }}" required placeholder="Last name">
+
+      <div>Email</div>
+      <input name="email" type="email" value="{{ user.email }}" required placeholder="your.email@example.com">
+
+      <div>Confirm email</div>
+      <input name="email2" type="email" value="{{ user.email }}" required placeholder="your.email@example.com">
+
+      <div>Username</div>
+      <input name="username_display" type="text" value="{{ user.username if user.username else 'Not set' }}" disabled style="background: var(--bg-secondary); color: var(--text-secondary); cursor: not-allowed;" placeholder="Username">
+      <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; margin-bottom: 16px;">
+        Your username cannot be changed. It is used to identify your voice recordings.
+      </div>
+
+      <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-light);">
+
+      <div class="section-label" style="margin-bottom: 16px;">
+        Your Current Positions
+        <div style="font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-top: 4px;">
+          Your current organizations and positions. Click "Add/Edit Positions" below to manage them.
+        </div>
+      </div>
+
+      <div id="currentPositionsContainer" style="margin-bottom: 24px;">
+        {% if user.organizations %}
+          {% for org in user.organizations %}
+          <div class="position-item" data-position-index="{{ loop.index0 }}" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border: 2px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="flex: 1;">
+              <div style="font-weight: 700; font-size: 16px; color: var(--text-primary); margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 18px;">💼</span>
+                <span>{{ org.name }}</span>
+                {% if org.role %}
+                <span style="font-weight: 500; color: var(--accent-blue); font-size: 14px; background: rgba(0, 122, 255, 0.1); padding: 4px 10px; border-radius: 12px;">{{ org.role }}</span>
+                {% endif %}
+              </div>
+              <div style="font-size: 13px; color: var(--text-tertiary); margin-left: 26px;">
+                {% set dir_org = organizations_directory | selectattr("name", "equalto", org.name) | first %}
+                {% if dir_org %}
+                  📍 {{ dir_org.address }}
+                {% elif org.address %}
+                  📍 {{ org.address }}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div style="padding: 20px; text-align: center; color: var(--text-secondary); font-size: 14px; background: var(--bg-secondary); border-radius: 8px; border: 1px dashed var(--border-light);">
+            No current positions
+          </div>
+        {% endif %}
+      </div>
+
+      <div style="margin-bottom: 24px;">
+        <a href="{{ url_for('edit_positions') }}" class="btn" style="display: inline-block; text-decoration: none; text-align: center;">Add/Edit Positions</a>
+      </div>
+
+      <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-light);">
+
+      <div class="section-label">Change password (optional)</div>
+      <div>New password</div>
+      <input name="password" type="password" minlength="8" placeholder="Leave blank to keep current">
+
+      <div>Confirm new password</div>
+      <input name="password2" type="password" minlength="8" placeholder="Leave blank to keep current">
+
+      <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border-light);">
+
+      <div class="section-label">Email Preferences</div>
+      <label style="display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; cursor: pointer; margin-top: 8px;">
+        <input type="checkbox" name="receive_meeting_emails" {% if user.get('receive_meeting_emails', True) %}checked{% endif %} style="width: 20px; height: 20px; cursor: pointer; accent-color: var(--accent-blue);">
+        <div style="flex: 1;">
+          <div style="font-weight: 500; color: var(--text-primary); margin-bottom: 2px;">Receive meeting emails</div>
+          <div style="font-size: 13px; color: var(--text-secondary);">Get email notifications with transcripts when meetings you're in are processed</div>
+        </div>
+      </label>
+  </form>
+
+  <div class="card" style="display: flex; flex-direction: column; gap: 12px;">
+      <a href="{{ url_for('enroll_get') }}" class="btn btnPrimary" style="text-align: center; text-decoration: none; display: block;">Upload/Record New Audio</a>
+      <a href="{{ url_for('logout') }}" class="link" style="text-align: center; display: block;">Logout</a>
+    </div>
+
+    <div class="card" style="border: 2px solid var(--accent-red); background: #fff5f5;">
+      <h2 style="color: var(--accent-red); font-size: 18px; margin-bottom: 12px;">⚠️ Danger Zone</h2>
+      <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
+        Deleting your account will permanently remove all your data, including your enrollment audio, organization memberships, and meeting history. This action cannot be undone.
+      </p>
+      <button type="button" onclick="deleteAccount()" class="btn" style="background: var(--accent-red); color: white; border-color: var(--accent-red); width: 100%;">
+        Delete Account
+      </button>
+    </div>
+
+    <a href="{{ url_for('account_home') }}" class="link">← Back to Home</a>
+  </div>
+
+<script type="application/json" id="org-types-data">{{ org_types | tojson | safe }}</script>
+<script type="application/json" id="user-orgs-data">{{ (user.organizations or []) | tojson | safe }}</script>
+<script type="application/json" id="org-directory-data">{{ organizations_directory | tojson | safe }}</script>
+<script>
+let orgCount = 0;
+// Load organization types, user orgs, and directory from template
+const orgTypes = JSON.parse(document.getElementById('org-types-data').textContent);
+const userOrgs = JSON.parse(document.getElementById('user-orgs-data').textContent);
+const orgDirectory = JSON.parse(document.getElementById('org-directory-data').textContent);
+
+// Initialize with existing organizations
+document.addEventListener("DOMContentLoaded", () => {
+  userOrgs.forEach(org => {
+    // Look up organization in directory to get display name and address
+    const dirOrg = orgDirectory.find(o => o.name === org.name);
+    const displayName = dirOrg && dirOrg.abbreviation ? `${org.name} (${dirOrg.abbreviation})` : org.name;
+    const address = dirOrg ? dirOrg.address : (org.address || "");
+    addOrganization(org.name, displayName, address, org.type, org.role);
+  });
+  
+  // If no organizations, add one empty one (required to have at least 1)
+  if (orgCount === 0) {
+    addOrganization();
+  }
+  
+});
+
+function addOrganization(actualName = "", displayName = "", address = "", type = "", role = "") {
+  if (orgCount >= 10) {
+    alert("You can add up to 10 organizations.");
+    return;
+  }
+
+  const container = document.getElementById("organizationsContainer");
+  const orgIndex = orgCount;
+  orgCount++;
+  document.getElementById("orgCount").value = orgCount;
+
+  const orgDiv = document.createElement("div");
+  orgDiv.className = "org-entry";
+  orgDiv.style.cssText = "margin-bottom: 16px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border-light);";
+  orgDiv.id = `org_${orgIndex}`;
+
+  const orgTypeKeys = Object.keys(orgTypes);
+  const typeOptions = orgTypeKeys.map(key => 
+    `<option value="${key}" ${type === key ? 'selected' : ''}>${orgTypes[key].name}</option>`
+  ).join("");
+  
+  const roles = type ? (orgTypes[type]?.roles || []) : [];
+  const roleOptions = roles.map(r => 
+    `<option value="${r}" ${role === r ? 'selected' : ''}>${r}</option>`
+  ).join("");
+  
+  const canRemove = orgCount > 1; // Can only remove if more than 1 organization
+
+  // Build select options
+  let selectOptions = '<option value="">Select or search organizations...</option>';
+  if (actualName) {
+    const dirOrg = orgDirectory.find(o => o.name === actualName);
+    const orgDisplayName = dirOrg && dirOrg.abbreviation ? `${actualName} (${dirOrg.abbreviation})` : actualName;
+    selectOptions = `<option value="${actualName}" selected>${orgDisplayName}</option>`;
+  }
+
+  orgDiv.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <strong style="font-size: 14px; color: var(--text-primary);">Organization ${orgIndex + 1}</strong>
+      ${canRemove ? `<button type="button" onclick="removeOrganization(${orgIndex})" style="background: #FF3B30; color: #ffffff; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight: 500; transition: background 0.2s; width: auto; min-width: auto;" onmouseover="this.style.background='#e0291f'" onmouseout="this.style.background='#FF3B30'">Remove</button>` : '<span style="font-size: 12px; color: var(--text-secondary);">Required</span>'}
+    </div>
+    
+    <div style="margin-bottom: 12px;">
+      <label style="display: block; margin-bottom: 4px; font-size: 13px; font-weight: 500;">Organization Name</label>
+      <div class="dropdown" style="position: relative; display: inline-block; width: 100%;">
+        <button type="button" id="org_dropbtn_${orgIndex}" class="dropbtn" onclick="toggleOrgDropdown(${orgIndex}); return false;" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; background: white; color: var(--text-primary); text-align: left; cursor: pointer; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1;">
+          <span id="org_dropbtn_text_${orgIndex}">${displayName || "Select or search organizations..."}</span>
+          <span style="color: var(--text-secondary);">▼</span>
+        </button>
+        <div id="org_dropdown_${orgIndex}" class="dropdown-content" style="display: none; position: absolute; background-color: white; min-width: 100%; width: 100%; border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow-hover); z-index: 1000; max-height: 300px; overflow-y: auto; top: 100%; left: 0;">
+          <input type="text" placeholder="Search organizations..." id="org_search_${orgIndex}" autocomplete="off" style="box-sizing: border-box; background-image: url('data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'16\\' height=\\'16\\' viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'%236e6e73\\' stroke-width=\\'2\\'><circle cx=\\'11\\' cy=\\'11\\' r=\\'8\\'/><path d=\\'m21 21-4.35-4.35\\'/></svg>'); background-position: 14px 12px; background-repeat: no-repeat; font-size: 14px; padding: 14px 20px 12px 45px; border: none; border-bottom: 1px solid var(--border-light); width: 100%;">
+          <div id="org_dropdown_list_${orgIndex}"></div>
+        </div>
+        <input type="hidden" name="org_name_${orgIndex}" id="org_name_${orgIndex}" value="${actualName}" required>
+        <input type="hidden" name="org_address_${orgIndex}" id="org_address_${orgIndex}" value="${address}">
+      </div>
+      <div style="margin-top: 8px;">
+        <a href="#" onclick="event.preventDefault(); openAddOrgModal(${orgIndex}); return false;" style="font-size: 12px; color: var(--accent-blue); text-decoration: none;">Don't see your organization/school? Add it here</a>
+      </div>
+    </div>
+    
+    <div style="margin-bottom: 12px;">
+      <label style="display: block; margin-bottom: 4px; font-size: 13px; font-weight: 500;">Type</label>
+      <select name="org_type_${orgIndex}" required onchange="updateRoleOptions(${orgIndex})" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;">
+        <option value="">Select type...</option>
+        ${typeOptions}
+      </select>
+    </div>
+    
+    <div>
+      <label style="display: block; margin-bottom: 4px; font-size: 13px; font-weight: 500;">Role</label>
+      <select name="org_role_${orgIndex}" required id="org_role_${orgIndex}" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px;">
+        ${type ? roleOptions : '<option value="">Select organization type first...</option>'}
+      </select>
+    </div>
+  `;
+
+  container.appendChild(orgDiv);
+  
+  // If type is already set, initialize role options
+  if (type) {
+    updateRoleOptions(orgIndex);
+    // Set selected role
+    setTimeout(() => {
+      const roleSelect = document.getElementById(`org_role_${orgIndex}`);
+      if (roleSelect && role) {
+        roleSelect.value = role;
+      }
+    }, 100);
+  }
+}
+
+// Confirmation Modal
+function showConfirmModal(title, message, okText = "OK", cancelText = "Cancel") {
+  return new Promise((resolve) => {
+    // Create modal if it doesn't exist
+    let modal = document.getElementById("confirmModal");
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'confirmModal';
+      modal.style.cssText = 'display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1001; align-items: center; justify-content: center;';
+      document.body.appendChild(modal);
+    }
+    
+    modal.innerHTML = `
+      <div style="background: white; border-radius: var(--radius); padding: 24px; max-width: 400px; width: 90%; box-shadow: var(--shadow-hover);">
+        <h3 style="margin-bottom: 16px; font-size: 18px; color: var(--text-primary);">${title}</h3>
+        <p style="margin-bottom: 20px; font-size: 15px; color: var(--text-secondary);">${message}</p>
+        <div style="display: flex; justify-content: flex-end; gap: 12px;">
+          <button type="button" id="confirmCancel" class="btn" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);">${cancelText}</button>
+          <button type="button" id="confirmOk" class="btn btnPrimary">${okText}</button>
+        </div>
+      </div>
+    `;
+    
+    modal.style.display = 'flex';
+    
+    const okBtn = document.getElementById('confirmOk');
+    const cancelBtn = document.getElementById('confirmCancel');
+    
+    const handleOk = () => {
+      modal.style.display = 'none';
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(true);
+    };
+    
+    const handleCancel = () => {
+      modal.style.display = 'none';
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(false);
+    };
+    
+    okBtn.onclick = handleOk;
+    cancelBtn.onclick = handleCancel;
+    
+    modal.onclick = (e) => {
+      if (e.target === modal) {
+        handleCancel();
+      }
+    };
+  });
+}
+
+async function removeOrganization(index) {
+  const orgDiv = document.getElementById(`org_${index}`);
+  if (!orgDiv) return;
+  
+  // Don't allow removing if it's the only one
+  if (orgCount <= 1) {
+    await showConfirmModal("Cannot Remove Organization", "You must have at least one organization. Please add a new one before removing this one.", "OK");
+    return;
+  }
+  
+  const confirmed = await showConfirmModal(
+    "Remove Organization",
+    "Are you sure you want to remove this organization?",
+    "Remove",
+    "Cancel"
+  );
+  
+  if (!confirmed) {
+    return;
+  }
+  
+  orgDiv.remove();
+  orgCount--;
+  document.getElementById("orgCount").value = orgCount;
+  
+  // Reindex remaining organizations
+  reindexOrganizations();
+}
+
+function reindexOrganizations() {
+  const container = document.getElementById("organizationsContainer");
+  const entries = container.querySelectorAll(".org-entry");
+  entries.forEach((entry, newIndex) => {
+    entry.id = `org_${newIndex}`;
+    const title = entry.querySelector("strong");
+    if (title) title.textContent = `Organization ${newIndex + 1}`;
+    
+    const canRemove = orgCount > 1;
+    const headerDiv = entry.querySelector("div[style*='justify-content: space-between']");
+    
+    // Update remove button or required span
+    let actionElement = entry.querySelector("button[onclick*='removeOrganization']") || entry.querySelector("span[style*='Required']");
+    if (canRemove) {
+      if (!actionElement || actionElement.tagName === 'SPAN') {
+        if (actionElement && actionElement.tagName === 'SPAN') {
+          actionElement.outerHTML = `<button type="button" onclick="removeOrganization(${newIndex})" style="background: #FF3B30; color: #ffffff; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight: 500; width: auto; min-width: auto;">Remove</button>`;
+        }
+      } else if (actionElement && actionElement.tagName === 'BUTTON') {
+        actionElement.setAttribute("onclick", `removeOrganization(${newIndex})`);
+      }
+    } else {
+      if (!actionElement || actionElement.tagName === 'BUTTON') {
+        if (actionElement && actionElement.tagName === 'BUTTON') {
+          actionElement.outerHTML = '<span style="font-size: 12px; color: var(--text-secondary);">Required</span>';
+        }
+      }
+    }
+    
+    // Update all inputs and selects
+    const inputs = entry.querySelectorAll("input, select");
+    inputs.forEach(input => {
+      const name = input.getAttribute("name");
+      const id = input.getAttribute("id");
+      if (name) {
+        const parts = name.split("_");
+        if (parts.length >= 2 && !isNaN(parts[parts.length - 1])) {
+          const newName = name.substring(0, name.lastIndexOf("_") + 1) + newIndex;
+          input.setAttribute("name", newName);
+        }
+      }
+      if (id && id.startsWith("org_role_")) {
+        input.setAttribute("id", `org_role_${newIndex}`);
+        const typeSelect = entry.querySelector(`select[name*="org_type"]`);
+        if (typeSelect) {
+          typeSelect.setAttribute("onchange", `updateRoleOptions(${newIndex})`);
+        }
+      }
+      if (id && id.startsWith("org_search_")) {
+        input.setAttribute("id", `org_search_${newIndex}`);
+        input.setAttribute("onkeyup", `filterOrgDropdown(${newIndex})`);
+      }
+      if (id && id.startsWith("org_dropbtn_")) {
+        input.setAttribute("id", `org_dropbtn_${newIndex}`);
+        input.setAttribute("onclick", `toggleOrgDropdown(${newIndex})`);
+      }
+      if (id && id.startsWith("org_dropbtn_text_")) {
+        input.setAttribute("id", `org_dropbtn_text_${newIndex}`);
+      }
+      if (id && id.startsWith("org_dropdown_list_")) {
+        input.setAttribute("id", `org_dropdown_list_${newIndex}`);
+      }
+      if (id && id.startsWith("org_name_")) {
+        input.setAttribute("id", `org_name_${newIndex}`);
+        input.setAttribute("name", `org_name_${newIndex}`);
+      }
+      if (id && id.startsWith("org_address_")) {
+        input.setAttribute("id", `org_address_${newIndex}`);
+        input.setAttribute("name", `org_address_${newIndex}`);
+      }
+      if (id && id.startsWith("org_dropdown_")) {
+        input.setAttribute("id", `org_dropdown_${newIndex}`);
+      }
+      if (onclick && onclick.includes("openAddOrgModal")) {
+        input.setAttribute("onclick", `openAddOrgModal(${newIndex})`);
+      }
+    });
+  });
+}
+
+function updateRoleOptions(index) {
+  const typeSelect = document.querySelector(`select[name="org_type_${index}"]`);
+  const roleSelect = document.getElementById(`org_role_${index}`);
+  
+  if (!typeSelect || !roleSelect) return;
+  
+  const selectedType = typeSelect.value;
+  if (!selectedType) {
+    roleSelect.innerHTML = '<option value="">Select organization type first...</option>';
+    return;
+  }
+  
+  const roles = orgTypes[selectedType]?.roles || [];
+  const currentValue = roleSelect.value; // Preserve current selection if valid
+  
+  roleSelect.innerHTML = roles.map(role => 
+    `<option value="${role}" ${role === currentValue ? 'selected' : ''}>${role}</option>`
+  ).join("");
+  
+  // Update organization dropdown when type changes
+  const nameInput = document.getElementById(`org_name_${index}`);
+  const dropbtnText = document.getElementById(`org_dropbtn_text_${index}`);
+  if (nameInput && !nameInput.value && dropbtnText) {
+    // Clear organization selection if type changes and no org was selected
+    dropbtnText.textContent = "Select or search organizations...";
+  }
+}
+
+function toggleOrgDropdown(index) {
+  const dropdown = document.getElementById(`org_dropdown_${index}`);
+  if (!dropdown) {
+    return;
+  }
+  
+  const isShowing = dropdown.classList.contains("show");
+  
+  // Close all other dropdowns first
+  document.querySelectorAll('.dropdown-content.show').forEach(dd => {
+    if (dd.id !== `org_dropdown_${index}`) {
+      dd.classList.remove("show");
+      dd.style.display = "none";
+    }
+  });
+  
+  if (isShowing) {
+    dropdown.classList.remove("show");
+    dropdown.style.display = "none";
+  } else {
+    dropdown.classList.add("show");
+    dropdown.style.display = "block";
+    populateOrgDropdown(index);
+  }
+}
+
+// Store all organizations for each dropdown (in-memory copy)
+const orgDropdownData = {};
+
+function populateOrgDropdown(index) {
+  const listDiv = document.getElementById(`org_dropdown_list_${index}`);
+  const searchInput = document.getElementById(`org_search_${index}`);
+  
+  if (!listDiv) {
+    return;
+  }
+  
+  if (typeof orgDirectory === 'undefined' || !orgDirectory || orgDirectory.length === 0) {
+    listDiv.innerHTML = '<div style="padding: 12px; color: var(--text-secondary); text-align: center;">No organizations available</div>';
+    return;
+  }
+  
+  const typeSelect = document.querySelector(`select[name="org_type_${index}"]`);
+  const orgType = typeSelect ? typeSelect.value : null;
+  
+  // Filter by type if selected
+  let filteredOrgs = orgDirectory;
+  if (orgType) {
+    filteredOrgs = orgDirectory.filter(org => org.type === orgType);
+  }
+  
+  // Sort by popularity
+  filteredOrgs.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  
+  // Store all options in memory for this dropdown
+  orgDropdownData[index] = filteredOrgs.map(org => ({
+    name: org.name,
+    abbreviation: org.abbreviation || '',
+    address: org.address || '',
+    displayName: org.abbreviation ? `${org.name} (${org.abbreviation})` : org.name
+  }));
+  
+  // Render all options initially
+  renderOrgDropdown(index, orgDropdownData[index]);
+  
+  // Set up search input listener
+  if (searchInput) {
+    searchInput.value = "";
+    
+    // Remove all existing event listeners by replacing the input
+    const parent = searchInput.parentNode;
+    const newInput = searchInput.cloneNode(false); // Clone without children/events
+    parent.replaceChild(newInput, searchInput);
+    
+    // Attach event listener to the new input
+    newInput.addEventListener('input', function(e) {
+      e.stopPropagation();
+      filterOrgDropdown(index);
+    });
+    
+    // Also attach on keyup as backup
+    newInput.addEventListener('keyup', function(e) {
+      e.stopPropagation();
+      filterOrgDropdown(index);
+    });
+    
+    setTimeout(() => newInput.focus(), 100);
+  }
+}
+
+function renderOrgDropdown(index, orgs) {
+  const listDiv = document.getElementById(`org_dropdown_list_${index}`);
+  if (!listDiv) return;
+  
+  if (orgs.length === 0) {
+    listDiv.innerHTML = '<div style="padding: 12px; color: var(--text-secondary); text-align: center;">No organizations found</div>';
+    return;
+  }
+  
+  // Render all provided organizations
+  listDiv.innerHTML = orgs.map(org => {
+    const escapedName = org.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const escapedAddress = (org.address || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return `
+      <a href="#" data-org-name="${escapedName}" data-org-address="${escapedAddress}" data-org-index="${index}" style="color: var(--text-primary); padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid var(--border-light); cursor: pointer;">
+        <div style="font-weight: 500; color: var(--text-primary); font-size: 14px;">${org.displayName}</div>
+        <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px; line-height: 1.4;">${org.address}</div>
+      </a>
+    `;
+  }).join("");
+  
+  // Attach click handlers
+  listDiv.querySelectorAll('a[data-org-name]').forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const name = this.getAttribute('data-org-name');
+      const address = this.getAttribute('data-org-address');
+      const idx = parseInt(this.getAttribute('data-org-index'));
+      selectOrg(idx, name, address);
+    });
+  });
+}
+
+function filterOrgDropdown(index) {
+  const searchInput = document.getElementById(`org_search_${index}`);
+  if (!searchInput) return;
+  
+  const q = searchInput.value.trim().toLowerCase();
+  
+  // Get all organizations from memory
+  const all = orgDropdownData[index] || [];
+  
+  if (!q) {
+    // Show all if search is empty
+    renderOrgDropdown(index, all);
+    return;
+  }
+  
+  // Filter organizations that match the search query
+  const filtered = all.filter(org => {
+    const searchText = `${org.name} ${org.abbreviation} ${org.address}`.toLowerCase();
+    return searchText.includes(q);
+  });
+  
+  // Render filtered results
+  renderOrgDropdown(index, filtered);
+}
+
+function selectOrg(index, name, address) {
+  const nameInput = document.getElementById(`org_name_${index}`);
+  const addressInput = document.getElementById(`org_address_${index}`);
+  const dropdown = document.getElementById(`org_dropdown_${index}`);
+  const dropbtnText = document.getElementById(`org_dropbtn_text_${index}`);
+  
+  // Find the org in directory to get display name with abbreviation
+  const org = orgDirectory.find(o => o.name === name);
+  const displayName = org && org.abbreviation ? `${org.name} (${org.abbreviation})` : name;
+  
+  // Update button text
+  dropbtnText.textContent = displayName;
+  nameInput.value = name;
+  addressInput.value = address;
+  dropdown.classList.remove("show");
+}
+
+// Close dropdown when clicking outside
+window.onclick = function(event) {
+  if (!event.target.matches('.dropbtn') && !event.target.closest('.dropdown-content') && !event.target.closest('.dropdown')) {
+    const dropdowns = document.getElementsByClassName("dropdown-content");
+    for (let i = 0; i < dropdowns.length; i++) {
+      const openDropdown = dropdowns[i];
+      if (openDropdown.classList.contains('show')) {
+        openDropdown.classList.remove('show');
+      }
+    }
+  }
+}
+
+function openAddOrgModal(index) {
+  // Redirect to add organization page
+  const currentUrl = window.location.pathname;
+  window.location.href = `{{ url_for('add_organization_get') }}?return_to=${encodeURIComponent(currentUrl)}&org_index=${index}`;
+}
+
+async function deleteAccount() {
+  const confirmed = await showConfirmModal(
+    "Delete Account",
+    "Are you absolutely sure you want to delete your account? This will permanently delete:\n\n• All your enrollment audio files\n• Your organization memberships\n• Your meeting history\n• Your username and email (they can be reused)\n\nThis action cannot be undone.",
+    "Yes, Delete My Account",
+    "Cancel"
+  );
+  
+  if (!confirmed) {
+    return;
+  }
+  
+  // Show loading state
+  const deleteBtn = document.querySelector('button[onclick="deleteAccount()"]');
+  const originalText = deleteBtn ? deleteBtn.textContent : "Delete Account";
+  if (deleteBtn) {
+    deleteBtn.disabled = true;
+    deleteBtn.textContent = "Deleting...";
+  }
+  
+  try {
+    const response = await fetch("/account/delete", {
+      method: "POST"
+    });
+    
+    const result = await response.json();
+    
+    if (response.ok) {
+      // Redirect to home page after successful deletion
+      window.location.href = "/";
+    } else {
+      await showConfirmModal("Error", result.error || "Failed to delete account. Please try again.", "OK");
+      if (deleteBtn) {
+        deleteBtn.disabled = false;
+        deleteBtn.textContent = originalText;
+      }
+    }
+  } catch (err) {
+    await showConfirmModal("Error", "An error occurred while deleting your account. Please try again.", "OK");
+    if (deleteBtn) {
+      deleteBtn.disabled = false;
+      deleteBtn.textContent = originalText;
+    }
+  }
+}
+</script>
+</body>
+</html>

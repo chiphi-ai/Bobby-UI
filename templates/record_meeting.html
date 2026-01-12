@@ -1,0 +1,1295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Record Meeting — Phi AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f7;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-tertiary: #86868b;
+      --accent-blue: #007AFF;
+      --accent-blue-hover: #0051D5;
+      --accent-green: #34C759;
+      --accent-red: #FF3B30;
+      --border: #d2d2d7;
+      --border-light: #e5e5ea;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+      --radius: 12px;
+    }
+
+    /* Dropdown Content (Hidden by Default) */
+    .dropdown-content {
+      display: none !important;
+    }
+
+    /* Show the dropdown menu */
+    .dropdown-content.show {
+      display: block !important;
+    }
+    
+    /* Ensure buttons are clickable */
+    .dropbtn {
+      pointer-events: auto !important;
+      z-index: 1;
+    }
+    
+    .dropdown {
+      z-index: 100;
+    }
+
+    /* Change color of dropdown links on hover */
+    .dropdown-content a:hover {
+      background-color: var(--bg-secondary);
+    }
+
+    *{ 
+      box-sizing:border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body{
+      margin:0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text-primary);
+      background: var(--bg-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a{ 
+      color: var(--accent-blue);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    a:hover{
+      color: var(--accent-blue-hover);
+    }
+
+    .wrap{
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 20px 80px;
+    }
+
+    .topbar{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: -32px -20px 32px -20px;
+      padding: 16px 20px;
+      background: #1d1d1f;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .brand{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand a{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s ease;
+    }
+
+    .brand a:hover{
+      opacity: 0.8;
+    }
+
+    .logo-img{
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .title h1{
+      margin: 0;
+      font-size: 24px;
+      font-weight: 600;
+      color: white;
+      letter-spacing: -0.5px;
+    }
+
+    .title .tag{
+      margin-top: 4px;
+      color: rgba(255,255,255,0.7);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .card{
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin: 20px 0;
+    }
+
+    .card h2{
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+      letter-spacing: -0.3px;
+    }
+
+    input[type="text"],
+    input[type="file"]{
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 16px;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      margin: 8px 0;
+    }
+
+    input[type="text"]:focus{
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 4px rgba(0,122,255,0.1);
+    }
+
+    input[type="text"]::placeholder{
+      color: var(--text-tertiary);
+    }
+
+    input[type="file"]{
+      padding: 12px;
+      cursor: pointer;
+    }
+
+    input[type="file"]:hover{
+      border-color: var(--accent-blue);
+    }
+
+    button, .btn{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 20px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin: 6px 6px 6px 0;
+      font-family: inherit;
+    }
+
+    button:hover:not(:disabled), .btn:hover{
+      background: var(--bg-secondary);
+      border-color: var(--border);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-hover);
+    }
+
+    button:disabled{
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btnPrimary{
+      background: var(--accent-blue);
+      color: white;
+      border-color: var(--accent-blue);
+    }
+
+    .btnPrimary:hover:not(:disabled){
+      background: var(--accent-blue-hover);
+      border-color: var(--accent-blue-hover);
+      color: white;
+    }
+
+    .info-box{
+      margin: 12px 0;
+      padding: 12px;
+      background: #f0f7ff;
+      border: 1px solid #d0e7ff;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
+
+    audio{
+      width: 100%;
+      margin: 12px 0;
+      border-radius: 8px;
+    }
+
+    #status{
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: none;
+    }
+
+    #status.ok{
+      background: #f0fff4;
+      border: 1px solid #c0ffc0;
+      color: var(--accent-green);
+      display: block;
+    }
+
+    #status.error, #status.err{
+      background: #fff0f0;
+      border: 1px solid #ffd0d0;
+      color: var(--accent-red);
+      display: block;
+    }
+
+    #status.processing{
+      background: #f0f7ff;
+      border: 1px solid #d0e7ff;
+      color: var(--accent-blue);
+      display: block;
+    }
+
+    #processingCard{
+      background: #f0f7ff;
+      border: 1px solid #d0e7ff;
+    }
+
+    #processingStatus{
+      padding: 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text-primary);
+    }
+
+    #processingStatus div{
+      color: var(--accent-green);
+      font-weight: 500;
+    }
+
+    #processingStatus small{
+      color: var(--text-secondary);
+      font-size: 13px;
+      display: block;
+      margin-top: 4px;
+    }
+
+    .link{
+      display: inline-block;
+      margin: 8px 8px 8px 0;
+      color: var(--accent-blue);
+      font-size: 15px;
+    }
+
+    @media (max-width: 768px){
+      .wrap{
+        padding: 24px 16px 60px;
+      }
+      .card{
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <a href="{{ url_for('account_home') }}">
+        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi Ai Logo" class="logo-img" onerror="this.style.display='none';">
+        <div class="title">
+          <h1>Phi AI</h1>
+          <div class="tag">Record Meeting</div>
+        </div>
+        </a>
+      </div>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="card" style="background: #f0fff4; border-color: #c0ffc0;">
+          {% for m in messages %}{{ m }}{% if not loop.last %}<br/>{% endif %}{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <script type="application/json" id="enrollment-status">{{ has_enrollment | tojson | safe }}</script>
+
+    <div class="card">
+      <h2>Meeting Name (Optional)</h2>
+      <input type="text" id="meetingName" placeholder="e.g., Weekly Standup, Client Call, Team Meeting" maxlength="50">
+      <div class="info-box">
+        <b>Tip:</b> Give your meeting a name to easily identify it later. If left blank, a timestamp will be used.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Meeting Participants</h2>
+      <div class="info-box">
+        Add participants who should receive this meeting's transcript. They will be sent an email and can access it in their account.
+      </div>
+      
+      <div id="participantSelection" style="margin-top: 16px;">
+        <div style="display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px;">
+          <button type="button" id="addParticipantsBtn" class="btn" onclick="openParticipantModal()" style="flex: 1;">+ Add Participants</button>
+          <div style="flex: 1; display: flex; gap: 8px;">
+            <input type="text" id="usernameInput" placeholder="Add by username" style="flex: 1; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 16px;">
+            <button type="button" onclick="addParticipantByUsername()" class="btn" style="min-width: auto; padding: 12px 20px;">Add</button>
+          </div>
+        </div>
+        <div id="participantList" style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px;"></div>
+        <input type="hidden" id="participantsJson" name="participants" value="[]">
+        <input type="hidden" id="sourceOrganizationsJson" name="source_organizations" value="[]">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Record Meeting</h2>
+      <button id="start" class="btnPrimary">Start Recording</button>
+      <button id="stop" disabled>Stop Recording</button>
+      <div id="recordingControls" style="display: none; margin-top: 12px;">
+        <audio id="playback" controls style="width: 100%; margin-bottom: 12px;"></audio>
+        <button id="deleteRecording" class="btn" style="background: #FF3B30; color: white; border: none; width: auto; padding: 8px 16px; display: inline-block;">Delete Recording</button>
+      </div>
+      <div id="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>Or Upload Existing File</h2>
+      <input type="file" id="file" accept="audio/*,video/*">
+      <button id="uploadFile" class="btnPrimary">Upload & Process</button>
+      <div class="info-box">
+        <b>Supported formats:</b> MP3, MP4, M4A, WAV, MOV, OGG, FLAC, AAC, WEBM
+      </div>
+    </div>
+
+    <div class="card" id="processingCard" style="display:none;">
+      <h2>Processing Status</h2>
+      <div id="processingStatus">
+        Your meeting is being processed. This may take a few minutes depending on length.
+      </div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div id="confirmModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+      <div style="background: white; border-radius: var(--radius); padding: 24px; max-width: 400px; width: 90%; box-shadow: var(--shadow-hover);">
+        <h2 id="confirmTitle" style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);"></h2>
+        <p id="confirmMessage" style="font-size: 15px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5;"></p>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button id="confirmCancel" class="btn" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);"></button>
+          <button id="confirmOk" class="btn btnPrimary"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Enrollment Required Modal -->
+    <div id="enrollmentRequiredModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+      <div style="background: white; border-radius: var(--radius); padding: 24px; max-width: 400px; width: 90%; box-shadow: var(--shadow-hover);">
+        <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">Enrollment Audio Required</h2>
+        <p style="font-size: 15px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5;">
+          You must have enrollment audio to record a meeting. Please record your enrollment audio first so the system can identify your voice.
+        </p>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button onclick="goToHome()" class="btn" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);">Go Back to Home</button>
+          <button onclick="goToEnrollment()" class="btn btnPrimary">Record Audio</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 24px;">
+      <a href="{{ url_for('account_home') }}" class="link">← Back to Home</a>
+      <a href="{{ url_for('account_get') }}" class="link">Account Settings</a>
+    </div>
+  </div>
+
+  <!-- Participant Selection Modal -->
+  <div id="participantModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: var(--radius); padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: var(--shadow-hover);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Add Participants</h2>
+        <button type="button" onclick="closeParticipantModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-secondary);">&times;</button>
+      </div>
+      
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 8px; font-weight: 600;">Search Organizations</label>
+        <div class="dropdown" style="position: relative; display: inline-block; width: 100%;">
+          <button type="button" id="orgDropbtn" class="dropbtn" onclick="toggleOrgDropdown(); return false;" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: white; color: var(--text-primary); text-align: left; cursor: pointer; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1;">
+            <span id="orgDropbtnText">Select or search organizations...</span>
+            <span style="color: var(--text-secondary);">▼</span>
+          </button>
+          <div id="orgDropdown" class="dropdown-content" style="display: none; position: absolute; background-color: white; min-width: 100%; width: 100%; border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-hover); z-index: 1000; max-height: 300px; overflow-y: auto; top: 100%; left: 0;">
+            <input type="text" placeholder="Search organizations..." id="orgSearch" autocomplete="off" style="box-sizing: border-box; background-image: url(&quot;data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E&quot;); background-position: 14px 12px; background-repeat: no-repeat; font-size: 14px; padding: 14px 20px 12px 45px; border: none; border-bottom: 1px solid var(--border-light); width: 100%;">
+            <div id="orgDropdownList"></div>
+          </div>
+        </div>
+      </div>
+
+  </div>
+</div>
+
+  <!-- Add Members Modal -->
+  <div id="addMembersModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: var(--radius); padding: 24px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; box-shadow: var(--shadow-hover);" onclick="event.stopPropagation();">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2 id="addMembersOrgTitle">Add Members</h2>
+        <button type="button" onclick="closeAddMembersModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-secondary);">&times;</button>
+      </div>
+      
+      <div class="info-box" style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 8px; padding: 16px; margin-bottom: 24px; font-size: 14px; color: var(--text-secondary); line-height: 1.5;">
+        Select members from this organization to add as meeting participants. They will receive the meeting transcript.
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <label style="display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px;">Search Members</label>
+        <div class="dropdown" style="position: relative; display: inline-block; width: 100%;">
+          <button type="button" id="memberDropbtn" class="dropbtn" onclick="toggleMemberDropdown(); return false;" style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: white; color: var(--text-primary); text-align: left; cursor: pointer; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1;">
+            <span id="memberDropbtnText">Select or search members...</span>
+            <span style="color: var(--text-secondary);">▼</span>
+          </button>
+          <div id="memberDropdown" class="dropdown-content" style="display: none; position: absolute; background-color: white; min-width: 100%; width: 100%; border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-hover); z-index: 1000; max-height: 300px; overflow-y: auto; top: 100%; left: 0;">
+            <input type="text" placeholder="Search members..." id="memberSearch" autocomplete="off" style="box-sizing: border-box; background-image: url(&quot;data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E&quot;); background-position: 14px 12px; background-repeat: no-repeat; font-size: 14px; padding: 14px 20px 12px 45px; border: none; border-bottom: 1px solid var(--border-light); width: 100%;">
+            <div id="memberDropdownList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="selectedMembersContainer" style="margin-top: 24px;">
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">Selected Members</h3>
+        <div id="selectedMembersList"></div>
+        <div id="noMembersMessage" style="padding: 20px; text-align: center; color: var(--text-secondary); font-size: 14px; background: var(--bg-secondary); border-radius: 8px; border: 1px dashed var(--border-light);">
+          No members selected yet
+        </div>
+      </div>
+
+      <button type="button" onclick="saveMembersAndClose()" class="btn" style="margin-top: 24px;">Save</button>
+      <button type="button" onclick="closeAddMembersModal()" class="btn btn-secondary" style="margin-top: 12px;">Cancel</button>
+    </div>
+  </div>
+
+<script type="application/json" id="org-directory-data">{{ organizations_directory | tojson | safe }}</script>
+<script>
+let mediaRecorder;
+let chunks = [];
+let recordedBlob = null;
+
+const startBtn = document.getElementById("start");
+const stopBtn = document.getElementById("stop");
+const playback = document.getElementById("playback");
+const statusDiv = document.getElementById("status");
+const fileInput = document.getElementById("file");
+const uploadFileBtn = document.getElementById("uploadFile");
+const meetingNameInput = document.getElementById("meetingName");
+const processingCard = document.getElementById("processingCard");
+const processingStatus = document.getElementById("processingStatus");
+
+// Custom confirmation modal
+function showConfirmModal(title, message, okText = "OK", cancelText = "Cancel") {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("confirmModal");
+    const titleEl = document.getElementById("confirmTitle");
+    const messageEl = document.getElementById("confirmMessage");
+    const okBtn = document.getElementById("confirmOk");
+    const cancelBtn = document.getElementById("confirmCancel");
+    
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    okBtn.textContent = okText;
+    cancelBtn.textContent = cancelText;
+    
+    modal.style.display = "flex";
+    
+    const handleOk = () => {
+      modal.style.display = "none";
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(true);
+    };
+    
+    const handleCancel = () => {
+      modal.style.display = "none";
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+      resolve(false);
+    };
+    
+    okBtn.onclick = handleOk;
+    cancelBtn.onclick = handleCancel;
+    
+    modal.onclick = (e) => {
+      if (e.target === modal) {
+        handleCancel();
+      }
+    };
+  });
+}
+
+function setStatus(msg, cls="") {
+  statusDiv.className = cls;
+  statusDiv.textContent = msg;
+  statusDiv.style.display = msg ? "block" : "none";
+}
+
+async function startRecording() {
+  // Check enrollment before starting
+  const hasEnrollment = JSON.parse(document.getElementById('enrollment-status').textContent);
+  if (!hasEnrollment) {
+    showEnrollmentRequiredModal();
+    return;
+  }
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+    chunks = [];
+    
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        chunks.push(e.data);
+      }
+    };
+    
+    mediaRecorder.onstop = () => {
+      recordedBlob = new Blob(chunks, { type: "audio/webm" });
+      playback.src = URL.createObjectURL(recordedBlob);
+      document.getElementById("recordingControls").style.display = "block";
+      setStatus("Recording complete! Review your recording below, then click 'Upload & Process'.", "ok");
+      
+      stream.getTracks().forEach(track => track.stop());
+    };
+    
+    mediaRecorder.start();
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    setStatus("Recording... Click 'Stop Recording' when done.", "processing");
+  } catch (err) {
+    setStatus(`Error: ${err.message}`, "error");
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+  }
+}
+
+let selectedParticipants = [];
+let sourceOrganizations = new Set(); // Track unique source organizations
+
+function updateParticipantDisplay() {
+  const container = document.getElementById("participantList");
+  const jsonInput = document.getElementById("participantsJson");
+  const sourceOrgsInput = document.getElementById("sourceOrganizationsJson");
+  
+  container.innerHTML = "";
+  if (selectedParticipants.length === 0) {
+    container.innerHTML = '<span style="color: var(--text-secondary); font-style: italic;">No participants added yet</span>';
+  } else {
+    selectedParticipants.forEach((p, idx) => {
+      const pill = document.createElement("div");
+      pill.style.cssText = "display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--accent-blue); color: white; border-radius: 20px; font-size: 14px; font-weight: 500; box-shadow: 0 2px 4px rgba(0,0,0,0.1);";
+      pill.innerHTML = `
+        <span>${p.name}</span>
+        <button type="button" onclick="removeParticipant(${idx})" style="background: rgba(255,255,255,0.3); border: none; cursor: pointer; color: white; font-size: 16px; line-height: 1; padding: 0; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.5)'" onmouseout="this.style.background='rgba(255,255,255,0.3)'">&times;</button>
+      `;
+      container.appendChild(pill);
+    });
+  }
+  
+  jsonInput.value = JSON.stringify(selectedParticipants.map(p => p.email));
+  // Update source organizations (unique list)
+  sourceOrgsInput.value = JSON.stringify(Array.from(sourceOrganizations));
+}
+
+function removeParticipant(idx) {
+  selectedParticipants.splice(idx, 1);
+  updateParticipantDisplay();
+}
+
+function addParticipant(email, name, sourceOrg = null) {
+  if (!selectedParticipants.find(p => p.email.toLowerCase() === email.toLowerCase())) {
+    selectedParticipants.push({ email, name });
+    // Track source organization if provided
+    if (sourceOrg) {
+      sourceOrganizations.add(sourceOrg);
+    }
+    updateParticipantDisplay();
+  }
+}
+
+async function addParticipantByUsername() {
+  const usernameInput = document.getElementById("usernameInput");
+  const username = (usernameInput.value || "").trim();
+  
+  if (!username) {
+    alert("Please enter a username");
+    return;
+  }
+  
+  // Look up user by username
+  try {
+    const response = await fetch(`/api/user_by_username?username=${encodeURIComponent(username)}`);
+    const data = await response.json();
+    
+    if (response.ok && data.email) {
+      addParticipant(data.email, data.name || username);
+      usernameInput.value = "";
+    } else {
+      alert(data.error || "User not found. Please check the username and try again.");
+    }
+  } catch (err) {
+    alert("Error looking up user. Please try again.");
+    console.error("Error:", err);
+  }
+}
+
+// Allow Enter key to submit username
+document.addEventListener("DOMContentLoaded", function() {
+  const usernameInput = document.getElementById("usernameInput");
+  if (usernameInput) {
+    usernameInput.addEventListener("keypress", function(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addParticipantByUsername();
+      }
+    });
+  }
+});
+
+const orgDirectory = JSON.parse(document.getElementById('org-directory-data').textContent);
+
+// Attach click handlers when page loads
+document.addEventListener('DOMContentLoaded', function() {
+  // Modal is now handled inline, no need for sessionStorage
+});
+
+function toggleOrgDropdown() {
+  const dropdown = document.getElementById("orgDropdown");
+  if (!dropdown) {
+    return;
+  }
+  
+  const isShowing = dropdown.classList.contains("show");
+  
+  // Close all other dropdowns first
+  document.querySelectorAll('.dropdown-content.show').forEach(dd => {
+    if (dd.id !== "orgDropdown") {
+      dd.classList.remove("show");
+      dd.style.display = "none";
+    }
+  });
+  
+  // Close member dropdown if open
+  const memberDropdown = document.getElementById("memberDropdown");
+  if (memberDropdown) {
+    memberDropdown.classList.remove("show");
+    memberDropdown.style.display = "none";
+  }
+  
+  if (isShowing) {
+    dropdown.classList.remove("show");
+    dropdown.style.display = "none";
+  } else {
+    dropdown.classList.add("show");
+    dropdown.style.display = "block";
+    populateOrgDropdown();
+  }
+}
+
+// Store all organizations in memory for filtering
+let allOrgsData = [];
+
+function populateOrgDropdown() {
+  const listDiv = document.getElementById("orgDropdownList");
+  const searchInput = document.getElementById("orgSearch");
+  
+  if (!listDiv) {
+    return;
+  }
+  
+  if (typeof orgDirectory === 'undefined' || !orgDirectory || orgDirectory.length === 0) {
+    listDiv.innerHTML = '<div style="padding: 12px; color: var(--text-secondary); text-align: center;">No organizations available</div>';
+    return;
+  }
+  
+  // Sort by popularity
+  const sortedOrgs = [...orgDirectory].sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+  
+  // Store all options in memory
+  allOrgsData = sortedOrgs.map(org => ({
+    name: org.name,
+    abbreviation: org.abbreviation || '',
+    address: org.address || '',
+    displayName: org.abbreviation ? `${org.name} (${org.abbreviation})` : org.name
+  }));
+  
+  // Render all options initially
+  renderOrgDropdownRecord(allOrgsData);
+  
+  // Set up search input listener
+  if (searchInput) {
+    searchInput.value = "";
+    
+    // Remove all existing event listeners by replacing the input
+    const parent = searchInput.parentNode;
+    const newInput = searchInput.cloneNode(false); // Clone without children/events
+    parent.replaceChild(newInput, searchInput);
+    
+    // Attach event listener to the new input
+    newInput.addEventListener('input', function(e) {
+      e.stopPropagation();
+      filterOrgDropdown();
+    });
+    
+    // Also attach on keyup as backup
+    newInput.addEventListener('keyup', function(e) {
+      e.stopPropagation();
+      filterOrgDropdown();
+    });
+    
+    setTimeout(() => newInput.focus(), 100);
+  }
+}
+
+function renderOrgDropdownRecord(orgs) {
+  const listDiv = document.getElementById("orgDropdownList");
+  if (!listDiv) return;
+  
+  if (orgs.length === 0) {
+    listDiv.innerHTML = '<div style="padding: 12px; color: var(--text-secondary); text-align: center;">No organizations found</div>';
+    return;
+  }
+  
+  // Render all provided organizations
+  listDiv.innerHTML = orgs.map(org => {
+    const escapedName = org.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const escapedAddress = (org.address || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return `
+      <a href="#" data-org-name="${escapedName}" data-org-address="${escapedAddress}" style="color: var(--text-primary); padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid var(--border-light); cursor: pointer;">
+        <div style="font-weight: 500; color: var(--text-primary); font-size: 14px;">${org.displayName}</div>
+        <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px; line-height: 1.4;">${org.address}</div>
+      </a>
+    `;
+  }).join("");
+  
+  // Attach click handlers
+  listDiv.querySelectorAll('a[data-org-name]').forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const orgName = this.getAttribute('data-org-name');
+      selectOrganization(orgName);
+    });
+  });
+}
+
+function filterOrgDropdown() {
+  const searchInput = document.getElementById("orgSearch");
+  if (!searchInput) return;
+  
+  const q = searchInput.value.trim().toLowerCase();
+  
+  // Get all organizations from memory
+  const all = allOrgsData || [];
+  
+  if (!q) {
+    // Show all if search is empty
+    renderOrgDropdownRecord(all);
+    return;
+  }
+  
+  // Filter organizations that match the search query
+  const filtered = all.filter(org => {
+    const searchText = `${org.name} ${org.abbreviation} ${org.address}`.toLowerCase();
+    return searchText.includes(q);
+  });
+  
+  // Render filtered results
+  renderOrgDropdownRecord(filtered);
+}
+
+async function selectOrganization(orgName) {
+  // Close the org selection modal and open the add members modal
+  closeParticipantModal();
+  openAddMembersModal(orgName);
+}
+
+
+function openParticipantModal() {
+  document.getElementById("participantModal").style.display = "flex";
+}
+
+function closeParticipantModal() {
+  document.getElementById("participantModal").style.display = "none";
+  const orgDropbtnText = document.getElementById("orgDropbtnText");
+  if (orgDropbtnText) orgDropbtnText.textContent = "Select or search organizations...";
+}
+
+// Add Members Modal Functions
+let currentOrgName = null;
+let selectedMembers = [];
+let allMembersData = [];
+let orgMembersList = [];
+
+async function openAddMembersModal(orgName) {
+  currentOrgName = orgName;
+  selectedMembers = [];
+  allMembersData = [];
+  orgMembersList = [];
+  
+  const modal = document.getElementById("addMembersModal");
+  const title = document.getElementById("addMembersOrgTitle");
+  if (title) title.textContent = orgName;
+  
+  // Fetch members
+  try {
+    const response = await fetch(`/api/organization_members?org=${encodeURIComponent(orgName)}`);
+    const data = await response.json();
+    orgMembersList = data.members || [];
+    updateSelectedMembersDisplay();
+  } catch (err) {
+    console.error("Error fetching members:", err);
+  }
+  
+  modal.style.display = "flex";
+}
+
+function closeAddMembersModal() {
+  const modal = document.getElementById("addMembersModal");
+  modal.style.display = "none";
+  selectedMembers = [];
+  allMembersData = [];
+  orgMembersList = [];
+  updateSelectedMembersDisplay();
+  
+  // Close any open dropdowns
+  const dropdown = document.getElementById("memberDropdown");
+  if (dropdown) {
+    dropdown.classList.remove("show");
+    dropdown.style.display = "none";
+  }
+}
+
+function saveMembersAndClose() {
+  // Add selected members to participants with source organization
+  selectedMembers.forEach(member => {
+    if (!selectedParticipants.find(p => p.email.toLowerCase() === member.email.toLowerCase())) {
+      // Pass currentOrgName as source organization when adding from organization modal
+      addParticipant(member.email, member.name, currentOrgName);
+    }
+  });
+  
+  closeAddMembersModal();
+}
+
+function populateMemberDropdown() {
+  const listDiv = document.getElementById("memberDropdownList");
+  const searchInput = document.getElementById("memberSearch");
+  
+  if (!listDiv) {
+    return;
+  }
+  
+  if (!orgMembersList || orgMembersList.length === 0) {
+    listDiv.innerHTML = '<div style="padding: 12px; color: var(--text-secondary); text-align: center;">No members available</div>';
+    allMembersData = [];
+    return;
+  }
+  
+  // Store all members in memory
+  allMembersData = orgMembersList.map(member => ({
+    email: member.email,
+    name: member.name,
+    username: member.username || '',
+    role: member.role || null,
+    roles: member.roles || (member.role ? [member.role] : [])
+  }));
+  
+  // Render all members initially
+  renderMemberDropdown(allMembersData);
+  
+  // Set up search input listener
+  if (searchInput) {
+    searchInput.value = "";
+    
+    // Remove all existing event listeners by replacing the input
+    const parent = searchInput.parentNode;
+    const newInput = searchInput.cloneNode(false);
+    parent.replaceChild(newInput, searchInput);
+    
+    // Attach event listener to the new input
+    newInput.addEventListener('input', function(e) {
+      e.stopPropagation();
+      filterMemberDropdown();
+    });
+    
+    newInput.addEventListener('keyup', function(e) {
+      e.stopPropagation();
+      filterMemberDropdown();
+    });
+    
+    setTimeout(() => newInput.focus(), 100);
+  }
+}
+
+function renderMemberDropdown(members) {
+  const listDiv = document.getElementById("memberDropdownList");
+  if (!listDiv) return;
+  
+  if (members.length === 0) {
+    listDiv.innerHTML = '<div style="padding: 12px; color: var(--text-secondary); text-align: center;">No members found</div>';
+    return;
+  }
+  
+  // Render all provided members
+  listDiv.innerHTML = members.map(member => {
+    const isSelected = selectedMembers.find(m => m.email.toLowerCase() === member.email.toLowerCase());
+    const escapedEmail = member.email.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const escapedName = member.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const escapedRole = (member.role || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const escapedUsername = (member.username || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const roleDisplay = member.roles && member.roles.length > 0 ? member.roles.join(', ') : escapedRole;
+    return `
+      <a href="#" data-member-email="${escapedEmail}" data-member-name="${escapedName}" data-member-role="${escapedRole}" data-member-username="${escapedUsername}" style="color: var(--text-primary); padding: 12px 16px; text-decoration: none; display: block; border-bottom: 1px solid var(--border-light); cursor: pointer; ${isSelected ? 'background: rgba(0, 122, 255, 0.1);' : ''}">
+        <div style="font-weight: 500; color: var(--text-primary); font-size: 14px;">${member.name}${isSelected ? ' ✓' : ''}</div>
+        ${roleDisplay ? `<div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px; line-height: 1.4;">${roleDisplay}</div>` : ''}
+        ${escapedUsername ? `<div style="font-size: 10px; color: var(--text-tertiary); margin-top: 2px; line-height: 1.4;">@${escapedUsername}</div>` : ''}
+      </a>
+    `;
+  }).join("");
+  
+  // Attach click handlers
+  listDiv.querySelectorAll('a[data-member-email]').forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const email = this.getAttribute('data-member-email');
+      const name = this.getAttribute('data-member-name');
+      const role = this.getAttribute('data-member-role');
+      const username = this.getAttribute('data-member-username') || '';
+      selectMember(email, name, role, username);
+    });
+  });
+}
+
+function filterMemberDropdown() {
+  const searchInput = document.getElementById("memberSearch");
+  if (!searchInput) return;
+  
+  const q = searchInput.value.trim().toLowerCase();
+  const all = allMembersData || [];
+  
+  if (!q) {
+    renderMemberDropdown(all);
+    return;
+  }
+  
+  const filtered = all.filter(member => {
+    const searchText = `${member.name} ${member.email} ${member.username || ''} ${member.role || ''}`.toLowerCase();
+    return searchText.includes(q);
+  });
+  
+  renderMemberDropdown(filtered);
+}
+
+function toggleMemberDropdown() {
+  const dropdown = document.getElementById("memberDropdown");
+  if (!dropdown) {
+    return;
+  }
+  
+  const isShowing = dropdown.classList.contains("show");
+  
+  // Close all other dropdowns first
+  document.querySelectorAll('.dropdown-content.show').forEach(dd => {
+    if (dd.id !== "memberDropdown") {
+      dd.classList.remove("show");
+      dd.style.display = "none";
+    }
+  });
+  
+  if (isShowing) {
+    dropdown.classList.remove("show");
+    dropdown.style.display = "none";
+  } else {
+    dropdown.classList.add("show");
+    dropdown.style.display = "block";
+    populateMemberDropdown();
+  }
+}
+
+function selectMember(email, name, role, username) {
+  if (!selectedMembers.find(m => m.email.toLowerCase() === email.toLowerCase())) {
+    // Get full member data including roles
+    const memberData = allMembersData.find(m => m.email.toLowerCase() === email.toLowerCase());
+    selectedMembers.push({
+      email: email,
+      name: name,
+      username: username || (memberData ? memberData.username : ''),
+      role: role || null,
+      roles: memberData && memberData.roles ? memberData.roles : (role ? [role] : [])
+    });
+    updateSelectedMembersDisplay();
+    populateMemberDropdown();
+  }
+  
+  const dropdown = document.getElementById("memberDropdown");
+  dropdown.classList.remove("show");
+  dropdown.style.display = "none";
+}
+
+function removeMemberFromSelection(email) {
+  selectedMembers = selectedMembers.filter(m => m.email.toLowerCase() !== email.toLowerCase());
+  updateSelectedMembersDisplay();
+  populateMemberDropdown();
+}
+
+function updateSelectedMembersDisplay() {
+  const container = document.getElementById("selectedMembersList");
+  const noMembersMsg = document.getElementById("noMembersMessage");
+  
+  if (!container) return;
+  
+  if (selectedMembers.length === 0) {
+    container.innerHTML = '';
+    if (noMembersMsg) noMembersMsg.style.display = 'block';
+    return;
+  }
+  
+  if (noMembersMsg) noMembersMsg.style.display = 'none';
+  
+  container.innerHTML = selectedMembers.map(member => {
+    const escapedEmail = member.email.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return `
+      <div style="background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: 8px; padding: 12px 16px; margin: 8px 0; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div style="font-weight: 500; color: var(--text-primary); font-size: 14px;">${member.name}</div>
+          ${member.role ? `<div style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px;">${member.role}</div>` : ''}
+        </div>
+        <button type="button" onclick="removeMemberFromSelection('${escapedEmail}')" style="background: #FF3B30; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; font-weight: 500; transition: background 0.2s; width: auto; min-width: auto;">Remove</button>
+      </div>
+    `;
+  }).join("");
+}
+
+// Close modals when clicking outside
+document.getElementById("participantModal").addEventListener("click", (e) => {
+  if (e.target.id === "participantModal") {
+    closeParticipantModal();
+  }
+});
+
+document.getElementById("addMembersModal").addEventListener("click", (e) => {
+  if (e.target.id === "addMembersModal") {
+    saveMembersAndClose(); // Save and close when clicking outside
+  }
+});
+
+async function uploadMeeting(audioBlob) {
+  const meetingName = meetingNameInput.value.trim();
+  const participantsJson = document.getElementById("participantsJson").value;
+  
+  const formData = new FormData();
+  formData.append("audio", audioBlob, "meeting.webm");
+  if (meetingName) {
+    formData.append("meeting_name", meetingName);
+  }
+  formData.append("participants", participantsJson);
+  
+  setStatus("Uploading meeting...", "processing");
+  processingCard.style.display = "block";
+  processingStatus.innerHTML = "Uploading your meeting audio...";
+  
+  try {
+    const response = await fetch("/upload_meeting", {
+      method: "POST",
+      body: formData
+    });
+    
+    const result = await response.json();
+    
+    if (response.ok) {
+      // Redirect immediately to success page
+      if (result.redirect) {
+        window.location.href = result.redirect;
+      } else {
+        window.location.href = "/upload_success";
+      }
+    } else {
+      // Check if it's an enrollment required error
+      if (result.error === "enrollment_required") {
+        showEnrollmentRequiredModal();
+      } else {
+        setStatus(result.error || "Upload failed", "error");
+        processingStatus.innerHTML = `<div style="color: var(--accent-red);">${result.error || "Upload failed"}</div>`;
+      }
+    }
+  } catch (err) {
+    setStatus(`Error: ${err.message}`, "error");
+    processingStatus.innerHTML = `<div style="color: var(--accent-red);">Error: ${err.message}</div>`;
+  }
+}
+
+// Enrollment Required Modal Functions
+function showEnrollmentRequiredModal() {
+  const modal = document.getElementById("enrollmentRequiredModal");
+  if (modal) {
+    modal.style.display = "flex";
+  }
+}
+
+function closeEnrollmentRequiredModal() {
+  const modal = document.getElementById("enrollmentRequiredModal");
+  if (modal) {
+    modal.style.display = "none";
+  }
+  // Reset processing status
+  const processingCard = document.getElementById("processingCard");
+  if (processingCard) processingCard.style.display = "none";
+  setStatus("", "");
+}
+
+function goToEnrollment() {
+  window.location.href = "{{ url_for('enroll_get') }}";
+}
+
+function goToHome() {
+  window.location.href = "{{ url_for('account_home') }}";
+}
+
+// Check enrollment status on page load
+document.addEventListener("DOMContentLoaded", function() {
+  const hasEnrollment = JSON.parse(document.getElementById('enrollment-status').textContent);
+  if (!hasEnrollment) {
+    // User doesn't have enrollment audio - show modal and disable recording
+    showEnrollmentRequiredModal();
+    
+    // Disable recording and upload buttons
+    const startBtn = document.getElementById("start");
+    const stopBtn = document.getElementById("stop");
+    const uploadFileBtn = document.getElementById("uploadFile");
+    const fileInput = document.getElementById("file");
+    
+    if (startBtn) {
+      startBtn.disabled = true;
+      startBtn.style.opacity = "0.5";
+      startBtn.style.cursor = "not-allowed";
+    }
+    if (stopBtn) {
+      stopBtn.disabled = true;
+    }
+    if (uploadFileBtn) {
+      uploadFileBtn.disabled = true;
+      uploadFileBtn.style.opacity = "0.5";
+      uploadFileBtn.style.cursor = "not-allowed";
+    }
+    if (fileInput) {
+      fileInput.disabled = true;
+    }
+  }
+});
+
+// Initialize participant display
+updateParticipantDisplay();
+
+startBtn.addEventListener("click", startRecording);
+stopBtn.addEventListener("click", stopRecording);
+
+document.getElementById("deleteRecording").addEventListener("click", async () => {
+  const confirmed = await showConfirmModal(
+    "Delete Recording",
+    "Are you sure you want to delete this recording? This cannot be undone.",
+    "Delete",
+    "Cancel"
+  );
+  if (confirmed) {
+    recordedBlob = null;
+    playback.src = "";
+    document.getElementById("recordingControls").style.display = "none";
+    setStatus("", "");
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+  }
+});
+
+uploadFileBtn.addEventListener("click", async () => {
+  // Check enrollment before uploading
+  const hasEnrollment = JSON.parse(document.getElementById('enrollment-status').textContent);
+  if (!hasEnrollment) {
+    showEnrollmentRequiredModal();
+    return;
+  }
+  
+  // Check participants first
+  const participantsJson = document.getElementById("participantsJson").value;
+  let participants = [];
+  try {
+    participants = JSON.parse(participantsJson);
+  } catch (e) {
+    participants = [];
+  }
+  
+  // Warn if no participants - use custom modal
+  if (participants.length === 0) {
+    const confirmed = await showConfirmModal(
+      "No Participants Selected",
+      "Are you sure you want to upload this meeting with no other participants? Only you will receive the transcript.",
+      "Continue Anyway",
+      "Add Participants"
+    );
+    if (!confirmed) {
+      return;
+    }
+  }
+  
+  if (recordedBlob) {
+    await uploadMeeting(recordedBlob);
+  } else {
+    const file = fileInput.files[0];
+    if (!file) {
+      setStatus("Please select a file or record audio first", "error");
+      return;
+    }
+    await uploadMeeting(file);
+  }
+});
+
+// Close dropdown when clicking outside
+window.onclick = function(event) {
+  if (!event.target.matches('.dropbtn') && !event.target.closest('.dropdown-content') && !event.target.closest('.dropdown')) {
+    const dropdowns = document.getElementsByClassName("dropdown-content");
+    for (let i = 0; i < dropdowns.length; i++) {
+      const openDropdown = dropdowns[i];
+      if (openDropdown.classList.contains('show')) {
+        openDropdown.classList.remove('show');
+        openDropdown.style.display = 'none';
+      }
+    }
+  }
+}
+</script>
+</body>
+</html>
