@@ -255,6 +255,19 @@ def main():
     tmp_segs = Path("output") / "_seg_wavs"
     tmp_segs.mkdir(parents=True, exist_ok=True)
 
+    # Configuration for speaker matching thresholds
+    # These can be overridden via environment variables or command-line args
+    SPEAKER_MATCH_THRESHOLD = float(os.getenv("SPEAKER_MATCH_THRESHOLD", "0.75"))  # Minimum cosine similarity
+    SPEAKER_MATCH_MARGIN = float(os.getenv("SPEAKER_MATCH_MARGIN", "0.05"))  # Minimum gap between top-1 and top-2
+    
+    # Track unknown speakers: map diarization speaker ID -> Unknown Speaker N
+    # We'll use the diarization speaker label (A, B, C, etc.) to track unknowns
+    unknown_speaker_map = {}  # diarization_speaker_id -> "Unknown Speaker N"
+    unknown_counter = 1  # Next unknown speaker number
+    
+    # Track embeddings for unknown speakers to ensure consistency
+    unknown_embeddings = {}  # "Unknown Speaker N" -> list of embeddings (for averaging)
+    
     labeled = []
     for i, u in enumerate(utterances):
         start = float(u["start"])
@@ -271,25 +284,57 @@ def main():
         slice_wav(meeting_wav, start, end, seg_wav)
         seg_emb = embed(classifier, seg_wav)
 
+        # Get diarization speaker ID (A, B, C, etc.) for tracking unknowns
+        diarization_speaker = u.get("speaker", f"SPEAKER_{i}")
+
+        # Match against enrolled speakers
+        scores = {}
+        for name, e in enroll_embs.items():
+            scores[name] = cosine(seg_emb, e)
+        
+        # Sort by score to find best match and margin
+        sorted_scores = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+        
         best_name = None
         best_score = -1e9
-        for name, e in enroll_embs.items():
-            score = cosine(seg_emb, e)
-            if score > best_score:
-                best_score = score
-                best_name = name
-
+        second_best_score = -1e9
+        
+        if sorted_scores:
+            best_name, best_score = sorted_scores[0]
+            if len(sorted_scores) > 1:
+                second_best_score = sorted_scores[1][1]
+        
+        # Check if match is confident enough
+        score_gap = best_score - second_best_score
+        is_confident_match = (best_score >= SPEAKER_MATCH_THRESHOLD and 
+                             score_gap >= SPEAKER_MATCH_MARGIN)
+        
         # Normalize speaker name: remove (2), (3) etc. if present
-        normalized_name = best_name or "Unknown"
-        if normalized_name != "Unknown":
-            normalized_name = re.sub(r"\(\d+\)", "", normalized_name).strip()
+        if is_confident_match and best_name:
+            normalized_name = re.sub(r"\(\d+\)", "", best_name).strip()
+        else:
+            # Low confidence or no match -> assign to unknown speaker
+            # Use diarization speaker ID to track consistency
+            if diarization_speaker not in unknown_speaker_map:
+                # New unknown speaker - assign next number
+                unknown_speaker_map[diarization_speaker] = f"Unknown Speaker {unknown_counter}"
+                unknown_counter += 1
+            
+            normalized_name = unknown_speaker_map[diarization_speaker]
+            
+            # Store embedding for this unknown speaker (for future consistency checks)
+            if normalized_name not in unknown_embeddings:
+                unknown_embeddings[normalized_name] = []
+            unknown_embeddings[normalized_name].append(seg_emb)
         
         labeled.append({
             "start": start,
             "end": end,
             "speaker_name": normalized_name,
             "score": best_score,
-            "text": txt
+            "text": txt,
+            "is_unknown": normalized_name.startswith("Unknown Speaker"),
+            "diarization_speaker": diarization_speaker
         })
 
     # Merge consecutive lines for readability
@@ -317,27 +362,43 @@ def main():
     lines = []
     for r in labeled:
         speaker_name = r['speaker_name']
-        # Convert username to "First Last" format using mapping
-        if speaker_name != "Unknown":
+        is_unknown = r.get('is_unknown', False)
+        
+        # Handle unknown speakers (keep as "Unknown Speaker N")
+        if is_unknown or speaker_name.startswith("Unknown Speaker"):
+            # Keep unknown speaker labels as-is
+            formatted_name = speaker_name
+        elif speaker_name != "Unknown":
+            # Convert username to "First Last" format using mapping
             # Remove any (2), (3) etc. patterns first
             speaker_name_clean = re.sub(r"\(\d+\)", "", speaker_name).strip()
             # Look up in username mapping
             if speaker_name_clean in username_to_name:
-                speaker_name = username_to_name[speaker_name_clean]
+                formatted_name = username_to_name[speaker_name_clean]
             elif "," in speaker_name_clean:
                 # Fallback: old format "first,last"
                 parts = speaker_name_clean.split(",")
                 if len(parts) == 2:
                     first = parts[0].strip().capitalize()
                     last = parts[1].strip().capitalize()
-                    speaker_name = f"{first} {last}"
+                    formatted_name = f"{first} {last}"
                 else:
-                    speaker_name = speaker_name_clean.capitalize()
+                    formatted_name = speaker_name_clean.capitalize()
             else:
                 # Just capitalize if no mapping found
-                speaker_name = speaker_name_clean.capitalize()
-        lines.append(f"{speaker_name}: {r['text']}")
+                formatted_name = speaker_name_clean.capitalize()
+        else:
+            # Legacy "Unknown" -> convert to "Unknown Speaker 1" for consistency
+            formatted_name = "Unknown Speaker 1"
+        
+        lines.append(f"{formatted_name}: {r['text']}")
     out_txt.write_text("\n\n".join(lines) + "\n", encoding="utf-8")
+    
+    # Print summary of unknown speakers
+    unknown_speakers_found = [r['speaker_name'] for r in labeled if r.get('is_unknown', False) or r['speaker_name'].startswith("Unknown Speaker")]
+    if unknown_speakers_found:
+        unique_unknowns = sorted(set(unknown_speakers_found))
+        print(f"Identified {len(unique_unknowns)} unknown speaker(s): {', '.join(unique_unknowns)}")
 
     # Also write a JSON if you want to inspect confidence
     out_json = out_txt.with_suffix(".json")

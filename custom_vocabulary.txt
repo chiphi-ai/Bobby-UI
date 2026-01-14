@@ -1,0 +1,21 @@
+# Custom Vocabulary for AssemblyAI Word Boosting
+# Add one word or phrase per line (case-insensitive)
+# This helps AssemblyAI recognize domain-specific terms more accurately
+#
+# Examples:
+# - Company names
+# - People names (enrolled participants)
+# - Technical terms
+# - Product names
+# - Acronyms
+
+# Company/Organization names
+PhiAI
+Phi AI
+Link Studio
+MIT
+Massachusetts Institute of Technology
+
+# Add your custom terms below (one per line):
+# Example: Bobby Jones
+# Example: John Smith

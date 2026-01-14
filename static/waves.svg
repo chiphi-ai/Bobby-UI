@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" preserveAspectRatio="none">
+  <!-- Multiple horizontal wave lines with varying amplitudes -->
+  <!-- Layer 1: Primary waves (saturated blue, clearly visible) -->
+  <path d="M0,100 Q150,80 300,100 T600,100 T900,100 T1200,100" 
+        stroke="rgba(30, 108, 255, 0.28)" 
+        stroke-width="1.5" 
+        fill="none" 
+        stroke-linecap="round"/>
+  
+  <path d="M0,200 Q150,180 300,200 T600,200 T900,200 T1200,200" 
+        stroke="rgba(59, 130, 246, 0.26)" 
+        stroke-width="1.5" 
+        fill="none" 
+        stroke-linecap="round"/>
+  
+  <path d="M0,300 Q150,320 300,300 T600,300 T900,300 T1200,300" 
+        stroke="rgba(10, 92, 255, 0.25)" 
+        stroke-width="1.5" 
+        fill="none" 
+        stroke-linecap="round"/>
+  
+  <path d="M0,400 Q150,380 300,400 T600,400 T900,400 T1200,400" 
+        stroke="rgba(37, 99, 235, 0.24)" 
+        stroke-width="1.5" 
+        fill="none" 
+        stroke-linecap="round"/>
+  
+  <path d="M0,500 Q150,520 300,500 T600,500 T900,500 T1200,500" 
+        stroke="rgba(30, 108, 255, 0.22)" 
+        stroke-width="1.5" 
+        fill="none" 
+        stroke-linecap="round"/>
+  
+  <path d="M0,600 Q150,580 300,600 T600,600 T900,600 T1200,600" 
+        stroke="rgba(59, 130, 246, 0.20)" 
+        stroke-width="1.5" 
+        fill="none" 
+        stroke-linecap="round"/>
+  
+  <!-- Layer 2: Secondary waves (slightly different pattern for depth) -->
+  <path d="M0,150 Q200,130 400,150 T800,150 T1200,150" 
+        stroke="rgba(10, 92, 255, 0.22)" 
+        stroke-width="1" 
+        fill="none" 
+        stroke-linecap="round"/>
+  
+  <path d="M0,250 Q200,270 400,250 T800,250 T1200,250" 
+        stroke="rgba(37, 99, 235, 0.21)" 
+        stroke-width="1" 
+        fill="none" 
+        stroke-linecap="round"/>
+  
+  <path d="M0,350 Q200,330 400,350 T800,350 T1200,350" 
+        stroke="rgba(30, 108, 255, 0.20)" 
+        stroke-width="1" 
+        fill="none" 
+        stroke-linecap="round"/>
+  
+  <path d="M0,450 Q200,470 400,450 T800,450 T1200,450" 
+        stroke="rgba(59, 130, 246, 0.19)" 
+        stroke-width="1" 
+        fill="none" 
+        stroke-linecap="round"/>
+  
+  <path d="M0,550 Q200,530 400,550 T800,550 T1200,550" 
+        stroke="rgba(10, 92, 255, 0.18)" 
+        stroke-width="1" 
+        fill="none" 
+        stroke-linecap="round"/>
+  
+  <path d="M0,650 Q200,670 400,650 T800,650 T1200,650" 
+        stroke="rgba(37, 99, 235, 0.18)" 
+        stroke-width="1" 
+        fill="none" 
+        stroke-linecap="round"/>
+</svg>

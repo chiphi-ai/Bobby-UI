@@ -4,10 +4,9 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Connect Apps — Phi AI</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <style>
+    /* Page-specific overrides */
     :root{
       --bg-primary: #ffffff;
       --bg-secondary: #f5f5f7;
@@ -40,77 +39,23 @@
       -moz-osx-font-smoothing: grayscale;
     }
 
-    .wrap{
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 0 20px 80px;
-    }
-
-    .topbar{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin: 0 -20px 32px -20px;
-      padding: 16px 20px;
-      background: #000000;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-
-    .brand{
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .brand a{
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      text-decoration: none;
-      color: inherit;
-    }
-
-    .logo-img{
-      width: 40px;
-      height: 40px;
-      object-fit: contain;
-      border-radius: 8px;
-    }
-
-    .title h1{
-      margin: 0;
-      font-size: 24px;
-      font-weight: 600;
-      color: white;
-      background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .title .tag{
-      margin-top: 4px;
-      color: rgba(255,255,255,0.7);
-      font-size: 14px;
-      font-weight: 400;
-    }
-
+    /* Navigation tabs styling */
     .nav-tabs{
       display: flex;
-      gap: 8px;
-      margin-bottom: 32px;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-xl);
       border-bottom: 1px solid var(--border-light);
+      flex-wrap: wrap;
     }
 
     .nav-tabs a{
-      padding: 12px 20px;
+      padding: var(--space-md) var(--space-lg);
       color: var(--text-secondary);
-      font-size: 15px;
-      font-weight: 500;
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-medium);
       text-decoration: none;
       border-bottom: 2px solid transparent;
-      transition: all 0.2s ease;
+      transition: all var(--transition-fast);
     }
 
     .nav-tabs a:hover{
@@ -118,35 +63,28 @@
     }
 
     .nav-tabs a.active{
-      color: var(--accent-blue);
-      border-bottom-color: var(--accent-blue);
+      color: var(--accent);
+      border-bottom-color: var(--accent);
     }
 
-    .card{
-      background: var(--bg-primary);
-      border: 1px solid var(--border-light);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 24px;
-      margin: 20px 0;
-    }
-
+    /* Card overrides for this page */
     .card h2{
-      font-size: 20px;
-      font-weight: 600;
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
       color: var(--text-primary);
-      margin-bottom: 16px;
+      margin-bottom: var(--space-md);
     }
 
     .app-card{
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      padding: 20px;
+      padding: var(--space-lg);
       background: var(--bg-secondary);
       border: 1px solid var(--border-light);
-      border-radius: 8px;
-      margin-bottom: 16px;
+      border-radius: var(--border-radius);
+      margin-bottom: var(--space-md);
+      gap: var(--space-lg);
     }
 
     .app-info{
@@ -154,13 +92,13 @@
     }
 
     .app-info h3{
-      font-size: 18px;
-      font-weight: 600;
-      margin-bottom: 4px;
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      margin-bottom: var(--space-xs);
     }
 
     .app-info p{
-      font-size: 14px;
+      font-size: var(--font-size-sm);
       color: var(--text-secondary);
       margin: 0;
     }
@@ -168,66 +106,11 @@
     .app-status{
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: var(--space-md);
+      flex-wrap: wrap;
     }
 
-    .status-badge{
-      padding: 4px 12px;
-      border-radius: 12px;
-      font-size: 13px;
-      font-weight: 500;
-    }
-
-    .status-connected{
-      background: rgba(52, 199, 89, 0.1);
-      color: var(--accent-green);
-    }
-
-    .btn{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 10px 20px;
-      background: var(--bg-primary);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text-primary);
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s ease;
-      text-decoration: none;
-      font-family: inherit;
-    }
-
-    .btn:hover{
-      background: var(--bg-secondary);
-      transform: translateY(-1px);
-      box-shadow: var(--shadow-hover);
-    }
-
-    .btnPrimary{
-      background: var(--accent-blue);
-      color: white;
-      border-color: var(--accent-blue);
-    }
-
-    .btnPrimary:hover{
-      background: var(--accent-blue-hover);
-      border-color: var(--accent-blue-hover);
-      color: white;
-    }
-
-    .btnDanger{
-      background: var(--accent-red);
-      color: white;
-      border-color: var(--accent-red);
-    }
-
-    .btnDanger:hover{
-      background: #d32f2f;
-      border-color: #d32f2f;
-    }
+    /* Button classes are now in global CSS */
 
     .config-section{
       margin-top: 16px;
@@ -268,26 +151,39 @@
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <a href="{{ url_for('account_home') }}">
-        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi AI Logo" class="logo-img" onerror="this.style.display='none';">
-        <div class="title">
-          <h1>Phi AI</h1>
-          <div class="tag">Connect Apps</div>
-        </div>
+  <!-- Animated Wave Background -->
+  <div class="bg-waves{% if waves_debug %} debug-mode{% endif %}" aria-hidden="true"></div>
+  {% if waves_debug %}
+  <div class="waves-debug-badge">🌊 WAVES ON</div>
+  {% endif %}
+  
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <a href="{{ url_for('account_home') }}" class="header-brand">
+          <img src="{{ url_for('static', filename='images/logo.png.png') }}" alt="Phi AI" class="header-logo">
         </a>
+        <nav class="header-nav">
+          <a href="{{ url_for('account_home') }}" class="header-link">Dashboard</a>
+          <a href="{{ url_for('account_meetings') }}" class="header-link">Meetings</a>
+          <a href="{{ url_for('ask_get') }}" class="header-link">Ask Phi</a>
+          <a href="{{ url_for('connect_apps_get') }}" class="header-link active">Connect Apps</a>
+          <a href="{{ url_for('account_get') }}" class="header-link">Settings</a>
+          <a href="{{ url_for('logout') }}" class="header-link">Logout</a>
+        </nav>
       </div>
-    </div>
+    </header>
 
-    <div class="nav-tabs">
-      <a href="{{ url_for('account_home') }}">Dashboard</a>
-      <a href="{{ url_for('account_meetings') }}">Past Meetings</a>
-      <a href="{{ url_for('connect_apps_get') }}" class="active">Connect Apps</a>
-      <a href="{{ url_for('account_get') }}">Settings</a>
-      <a href="{{ url_for('logout') }}">Logout</a>
-    </div>
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="nav-tabs">
+        <a href="{{ url_for('account_home') }}">Dashboard</a>
+        <a href="{{ url_for('account_meetings') }}">Past Meetings</a>
+        <a href="{{ url_for('connect_apps_get') }}" class="active">Connect Apps</a>
+        <a href="{{ url_for('account_get') }}">Settings</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+      </div>
 
     {% with messages = get_flashed_messages() %}
       {% if messages %}
@@ -313,19 +209,32 @@
         </div>
         <div class="app-status">
           {% if connected_apps.get('dropbox') %}
-          <span class="status-badge status-connected">✓ Connected</span>
-          <button onclick="disconnectApp('dropbox')" class="btn btnDanger">Disconnect</button>
+            {% if connected_apps['dropbox'].get('needs_reauth') %}
+            <span class="badge badge-warning">⚠️ Needs Reconnect</span>
+            <a href="{{ url_for('dropbox_authorize') }}" class="btn btn-primary">Reconnect Dropbox</a>
+            <button onclick="disconnectApp('dropbox')" class="btn btn-danger">Disconnect</button>
+            {% else %}
+            <span class="badge badge-success">✓ Connected</span>
+            <button onclick="disconnectApp('dropbox')" class="btn btn-danger">Disconnect</button>
+            {% endif %}
           {% else %}
-          <a href="{{ url_for('dropbox_authorize') }}" class="btn btnPrimary">Connect Dropbox</a>
+          <span class="badge badge-neutral">Not Connected</span>
+          <a href="{{ url_for('dropbox_authorize') }}" class="btn btn-primary">Connect Dropbox</a>
           {% endif %}
         </div>
       </div>
       
       {% if connected_apps.get('dropbox') %}
       <div class="config-section">
+        {% if connected_apps['dropbox'].get('needs_reauth') %}
+        <div class="info-box" style="background: #fff3cd; border-color: #ffc107; color: #856404;">
+          <strong>⚠️ Action Required:</strong> Your Dropbox access token expired and cannot be refreshed because we don't have a refresh token (or app credentials) to refresh it.<br><br>
+          <strong>To fix:</strong> Click "Reconnect Dropbox" above, or Disconnect then Connect again. After reconnecting, run one test upload to confirm.
+        </div>
+        {% endif %}
         <label>Folder Path</label>
         <input type="text" id="dropbox_folder" value="{{ connected_apps['dropbox'].get('folder_path', '/PhiAI/Meetings') }}" placeholder="/PhiAI/Meetings">
-        <button onclick="updateAppConfig('dropbox')" class="btn btnPrimary">Update Folder Path</button>
+        <button onclick="updateAppConfig('dropbox')" class="btn btn-primary">Update Folder Path</button>
         <div class="info-box">
           <strong>Connected:</strong> {{ connected_apps['dropbox'].get('connected_at', '')[:10] }}<br>
           Files will be saved to this folder path in your Dropbox account.
@@ -343,10 +252,17 @@
         </div>
         <div class="app-status">
           {% if connected_apps.get('googledrive') %}
-          <span class="status-badge status-connected">✓ Connected</span>
-          <button onclick="disconnectApp('googledrive')" class="btn btnDanger">Disconnect</button>
+            {% if connected_apps['googledrive'].get('needs_reauth') %}
+            <span class="badge badge-warning">⚠️ Needs Reconnect</span>
+            <a href="{{ url_for('googledrive_authorize') }}" class="btn btn-primary">Reconnect Google Drive</a>
+            <button onclick="disconnectApp('googledrive')" class="btn btn-danger">Disconnect</button>
+            {% else %}
+            <span class="badge badge-success">✓ Connected</span>
+            <button onclick="disconnectApp('googledrive')" class="btn btn-danger">Disconnect</button>
+            {% endif %}
           {% else %}
-          <a href="{{ url_for('googledrive_authorize') }}" class="btn btnPrimary">Connect Google Drive</a>
+          <span class="badge badge-neutral">Not Connected</span>
+          <a href="{{ url_for('googledrive_authorize') }}" class="btn btn-primary">Connect Google Drive</a>
           {% endif %}
         </div>
       </div>
@@ -355,7 +271,7 @@
       <div class="config-section">
         <label>Folder Name</label>
         <input type="text" id="googledrive_folder" value="{{ connected_apps['googledrive'].get('folder_name', 'PhiAI Meetings') }}" placeholder="PhiAI Meetings">
-        <button onclick="updateAppConfig('googledrive')" class="btn btnPrimary">Update Folder Name</button>
+        <button onclick="updateAppConfig('googledrive')" class="btn btn-primary">Update Folder Name</button>
         <div class="info-box">
           <strong>Connected:</strong> {{ connected_apps['googledrive'].get('connected_at', '')[:10] }}<br>
           A folder with this name will be created in your Google Drive (if it doesn't exist).
@@ -373,19 +289,107 @@
         </div>
         <div class="app-status">
           {% if connected_apps.get('box') %}
-          <span class="status-badge status-connected">✓ Connected</span>
-          <button onclick="disconnectApp('box')" class="btn btnDanger">Disconnect</button>
+            {% set box_needs_scopes = box_diagnostics and (box_diagnostics.get('needs_scope_update') or (not box_diagnostics.get('write_scope_ok') and box_diagnostics.get('last_scope_error'))) %}
+            {% if box_needs_scopes %}
+            <span class="badge badge-warning">🔒 Needs Permissions</span>
+            <a href="{{ url_for('box_authorize') }}" class="btn btn-primary">Reconnect Box</a>
+            <button onclick="disconnectApp('box')" class="btn btn-danger">Disconnect</button>
+            {% elif connected_apps['box'].get('needs_reauth') %}
+            <span class="badge badge-warning">⚠️ Needs Reconnect</span>
+            <a href="{{ url_for('box_authorize') }}" class="btn btn-primary">Reconnect Box</a>
+            <button onclick="disconnectApp('box')" class="btn btn-danger">Disconnect</button>
+            {% else %}
+            <span class="badge badge-success">✓ Connected</span>
+            <button onclick="disconnectApp('box')" class="btn btn-danger">Disconnect</button>
+            {% endif %}
           {% else %}
-          <a href="{{ url_for('box_authorize') }}" class="btn btnPrimary">Connect Box</a>
+          <span class="badge badge-neutral">Not Connected</span>
+          <a href="{{ url_for('box_authorize') }}" class="btn btn-primary">Connect Box</a>
           {% endif %}
         </div>
       </div>
       
       {% if connected_apps.get('box') %}
       <div class="config-section">
+        {% set box_needs_scopes = box_diagnostics and (box_diagnostics.get('needs_scope_update') or (not box_diagnostics.get('write_scope_ok') and box_diagnostics.get('last_scope_error'))) %}
+        
+        {% if box_needs_scopes %}
+        <!-- Box Permissions Checklist Card -->
+        <div class="box-permissions-card" style="background: linear-gradient(135deg, #fff5f5 0%, #ffe5e5 100%); border: 2px solid #ff6b6b; border-radius: var(--radius); padding: var(--space-lg); margin-bottom: var(--space-lg); box-shadow: 0 4px 12px rgba(255, 107, 107, 0.15);">
+          <div style="display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-md);">
+            <div style="font-size: 24px;">🔒</div>
+            <h3 style="font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: #c92a2a; margin: 0;">Box Needs Write Permission</h3>
+          </div>
+          
+          <p style="color: #862e2e; margin-bottom: var(--space-lg); line-height: 1.6;">
+            Your Box connection is missing write permissions. Follow the steps below to fix this.
+          </p>
+          
+          <div style="background: white; border-radius: 8px; padding: var(--space-lg); margin-bottom: var(--space-md);">
+            <h4 style="font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); color: var(--text-primary); margin-bottom: var(--space-md); display: flex; align-items: center; gap: var(--space-sm);">
+              <span style="color: #ff6b6b;">👨‍💻</span>
+              Developer Steps (One-Time Setup)
+            </h4>
+            <ol style="margin-left: var(--space-lg); color: var(--text-secondary); line-height: 1.8; font-size: var(--font-size-sm);">
+              <li>Go to <a href="https://developer.box.com/" target="_blank" style="color: var(--accent); text-decoration: none; font-weight: 500;">Box Developer Console</a></li>
+              <li>Navigate to <strong>My Apps</strong> → Select your app → <strong>Configuration</strong></li>
+              <li>Scroll to <strong>Application Scopes</strong> section</li>
+              <li>Enable: <strong>"Read and write all files and folders stored in Box"</strong></li>
+              <li>Click <strong>Save Changes</strong> (important!)</li>
+              <li>Wait 2-3 minutes for changes to propagate</li>
+            </ol>
+          </div>
+          
+          <div style="background: white; border-radius: 8px; padding: var(--space-lg); margin-bottom: var(--space-md);">
+            <h4 style="font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); color: var(--text-primary); margin-bottom: var(--space-md); display: flex; align-items: center; gap: var(--space-sm);">
+              <span style="color: #4dabf7;">👤</span>
+              User Steps (Required After Scope Change)
+            </h4>
+            <ol style="margin-left: var(--space-lg); color: var(--text-secondary); line-height: 1.8; font-size: var(--font-size-sm);">
+              <li>In this page: Click <strong>Disconnect</strong> button above</li>
+              <li>Click <strong>Connect Box</strong> to re-authorize</li>
+              <li>Authorize the app when prompted</li>
+            </ol>
+            <p style="margin-top: var(--space-md); padding: var(--space-md); background: #e7f5ff; border-left: 3px solid #4dabf7; border-radius: 4px; font-size: var(--font-size-sm); color: #1864ab;">
+              <strong>Why reconnect?</strong> Existing tokens won't gain new permissions until you re-authorize. This is a Box security requirement.
+            </p>
+          </div>
+          
+          <div style="display: flex; gap: var(--space-md); flex-wrap: wrap; margin-top: var(--space-lg);">
+            <button onclick="recheckBoxPermissions()" class="btn btn-primary" style="flex: 1; min-width: 200px;">
+              🔄 I Updated Scopes — Recheck Now
+            </button>
+            <button onclick="disconnectApp('box')" class="btn btn-secondary" style="flex: 1; min-width: 200px;">
+              Disconnect Box
+            </button>
+            <a href="{{ url_for('box_authorize') }}" class="btn btn-primary" style="flex: 1; min-width: 200px; text-align: center; text-decoration: none;">
+              Reconnect Box
+            </a>
+          </div>
+          
+          {% if box_diagnostics and box_diagnostics.get('last_scope_error') %}
+          <div style="margin-top: var(--space-md); padding: var(--space-md); background: rgba(255, 255, 255, 0.8); border-radius: 6px; font-size: var(--font-size-sm); color: #862e2e;">
+            <strong>Last Error:</strong> {{ box_diagnostics.get('last_scope_error')[:200] }}
+          </div>
+          {% endif %}
+        </div>
+        {% elif connected_apps['box'].get('needs_reauth') %}
+        <div class="info-box" style="background: #fff3cd; border-color: #ffc107; color: #856404;">
+          <strong>⚠️ Action Required:</strong> Your Box access token expired and cannot be refreshed.<br><br>
+          <strong>To fix:</strong> Click "Reconnect Box" above, or Disconnect then Connect again.
+        </div>
+        {% elif box_diagnostics and box_diagnostics.get('write_scope_ok') %}
+        <div class="info-box" style="background: #d4edda; border-color: #28a745; color: #155724;">
+          <strong>✅ Write Permissions Verified</strong><br>
+          {% if box_diagnostics.get('write_scope_verified_at') %}
+          Last verified: {{ box_diagnostics.get('write_scope_verified_at')[:10] }}
+          {% endif %}
+        </div>
+        {% endif %}
+        
         <label>Folder Name</label>
         <input type="text" id="box_folder" value="{{ connected_apps['box'].get('folder_name', 'PhiAI Meetings') }}" placeholder="PhiAI Meetings">
-        <button onclick="updateAppConfig('box')" class="btn btnPrimary">Update Folder Name</button>
+        <button onclick="updateAppConfig('box')" class="btn btn-primary">Update Folder Name</button>
         <div class="info-box">
           <strong>Connected:</strong> {{ connected_apps['box'].get('connected_at', '')[:10] }}<br>
           A folder with this name will be created in your Box account (if it doesn't exist).
@@ -402,7 +406,7 @@
       <p id="confirmMessage" style="font-size: 15px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5;"></p>
       <div style="display: flex; gap: 12px; justify-content: flex-end;">
         <button id="confirmCancel" class="btn" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);"></button>
-        <button id="confirmOk" class="btn btnPrimary"></button>
+        <button id="confirmOk" class="btn btn-primary"></button>
       </div>
     </div>
   </div>
@@ -473,6 +477,40 @@
       }
     }
 
+    async function recheckBoxPermissions() {
+      const button = event.target;
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = "🔄 Checking...";
+      
+      try {
+        const response = await fetch('/connect/box/recheck', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+          await showConfirmModal(
+            "✅ Permissions Verified",
+            result.message || "Box write permissions are working correctly!",
+            "OK"
+          );
+          // Reload page to update UI
+          window.location.reload();
+        } else {
+          await showConfirmModal(
+            "⚠️ Permissions Still Missing",
+            result.message || "Write permissions are still not available. Make sure you've completed all the steps in the checklist above.",
+            "OK"
+          );
+          // Reload page to update UI
+          window.location.reload();
+        }
+      } catch (err) {
+        await showConfirmModal("Error", "Failed to recheck permissions. Please try again.", "OK");
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    }
+
     async function updateAppConfig(appName) {
       let folderValue;
       if (appName === 'dropbox') {
@@ -515,5 +553,13 @@
       }
     }
   </script>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <p>&copy; 2026 Phi AI. All rights reserved.</p>
+      <p style="margin-top: var(--space-sm); font-size: var(--font-size-sm); color: var(--text-secondary);">189 Vassar St, Cambridge, MA 02139</p>
+    </div>
+  </footer>
 </body>
 </html>

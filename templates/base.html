@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}Phi AI{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Publico:wght@400;500;600;700&family=Barlow:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <!-- Animated Wave Background -->
+  <div class="bg-waves{% if waves_debug %} debug-mode{% endif %}" aria-hidden="true"></div>
+  {% if waves_debug %}
+  <div class="waves-debug-badge">🌊 WAVES ON</div>
+  {% endif %}
+  
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <a href="{% block header_link %}{{ url_for('index') }}{% endblock %}" class="header-brand">
+          <img src="{{ url_for('static', filename='images/logo.png.png') }}" alt="Phi AI" class="header-logo">
+        </a>
+        <nav class="header-nav">
+          {% block header_nav %}
+            {% if current_user %}
+              <a href="{{ url_for('account_home') }}" class="header-link">Dashboard</a>
+              <a href="{{ url_for('account_meetings') }}" class="header-link">Meetings</a>
+              <a href="{{ url_for('ask_get') }}" class="header-link">Ask Phi</a>
+              <a href="{{ url_for('connect_apps_get') }}" class="header-link">Connect Apps</a>
+              <a href="{{ url_for('account_get') }}" class="header-link">Settings</a>
+              <a href="{{ url_for('logout') }}" class="header-link">Logout</a>
+            {% else %}
+              <a href="{{ url_for('login_get') }}" class="header-link">Login</a>
+              <a href="{{ url_for('signup_get') }}" class="header-link btn btn-primary btn-sm">Sign Up</a>
+            {% endif %}
+          {% endblock %}
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content {% block main_class %}{% endblock %}">
+      <!-- Flash Messages -->
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          <div class="alert alert-info enter" id="toast">
+            <strong>{% block flash_title %}System Message{% endblock %}</strong><br>
+            {% for m in messages %}{{ m }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-inner">
+        <p>&copy; 2026 Phi AI. All rights reserved.</p>
+        <p style="margin-top: var(--space-sm); font-size: var(--font-size-sm); color: var(--text-secondary);">189 Vassar St, Cambridge, MA 02139</p>
+      </div>
+    </footer>
+  </div>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

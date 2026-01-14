@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Custom Vocabulary — Phi AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Publico+Text:wght@400;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+  <!-- Animated Wave Background -->
+  <div class="bg-waves{% if waves_debug %} debug-mode{% endif %}" aria-hidden="true"></div>
+  {% if waves_debug %}
+  <div class="waves-debug-badge">🌊 WAVES ON</div>
+  {% endif %}
+  
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <a href="{{ url_for('account_home') }}" class="header-brand">
+          <img src="{{ url_for('static', filename='images/logo.png.png') }}" alt="Phi AI" class="header-logo">
+        </a>
+        <nav class="header-nav">
+          <a href="{{ url_for('account_home') }}" class="header-link">Dashboard</a>
+          <a href="{{ url_for('account_meetings') }}" class="header-link">Meetings</a>
+          <a href="{{ url_for('ask_get') }}" class="header-link">Ask Phi</a>
+          <a href="{{ url_for('connect_apps_get') }}" class="header-link">Connect Apps</a>
+          <a href="{{ url_for('account_get') }}" class="header-link">Settings</a>
+          <a href="{{ url_for('vocabulary_get') }}" class="header-link active">Custom Vocabulary</a>
+          <a href="{{ url_for('logout') }}" class="header-link">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content main-content-narrow enter">
+      <!-- Settings Navigation -->
+      <div class="card holo-border enter" style="margin-bottom: var(--space-lg);">
+        <div class="card-body" style="padding: var(--space-md);">
+          <nav style="display: flex; gap: var(--space-md); flex-wrap: wrap;">
+            <a href="{{ url_for('account_get') }}" class="header-link" style="padding: var(--space-sm) var(--space-md); border-radius: var(--border-radius-sm); background: var(--bg-secondary);">Account</a>
+            <a href="{{ url_for('vocabulary_get') }}" class="header-link" style="padding: var(--space-sm) var(--space-md); border-radius: var(--border-radius-sm); background: var(--accent); color: white;">Custom Vocabulary</a>
+          </nav>
+        </div>
+      </div>
+
+      <!-- Page Header -->
+      <div class="page-header enter">
+        <h1 class="page-title">Custom Vocabulary</h1>
+        <p class="page-subtitle">Teach Phi AI names, acronyms, and domain terms to improve transcription accuracy.</p>
+      </div>
+
+      <!-- Add Term Form -->
+      <div class="card holo-border enter enter-delay-1" id="addTermCard">
+        <div class="card-header">
+          <h2 class="card-title">Add New Term</h2>
+        </div>
+        <div class="card-body">
+          <form id="addTermForm">
+            <div class="form-group">
+              <label for="term" class="form-label required">Term / Phrase</label>
+              <input type="text" id="term" name="term" class="form-input" required 
+                     placeholder="e.g., Cove View, Magnano, pyannote, DCF" 
+                     maxlength="80" autocomplete="off">
+              <small class="form-hint">Single term or multi-word phrase (1-80 characters)</small>
+            </div>
+
+            <div class="form-group">
+              <label for="definition" class="form-label">Definition / Notes</label>
+              <textarea id="definition" name="definition" class="form-textarea" rows="3" 
+                        placeholder="What it means, how it's used, pronunciation hints..." 
+                        maxlength="500"></textarea>
+              <small class="form-hint">Optional but recommended (0-500 characters)</small>
+            </div>
+
+            <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md);">
+              <div class="form-group">
+                <label for="vocab_type" class="form-label">Type</label>
+                <select id="vocab_type" name="vocab_type" class="form-select">
+                  <option value="">Select type...</option>
+                  <option value="Name">Name</option>
+                  <option value="Organization">Organization</option>
+                  <option value="Acronym">Acronym</option>
+                  <option value="Technical term">Technical term</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="pronunciation" class="form-label">Pronunciation Hint</label>
+                <input type="text" id="pronunciation" name="pronunciation" class="form-input" 
+                       placeholder="e.g., mahg-NAH-no" maxlength="50">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="aliases" class="form-label">Aliases</label>
+              <input type="text" id="aliases" name="aliases" class="form-input" 
+                     placeholder="Comma-separated variants (e.g., PhiAI, Phi AI)" maxlength="200">
+              <small class="form-hint">Alternative spellings or variations</small>
+            </div>
+
+            <div class="form-actions" style="display: flex; gap: var(--space-md); margin-top: var(--space-lg);">
+              <button type="submit" class="btn btn-primary">Add Term</button>
+              <button type="button" class="btn" onclick="clearAddForm()">Clear</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Vocabulary List -->
+      <div class="card holo-border enter enter-delay-2" id="vocabListCard">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-md);">
+          <h2 class="card-title">Your Vocabulary</h2>
+          <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap;">
+            <input type="text" id="searchInput" class="form-input" placeholder="Search terms..." 
+                   style="min-width: 200px; flex: 1;" autocomplete="off">
+            <select id="typeFilter" class="form-select" style="min-width: 150px;">
+              <option value="">All types</option>
+              <option value="Name">Name</option>
+              <option value="Organization">Organization</option>
+              <option value="Acronym">Acronym</option>
+              <option value="Technical term">Technical term</option>
+              <option value="Other">Other</option>
+            </select>
+            <select id="sortSelect" class="form-select" style="min-width: 120px;">
+              <option value="term">A-Z</option>
+              <option value="created_at">Recently added</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="vocabList" style="min-height: 200px;">
+            <!-- Vocabulary entries will be loaded here -->
+            <div class="loading-state" style="text-align: center; padding: var(--space-xl); color: var(--text-secondary);">
+              Loading vocabulary...
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- View/Edit Modal -->
+  <div id="viewModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header">
+        <h3 class="modal-title">View / Edit Term</h3>
+        <button type="button" class="modal-close" onclick="closeViewModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="editTermForm">
+          <input type="hidden" id="editId" name="id">
+          
+          <div class="form-group">
+            <label for="editTerm" class="form-label required">Term / Phrase</label>
+            <input type="text" id="editTerm" name="term" class="form-input" required maxlength="80">
+          </div>
+
+          <div class="form-group">
+            <label for="editDefinition" class="form-label">Definition / Notes</label>
+            <textarea id="editDefinition" name="definition" class="form-textarea" rows="3" maxlength="500"></textarea>
+          </div>
+
+          <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md);">
+            <div class="form-group">
+              <label for="editVocabType" class="form-label">Type</label>
+              <select id="editVocabType" name="vocab_type" class="form-select">
+                <option value="">Select type...</option>
+                <option value="Name">Name</option>
+                <option value="Organization">Organization</option>
+                <option value="Acronym">Acronym</option>
+                <option value="Technical term">Technical term</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="editPronunciation" class="form-label">Pronunciation Hint</label>
+              <input type="text" id="editPronunciation" name="pronunciation" class="form-input" maxlength="50">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="editAliases" class="form-label">Aliases</label>
+            <input type="text" id="editAliases" name="aliases" class="form-input" maxlength="200"
+                   placeholder="Comma-separated variants">
+          </div>
+
+          <div style="margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border-light);">
+            <small class="text-muted" id="editTimestamps"></small>
+          </div>
+
+          <div class="form-actions" style="display: flex; gap: var(--space-md); margin-top: var(--space-lg); justify-content: space-between;">
+            <button type="button" class="btn btn-danger" onclick="deleteCurrentTerm()">Delete</button>
+            <div style="display: flex; gap: var(--space-md);">
+              <button type="button" class="btn" onclick="closeViewModal()">Cancel</button>
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="deleteModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Delete Term?</h3>
+        <button type="button" class="modal-close" onclick="closeDeleteModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete "<strong id="deleteTermName"></strong>"?</p>
+        <p class="text-muted" style="margin-top: var(--space-md);">This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer" style="display: flex; gap: var(--space-md); justify-content: flex-end;">
+        <button type="button" class="btn" onclick="closeDeleteModal()">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allEntries = [];
+    let currentEditId = null;
+    let currentDeleteId = null;
+
+    // Load vocabulary on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      loadVocabulary();
+      
+      // Form submission
+      document.getElementById('addTermForm').addEventListener('submit', handleAddTerm);
+      document.getElementById('editTermForm').addEventListener('submit', handleUpdateTerm);
+      
+      // Search and filter
+      document.getElementById('searchInput').addEventListener('input', filterVocabulary);
+      document.getElementById('typeFilter').addEventListener('change', filterVocabulary);
+      document.getElementById('sortSelect').addEventListener('change', filterVocabulary);
+    });
+
+    async function loadVocabulary() {
+      try {
+        const response = await fetch('/api/vocabulary');
+        const data = await response.json();
+        if (response.ok) {
+          allEntries = data.entries || [];
+          renderVocabulary(allEntries);
+        } else {
+          showToast('Error loading vocabulary', 'error');
+        }
+      } catch (err) {
+        console.error('Error loading vocabulary:', err);
+        showToast('Error loading vocabulary', 'error');
+      }
+    }
+
+    function renderVocabulary(entries) {
+      const container = document.getElementById('vocabList');
+      
+      if (entries.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state" style="text-align: center; padding: var(--space-xl);">
+            <div style="font-size: 48px; margin-bottom: var(--space-md);">📚</div>
+            <h3 style="margin-bottom: var(--space-sm);">No custom vocabulary yet</h3>
+            <p class="text-muted">Add your first term above to improve transcription accuracy.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = entries.map(entry => {
+        const type = entry.vocab_type || 'Uncategorized';
+        const aliases = entry.aliases && entry.aliases.length > 0 
+          ? entry.aliases.join(', ') 
+          : 'None';
+        const definition = entry.definition || 'No definition';
+        const definitionShort = definition.length > 100 ? definition.substring(0, 100) + '...' : definition;
+        
+        return `
+          <div class="vocab-entry" data-id="${entry.id}" style="
+            padding: var(--space-md);
+            border: 1px solid var(--border-light);
+            border-radius: var(--border-radius);
+            margin-bottom: var(--space-md);
+            background: var(--bg-secondary);
+            transition: all 0.2s ease;
+          ">
+            <div style="display: flex; justify-content: space-between; align-items: start; gap: var(--space-md);">
+              <div style="flex: 1;">
+                <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-xs);">
+                  <h4 style="margin: 0; font-weight: 600; font-family: var(--font-sub);">${escapeHtml(entry.term)}</h4>
+                  <span class="type-pill" style="
+                    display: inline-block;
+                    padding: 2px 8px;
+                    background: var(--accent);
+                    color: white;
+                    border-radius: 12px;
+                    font-size: 11px;
+                    font-weight: 500;
+                    text-transform: uppercase;
+                  ">${escapeHtml(type)}</span>
+                </div>
+                <p class="text-muted" style="margin: var(--space-xs) 0; font-size: 14px;">${escapeHtml(definitionShort)}</p>
+                <div style="margin-top: var(--space-xs); font-size: 12px; color: var(--text-tertiary);">
+                  <strong>Aliases:</strong> ${escapeHtml(aliases)}
+                </div>
+                ${entry.pronunciation ? `<div style="margin-top: var(--space-xs); font-size: 12px; color: var(--text-tertiary);">
+                  <strong>Pronunciation:</strong> ${escapeHtml(entry.pronunciation)}
+                </div>` : ''}
+              </div>
+              <div style="display: flex; gap: var(--space-xs);">
+                <button class="btn btn-sm" onclick="openEditModal('${entry.id}')" style="padding: 6px 12px; font-size: 13px;">Edit</button>
+                <button class="btn btn-sm btn-danger" onclick="openDeleteModal('${entry.id}', '${escapeHtml(entry.term)}')" style="padding: 6px 12px; font-size: 13px;">Delete</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function filterVocabulary() {
+      const search = document.getElementById('searchInput').value.toLowerCase();
+      const typeFilter = document.getElementById('typeFilter').value;
+      const sortBy = document.getElementById('sortSelect').value;
+
+      let filtered = [...allEntries];
+
+      // Apply search
+      if (search) {
+        filtered = filtered.filter(entry => 
+          entry.term.toLowerCase().includes(search) ||
+          (entry.definition || '').toLowerCase().includes(search) ||
+          (entry.aliases || []).some(a => a.toLowerCase().includes(search))
+        );
+      }
+
+      // Apply type filter
+      if (typeFilter) {
+        filtered = filtered.filter(entry => entry.vocab_type === typeFilter);
+      }
+
+      // Apply sort
+      if (sortBy === 'term') {
+        filtered.sort((a, b) => a.term.toLowerCase().localeCompare(b.term.toLowerCase()));
+      } else if (sortBy === 'created_at') {
+        filtered.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      }
+
+      renderVocabulary(filtered);
+    }
+
+    async function handleAddTerm(e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const data = {
+        term: formData.get('term').trim(),
+        definition: formData.get('definition').trim(),
+        vocab_type: formData.get('vocab_type') || null,
+        pronunciation: formData.get('pronunciation').trim() || null,
+        aliases: formData.get('aliases').trim()
+      };
+
+      // Validation
+      if (!data.term) {
+        showToast('Term is required', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/vocabulary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          showToast('Term added successfully', 'success');
+          clearAddForm();
+          loadVocabulary();
+        } else {
+          if (result.error === 'Duplicate term') {
+            showToast(result.message || 'This term already exists', 'error');
+            // Highlight existing entry if ID provided
+            if (result.existing_id) {
+              const entry = document.querySelector(`[data-id="${result.existing_id}"]`);
+              if (entry) {
+                entry.style.borderColor = 'var(--accent-red)';
+                entry.style.boxShadow = '0 0 0 2px rgba(239, 68, 68, 0.2)';
+                entry.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => {
+                  entry.style.borderColor = '';
+                  entry.style.boxShadow = '';
+                }, 3000);
+              }
+            }
+          } else {
+            showToast(result.error || 'Failed to add term', 'error');
+          }
+        }
+      } catch (err) {
+        console.error('Error adding term:', err);
+        showToast('Error adding term', 'error');
+      }
+    }
+
+    function clearAddForm() {
+      document.getElementById('addTermForm').reset();
+    }
+
+    function openEditModal(entryId) {
+      const entry = allEntries.find(e => e.id === entryId);
+      if (!entry) return;
+
+      currentEditId = entryId;
+      document.getElementById('editId').value = entry.id;
+      document.getElementById('editTerm').value = entry.term || '';
+      document.getElementById('editDefinition').value = entry.definition || '';
+      document.getElementById('editVocabType').value = entry.vocab_type || '';
+      document.getElementById('editPronunciation').value = entry.pronunciation || '';
+      document.getElementById('editAliases').value = Array.isArray(entry.aliases) ? entry.aliases.join(', ') : (entry.aliases || '');
+      
+      const created = entry.created_at ? new Date(entry.created_at).toLocaleString() : 'Unknown';
+      const updated = entry.updated_at ? new Date(entry.updated_at).toLocaleString() : 'Unknown';
+      document.getElementById('editTimestamps').textContent = `Created: ${created} | Updated: ${updated}`;
+      
+      document.getElementById('viewModal').style.display = 'flex';
+    }
+
+    function closeViewModal() {
+      document.getElementById('viewModal').style.display = 'none';
+      currentEditId = null;
+    }
+
+    async function handleUpdateTerm(e) {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const data = {
+        term: formData.get('term').trim(),
+        definition: formData.get('definition').trim(),
+        vocab_type: formData.get('vocab_type') || null,
+        pronunciation: formData.get('pronunciation').trim() || null,
+        aliases: formData.get('aliases').trim()
+      };
+
+      if (!data.term) {
+        showToast('Term is required', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/vocabulary/${currentEditId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          showToast('Term updated successfully', 'success');
+          closeViewModal();
+          loadVocabulary();
+        } else {
+          showToast(result.error || 'Failed to update term', 'error');
+        }
+      } catch (err) {
+        console.error('Error updating term:', err);
+        showToast('Error updating term', 'error');
+      }
+    }
+
+    function openDeleteModal(entryId, termName) {
+      currentDeleteId = entryId;
+      document.getElementById('deleteTermName').textContent = termName;
+      document.getElementById('deleteModal').style.display = 'flex';
+      
+      document.getElementById('confirmDeleteBtn').onclick = confirmDelete;
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('deleteModal').style.display = 'none';
+      currentDeleteId = null;
+    }
+
+    async function confirmDelete() {
+      if (!currentDeleteId) return;
+
+      try {
+        const response = await fetch(`/api/vocabulary/${currentDeleteId}`, {
+          method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          showToast('Term deleted successfully', 'success');
+          closeDeleteModal();
+          loadVocabulary();
+        } else {
+          showToast(result.error || 'Failed to delete term', 'error');
+        }
+      } catch (err) {
+        console.error('Error deleting term:', err);
+        showToast('Error deleting term', 'error');
+      }
+    }
+
+    function deleteCurrentTerm() {
+      const entry = allEntries.find(e => e.id === currentEditId);
+      if (entry) {
+        closeViewModal();
+        openDeleteModal(entry.id, entry.term);
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function showToast(message, type = 'info') {
+      // Simple toast notification
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        background: ${type === 'success' ? 'var(--accent)' : type === 'error' ? 'var(--accent-red)' : 'var(--bg-secondary)'};
+        color: white;
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow-lg);
+        z-index: 10000;
+        animation: slideIn 0.3s ease;
+      `;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // Close modals on outside click
+    window.onclick = function(event) {
+      const viewModal = document.getElementById('viewModal');
+      const deleteModal = document.getElementById('deleteModal');
+      if (event.target === viewModal) {
+        closeViewModal();
+      }
+      if (event.target === deleteModal) {
+        closeDeleteModal();
+      }
+    }
+  </script>
+
+  <style>
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slideOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(100%); opacity: 0; }
+    }
+    .vocab-entry:hover {
+      border-color: var(--accent) !important;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+  </style>
+</body>
+</html>

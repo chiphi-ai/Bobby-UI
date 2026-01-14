@@ -1,4 +1,4 @@
-﻿# Meeting PDF Summarizer
+# Meeting PDF Summarizer
 # Generates structured meeting summaries from transcripts using Ollama AI
 
 import argparse
@@ -18,27 +18,158 @@ from reportlab.lib.units import inch
 
 
 
-SPEAKER_LINE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_\- ]{0,40})\s*:\s*(.+?)\s*$")
+SPEAKER_COLON_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_\- ]{0,60})\s*:\s*(.+?)\s*$")
+SPEAKER_BRACKET_RE = re.compile(r"^\s*\[([^\]]+)\]\s*(.+?)\s*$")
+SPEAKER_DASH_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_\- ]{0,60})\s-\s(.+?)\s*$")
+SPEAKER_EM_DASH_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_\- ]{0,60})\s\u2014\s(.+?)\s*$")
+SPEAKER_EN_DASH_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_\- ]{0,60})\s\u2013\s(.+?)\s*$")
+TIMESTAMP_RE = re.compile(r"^\s*(?:\[\s*)?\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:\s*\])?\s*")
 
 def read_text(path: str) -> str:
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
-def parse_transcript(text: str) -> List[Tuple[str, str]]:
-    turns: List[Tuple[str, str]] = []
-    for line in text.splitlines():
-        if not line.strip():
+def _strip_timestamp(line: str) -> str:
+    line = TIMESTAMP_RE.sub("", line, count=1)
+    return re.sub(r"^\s*[-\u2013\u2014]\s*", "", line)
+
+def _normalize_speaker(speaker: str) -> str:
+    return re.sub(r"\s+", " ", speaker.strip())
+
+def _parse_json_transcript(text: str) -> List[Dict[str, str]]:
+    raw = (text or "").strip()
+    if not raw or not (raw.startswith("{") or raw.startswith("[")):
+        return []
+
+    def as_turns(items):
+        turns: List[Dict[str, str]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            speaker = item.get("speaker") or item.get("name") or item.get("spk")
+            content = item.get("text") or item.get("utterance") or item.get("content")
+            if speaker and content:
+                turns.append({"speaker": str(speaker).strip(), "text": str(content).strip()})
+        return turns
+
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            turns = as_turns(data)
+            if turns:
+                return turns
+        if isinstance(data, dict):
+            for key in ("utterances", "turns", "segments", "results"):
+                if isinstance(data.get(key), list):
+                    turns = as_turns(data.get(key))
+                    if turns:
+                        return turns
+    except json.JSONDecodeError:
+        pass
+
+    turns: List[Dict[str, str]] = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
             continue
-        m = SPEAKER_LINE_RE.match(line)
-        if m:
-            turns.append((m.group(1).strip(), m.group(2).strip()))
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict):
+            speaker = item.get("speaker") or item.get("name") or item.get("spk")
+            content = item.get("text") or item.get("utterance") or item.get("content")
+            if speaker and content:
+                turns.append({"speaker": str(speaker).strip(), "text": str(content).strip()})
+    return turns
+
+def _log_turns(turns: List[Dict[str, str]]) -> None:
+    print(f"[DEBUG] Speaker turns parsed: {len(turns)}")
+    speakers = sorted({t.get('speaker', '').strip() for t in turns if t.get('speaker')})
+    print(f"[DEBUG] Unique speakers: {speakers}")
+    for t in turns[:3]:
+        preview = (t.get("text") or "")[:80]
+        print(f"[DEBUG] Turn preview: {t.get('speaker', 'Unknown')}: {preview}")
+
+def parse_transcript(text: str) -> List[Dict[str, str]]:
+    lines = text.splitlines()
+    print(f"[DEBUG] Transcript lines read: {len(lines)}")
+
+    json_turns = _parse_json_transcript(text)
+    if json_turns:
+        _log_turns(json_turns)
+        return json_turns
+
+    turns: List[Dict[str, str]] = []
+    found_label = False
+
+    for raw_line in lines:
+        line = _strip_timestamp(raw_line).strip()
+        if not line:
+            continue
+
+        match = (
+            SPEAKER_COLON_RE.match(line)
+            or SPEAKER_BRACKET_RE.match(line)
+            or SPEAKER_EM_DASH_RE.match(line)
+            or SPEAKER_EN_DASH_RE.match(line)
+            or SPEAKER_DASH_RE.match(line)
+        )
+        if match:
+            found_label = True
+            speaker = _normalize_speaker(match.group(1))
+            content = match.group(2).strip()
+            turns.append({"speaker": speaker, "text": content})
         else:
             if turns:
-                spk, prev = turns[-1]
-                turns[-1] = (spk, prev + " " + line.strip())
-            else:
-                turns.append(("Unknown", line.strip()))
+                turns[-1]["text"] = f"{turns[-1]['text']} {line}".strip()
+
+    if not turns:
+        preview = lines[:50]
+        if preview:
+            print("[WARN] No speaker turns parsed from transcript lines. Raw preview:")
+            for pline in preview:
+                print(f"[WARN] {pline}")
+        else:
+            print("[WARN] Transcript is empty or whitespace-only.")
+
+    if not found_label:
+        preview = lines[:30]
+        if preview:
+            print("[WARN] No speaker labels detected. Falling back to single-speaker parsing.")
+            for pline in preview:
+                print(f"[WARN] {pline}")
+
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+        if not paragraphs:
+            compact = " ".join([ln.strip() for ln in lines if ln.strip()]).strip()
+            paragraphs = [compact] if compact else ["(no transcript content)"]
+        turns = [{"speaker": "Speaker", "text": p} for p in paragraphs]
+
+    if not turns:
+        turns = [{"speaker": "Speaker", "text": "(no transcript content)"}]
+
+    _log_turns(turns)
     return turns
+
+def run_debug_parse_samples() -> None:
+    samples = {
+        "colon": "Alice: Hello team\nBob: Hi Alice",
+        "brackets": "[Charlie] Here's an update on the timeline.",
+        "dash": "Dana - We should ship Friday",
+        "em_dash": "Erin \u2014 The build is green",
+        "speaker_labels": "SPEAKER 1: Hello\nSpeaker 2: Hi\nUnknown Speaker 1: Not sure",
+        "timestamps": "00:01:23 Alice: Starting now\n[00:01:25] Bob: Sounds good",
+        "continuations": "Fiona: First point\nstill same speaker\nGabe: Next item",
+        "json_list": '[{"speaker":"Hal","text":"Line one"},{"speaker":"Ivy","text":"Line two"}]',
+        "json_dict": '{"utterances":[{"speaker":"Jan","text":"Welcome"},{"speaker":"Kim","text":"Thanks"}]}',
+        "no_labels": "This is a paragraph.\n\nThis is another paragraph without labels.",
+    }
+
+    for name, text in samples.items():
+        print(f"\n[DEBUG] Sample: {name}")
+        turns = parse_transcript(text)
+        print(f"[DEBUG] Parsed turns: {turns}")
 
 def load_roles(path: str) -> Tuple[List[Dict], Dict[str, str]]:
     with open(path, "r", encoding="utf-8") as f:
@@ -262,7 +393,12 @@ def main():
     parser.add_argument("--output", required=True, help="Path to output PDF")
     parser.add_argument("--upload-date", default=None, help="Upload/processed date (ISO format) to override AI-extracted date")
     parser.add_argument("--source-organizations", default=None, help="Comma-separated list of source organizations")
+    parser.add_argument("--debug-parse", action="store_true", help="Run transcript parser samples and exit")
     args = parser.parse_args()
+
+    if args.debug_parse:
+        run_debug_parse_samples()
+        return
 
     # Read transcript first
     transcript = read_text(args.input)
@@ -270,7 +406,8 @@ def main():
     # Parse transcript to validate format
     turns = parse_transcript(transcript)
     if not turns:
-        raise RuntimeError("No speaker lines parsed. Make sure transcript lines look like: Name: text")
+        print("[WARN] Transcript parsing produced no turns; using fallback single-speaker entry.")
+        turns = [{"speaker": "Speaker", "text": "(no transcript content)"}]
 
     # Load roles
     roles, name_to_role = load_roles(args.roles)

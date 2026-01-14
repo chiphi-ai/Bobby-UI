@@ -46,6 +46,68 @@ except Exception:
 API_BASE = "https://api.assemblyai.com/v2"
 
 
+def load_custom_vocabulary(vocab_path: Path = None, user_email: str = None) -> list[str]:
+    """
+    Load custom vocabulary for word boosting in AssemblyAI.
+    
+    Priority:
+    1. User-specific vocabulary from database (if user_email provided)
+    2. Fallback to custom_vocabulary.txt file (backward compatible)
+    
+    Args:
+        vocab_path: Optional path to vocabulary file (for backward compatibility)
+        user_email: Optional user email to load user-specific vocabulary
+    
+    Returns:
+        List of vocabulary terms
+    """
+    words = []
+    
+    # Try to load user-specific vocabulary from database first
+    if user_email:
+        try:
+            # Import here to avoid circular imports
+            import sys
+            import os
+            # Add parent directory to path to import web_app functions
+            parent_dir = Path(__file__).parent
+            if str(parent_dir) not in sys.path:
+                sys.path.insert(0, str(parent_dir))
+            
+            # Try to import vocabulary functions
+            try:
+                from web_app import get_user_custom_vocabulary
+                user_words = get_user_custom_vocabulary(user_email)
+                if user_words:
+                    words.extend(user_words)
+                    print(f"Loaded {len(user_words)} custom vocabulary terms for user {user_email}")
+            except ImportError:
+                # web_app not available (standalone script), skip user vocab
+                pass
+        except Exception as e:
+            print(f"Warning: Could not load user vocabulary: {e}")
+    
+    # Fallback to file-based vocabulary (backward compatible)
+    if vocab_path is None:
+        vocab_path = Path(__file__).parent / "custom_vocabulary.txt"
+    
+    if vocab_path.exists():
+        try:
+            with open(vocab_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    word = line.strip()
+                    # Skip empty lines and comments
+                    if word and not word.startswith("#"):
+                        if word not in words:  # Avoid duplicates
+                            words.append(word)
+            if words and not user_email:
+                print(f"Loaded {len(words)} custom vocabulary words from {vocab_path.name}")
+        except Exception as e:
+            print(f"Warning: Could not load custom vocabulary file: {e}")
+    
+    return words
+
+
 def die(msg: str, code: int = 1) -> None:
     print(f"\nERROR: {msg}\n", file=sys.stderr)
     raise SystemExit(code)
@@ -64,13 +126,18 @@ def ensure_dirs():
     Path("output").mkdir(parents=True, exist_ok=True)
 
 
-def to_wav_16k_mono(input_path: Path) -> Path:
+def to_wav_16k_mono(input_path: Path, enhance_audio: bool = False, **kwargs) -> Path:
     ensure_dirs()
     out_wav = Path("output") / f"{input_path.stem}_16k.wav"
     cmd = [
         "ffmpeg", "-y",
         "-i", str(input_path),
         "-vn",
+    ]
+    if enhance_audio:
+        # Basic denoise + loudness normalization for noisy recordings
+        cmd += ["-af", "afftdn,loudnorm=I=-16:TP=-1.5:LRA=11"]
+    cmd += [
         "-ac", "1",
         "-ar", "16000",
         "-c:a", "pcm_s16le",
@@ -94,7 +161,7 @@ def upload_audio(wav_path: Path, headers: dict) -> str:
     return upload_url
 
 
-def submit_transcript(upload_url: str, headers: dict, speakers_expected: int | None, speech_threshold: float | None):
+def submit_transcript(upload_url: str, headers: dict, speakers_expected: int | None, speech_threshold: float | None, custom_vocab: list[str] = None):
     print("3) Submitting transcription job...")
     payload = {
         "audio_url": upload_url,
@@ -104,7 +171,7 @@ def submit_transcript(upload_url: str, headers: dict, speakers_expected: int | N
     }
 
     # If you know the number of speakers, this helps a lot.
-    # AssemblyAI API supports speakers_expected in the transcript request body.  :contentReference[oaicite:1]{index=1}
+    # AssemblyAI API supports speakers_expected in the transcript request body.
     if speakers_expected is not None:
         payload["speakers_expected"] = int(speakers_expected)
 
@@ -112,6 +179,11 @@ def submit_transcript(upload_url: str, headers: dict, speakers_expected: int | N
     # (Higher = stricter about what counts as speech; try 0.6–0.8 if music is getting transcribed.)
     if speech_threshold is not None:
         payload["speech_threshold"] = float(speech_threshold)
+    
+    # Custom vocabulary for word boosting (improves recognition of domain-specific terms)
+    if custom_vocab:
+        payload["word_boost"] = custom_vocab
+        print(f"   Using {len(custom_vocab)} custom vocabulary words for word boosting")
 
     r = requests.post(f"{API_BASE}/transcript", headers=headers, json=payload)
     if r.status_code >= 300:
@@ -207,6 +279,7 @@ def main():
     parser.add_argument("input_file", help="Path to audio/video file (e.g., input\\Square.m4a)")
     parser.add_argument("--speakers", type=int, default=None, help="Expected number of speakers (e.g., 4). Omit to auto-detect.")
     parser.add_argument("--speech-threshold", type=float, default=None, help="0.0-1.0. Try 0.6-0.8 to ignore music/noise.")
+    parser.add_argument("--enhance-audio", action="store_true", help="Apply audio enhancement (denoising + normalization). Use for noisy recordings.")
     args = parser.parse_args()
 
     api_key = os.environ.get("ASSEMBLYAI_API_KEY", "").strip()
@@ -235,10 +308,17 @@ def main():
 
     headers = {"authorization": api_key}
 
+    # Load custom vocabulary (optional - won't break if file doesn't exist)
+    custom_vocab = load_custom_vocabulary()
+
     print("Uploading and transcribing with AssemblyAI (dynamic speakers)...")
-    wav_path = to_wav_16k_mono(input_path)
+    try:
+        wav_path = to_wav_16k_mono(input_path, enhance_audio=args.enhance_audio)
+    except TypeError:
+        print("WARN: to_wav_16k_mono does not accept enhance_audio; running without enhancement.")
+        wav_path = to_wav_16k_mono(input_path)
     upload_url = upload_audio(wav_path, headers=headers)
-    tid = submit_transcript(upload_url, headers=headers, speakers_expected=args.speakers, speech_threshold=args.speech_threshold)
+    tid = submit_transcript(upload_url, headers=headers, speakers_expected=args.speakers, speech_threshold=args.speech_threshold, custom_vocab=custom_vocab)
     result = poll_transcript(tid, headers=headers)
 
     save_outputs(base_stem=input_path.stem, full_json=result)

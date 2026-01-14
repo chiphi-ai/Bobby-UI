@@ -13,8 +13,17 @@ The error occurs because the redirect URI in your Box app settings doesn't match
    - Log in with your Box account
    - Go to **My Apps** → Select your app (or create a new one)
 
-2. **Add Redirect URI**
+2. **Configure Application Scopes (CRITICAL)**
    - Go to **Configuration** tab
+   - Scroll down to **Application Scopes** section
+   - **Enable the following scopes** (check the boxes):
+     - ✅ **Read and write all files and folders stored in Box**
+     - ✅ **Manage users** (if available, optional but recommended)
+   - **IMPORTANT**: Without these scopes, you'll get "insufficient_scope" errors when trying to upload files
+   - Click **Save Changes** (important: you must save!)
+
+3. **Add Redirect URI**
+   - Still in **Configuration** tab
    - Scroll down to **OAuth 2.0 Redirect URI** section
    - Click **Add Redirect URI**
    - Add this **exact** URI:
@@ -28,7 +37,7 @@ The error occurs because the redirect URI in your Box app settings doesn't match
      - **Case-sensitive** - must match exactly
    - Click **Save Changes** (important: you must save!)
 
-3. **Verify App Settings**
+4. **Verify App Settings**
    - Make sure your app is **Active** (not disabled)
    - Check that **OAuth 2.0** is enabled for your app
    - Verify the **Client ID** matches your `.env` file

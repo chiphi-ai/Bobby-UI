@@ -4,262 +4,542 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Past Meetings — Phi AI</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <style>
-    :root{
-      --bg-primary: #ffffff;
-      --bg-secondary: #f5f5f7;
-      --text-primary: #1d1d1f;
-      --text-secondary: #6e6e73;
-      --accent-blue: #007AFF;
-      --accent-blue-hover: #0051D5;
-      --border: #d2d2d7;
-      --border-light: #e5e5ea;
-      --shadow: 0 2px 8px rgba(0,0,0,0.08);
-      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
-      --radius: 12px;
-    }
-
-    *{ 
-      box-sizing:border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body{
-      margin:0;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      color: var(--text-primary);
-      background: var(--bg-primary);
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-
-    a{ 
-      color: var(--accent-blue);
-      text-decoration: none;
-      transition: color 0.2s ease;
-    }
-    a:hover{
-      color: var(--accent-blue-hover);
-    }
-
-    .wrap{
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 0 20px 80px;
-    }
-
-    .topbar{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin: 0 -20px 32px -20px;
-      padding: 16px 20px;
-      background: #1d1d1f;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-
-    .brand{
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .brand a{
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      text-decoration: none;
-      color: inherit;
-      cursor: pointer;
-      transition: opacity 0.2s ease;
-    }
-
-    .brand a:hover{
-      opacity: 0.8;
-    }
-
-    .logo-img{
-      width: 40px;
-      height: 40px;
-      object-fit: contain;
-      border-radius: 8px;
-      display: block;
-    }
-
-    .title h1{
-      margin: 0;
-      font-size: 24px;
-      font-weight: 600;
-      color: white;
-      letter-spacing: -0.5px;
-    }
-
-    .title .tag{
-      margin-top: 4px;
-      color: rgba(255,255,255,0.7);
-      font-size: 14px;
-      font-weight: 400;
-    }
-
-    .nav-tabs{
-      display: flex;
-      gap: 8px;
-      margin-bottom: 32px;
-      border-bottom: 1px solid var(--border-light);
-    }
-
-    .nav-tabs a{
-      padding: 12px 20px;
-      color: var(--text-secondary);
-      font-size: 15px;
-      font-weight: 500;
-      text-decoration: none;
-      border-bottom: 2px solid transparent;
-      transition: all 0.2s ease;
-    }
-
-    .nav-tabs a:hover{
-      color: var(--text-primary);
-    }
-
-    .nav-tabs a.active{
-      color: var(--accent-blue);
-      border-bottom-color: var(--accent-blue);
-    }
-
-    .card{
-      background: var(--bg-primary);
-      border: 1px solid var(--border-light);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 24px;
-      margin: 20px 0;
-    }
-
-    .card h2{
-      font-size: 20px;
-      font-weight: 600;
-      color: var(--text-primary);
-      margin-bottom: 16px;
-      letter-spacing: -0.3px;
-    }
-
-    .meeting-list{
+    .meeting-list {
       display: flex;
       flex-direction: column;
-      gap: 12px;
-      margin-top: 16px;
+      gap: var(--space-md);
+      margin-top: var(--space-md);
     }
-
-    .meeting-item{
-      padding: 16px;
+    
+    .meeting-item {
+      padding: var(--space-lg);
       background: var(--bg-secondary);
       border: 1px solid var(--border-light);
-      border-radius: 8px;
-      transition: all 0.2s ease;
+      border-radius: var(--border-radius);
+      transition: all var(--transition-base);
     }
-
-    .meeting-item:hover{
+    
+    .meeting-item:hover {
       background: var(--bg-primary);
       box-shadow: var(--shadow);
+      transform: translateY(-1px);
     }
-
-    .meeting-item h3{
-      font-size: 16px;
-      font-weight: 600;
+    
+    .meeting-item h3 {
+      font-size: var(--font-size-md);
+      font-weight: var(--font-weight-semibold);
       color: var(--text-primary);
-      margin-bottom: 8px;
+      margin-bottom: var(--space-sm);
     }
-
-    .meeting-item .meta{
-      font-size: 13px;
+    
+    .meeting-item .meta {
+      font-size: var(--font-size-sm);
       color: var(--text-secondary);
-      margin-bottom: 8px;
-      line-height: 1.8;
+      margin-bottom: var(--space-md);
+      line-height: var(--line-height-relaxed);
     }
-
-    .meeting-item .meta span{
+    
+    .meeting-item .meta span {
       display: inline-block;
-      margin-right: 16px;
-      margin-bottom: 4px;
+      margin-right: var(--space-md);
+      margin-bottom: var(--space-xs);
     }
-
-    .meeting-item .meta .speakers{
+    
+    .meeting-item .meta .speakers {
       display: block;
-      margin-top: 4px;
-      font-weight: 500;
+      margin-top: var(--space-xs);
+      font-weight: var(--font-weight-medium);
     }
-
-    .meeting-item .actions{
+    
+    .meeting-item .actions {
       display: flex;
-      gap: 12px;
-      margin-top: 12px;
+      gap: var(--space-sm);
+      margin-top: var(--space-md);
       flex-wrap: wrap;
     }
-
-    .meeting-item .actions a{
-      font-size: 14px;
-      color: var(--accent-blue);
-      padding: 8px 12px;
+    
+    .meeting-item .actions a {
+      font-size: var(--font-size-sm);
+      padding: var(--space-sm) var(--space-md);
       border: 1px solid var(--border-light);
-      border-radius: 6px;
-      transition: all 0.2s ease;
+      border-radius: var(--border-radius-sm);
+      transition: all var(--transition-fast);
+      text-decoration: none;
     }
-
-    .meeting-item .actions a:hover{
+    
+    .meeting-item .actions a:hover {
       background: var(--bg-secondary);
-      border-color: var(--accent-blue);
+      border-color: var(--accent);
     }
-
-    .empty-state{
+    
+    .empty-state {
       text-align: center;
-      padding: 48px 24px;
+      padding: var(--space-3xl) var(--space-lg);
       color: var(--text-secondary);
     }
-
-    .empty-state h3{
-      font-size: 18px;
-      font-weight: 600;
+    
+    .empty-state h3 {
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
       color: var(--text-primary);
-      margin-bottom: 8px;
+      margin-bottom: var(--space-sm);
     }
-
-    @media (max-width: 768px){
-      .wrap{
-        padding: 0 16px 60px;
-      }
-      .card{
-        padding: 20px;
-      }
-      .nav-tabs{
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-      .nav-tabs a{
-        white-space: nowrap;
-      }
-      .meeting-item .meta span{
-        display: block;
-        margin-bottom: 4px;
-      }
+    
+    .nav-tabs {
+      display: flex;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-xl);
+      border-bottom: 1px solid var(--border-light);
+      flex-wrap: wrap;
     }
-
-    .delete-btn{
-      color: var(--accent-red) !important;
+    
+    .nav-tabs a {
+      padding: var(--space-md) var(--space-lg);
+      color: var(--text-secondary);
+      font-size: var(--font-size-base);
+      font-weight: var(--font-weight-medium);
+      text-decoration: none;
+      border-bottom: 2px solid transparent;
+      transition: all var(--transition-fast);
     }
-
-    .delete-btn:hover{
-      background: #fff0f0 !important;
-      border-color: var(--accent-red) !important;
+    
+    .nav-tabs a:hover {
+      color: var(--text-primary);
+    }
+    
+    .nav-tabs a.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
     }
   </style>
+</head>
+<body>
+  <!-- Animated Wave Background -->
+  <div class="bg-waves{% if waves_debug %} debug-mode{% endif %}" aria-hidden="true"></div>
+  {% if waves_debug %}
+  <div class="waves-debug-badge">🌊 WAVES ON</div>
+  {% endif %}
+  
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <a href="{{ url_for('account_home') }}" class="header-brand">
+          <img src="{{ url_for('static', filename='images/logo.png.png') }}" alt="Phi AI" class="header-logo">
+        </a>
+        <nav class="header-nav">
+          <a href="{{ url_for('account_home') }}" class="header-link">Dashboard</a>
+          <a href="{{ url_for('account_meetings') }}" class="header-link active">Meetings</a>
+          <a href="{{ url_for('ask_get') }}" class="header-link">Ask Phi</a>
+          <a href="{{ url_for('connect_apps_get') }}" class="header-link">Connect Apps</a>
+          <a href="{{ url_for('account_get') }}" class="header-link">Settings</a>
+          <a href="{{ url_for('logout') }}" class="header-link">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content enter">
+      <div class="nav-tabs">
+        <a href="{{ url_for('account_home') }}">Dashboard</a>
+        <a href="{{ url_for('account_meetings') }}" class="active">Past Meetings</a>
+        <a href="{{ url_for('connect_apps_get') }}">Connect Apps</a>
+        <a href="{{ url_for('account_get') }}">Settings</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+      </div>
+
+      <div class="card holo-border enter enter-delay-1">
+        <div class="card-header">
+          <h2 class="card-title">All Meetings ({{ meetings|length }})</h2>
+        </div>
+        <div class="card-body">
+          {% if meetings %}
+            <div class="meeting-list">
+              {% for meeting in meetings %}
+              <div class="meeting-item enter" style="animation-delay: {{ loop.index0 * 0.05 }}s;">
+                <h3>{{ meeting.name or meeting.id }}</h3>
+                <div class="meta">
+                  <span>📅 Date: {{ meeting.processed_at[:10] if meeting.processed_at else 'N/A' }}</span>
+                  <span>⏰ Time: {{ meeting.processed_at[11:16] if meeting.processed_at and 'T' in meeting.processed_at else 'N/A' }}</span>
+                  <span>👥 Speakers: {{ meeting.speaker_count }}</span>
+                  {% if meeting.participants %}
+                  <span class="speakers">Participants: {{ meeting.participants|length }}</span>
+                  {% endif %}
+                  {% if meeting.speakers %}
+                  <span class="speakers">Identified voices: {{ meeting.speakers|join(', ') }}</span>
+                  {% endif %}
+                  {% if meeting.audio_size_bytes %}
+                  <span>💾 Size: {{ (meeting.audio_size_bytes / 1024 / 1024)|round(2) }} MB</span>
+                  {% endif %}
+                  {% if meeting.get('labels_updated_at') %}
+                  <span style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); color: white; border-radius: 16px; font-size: 12px; font-weight: 600; margin-top: var(--space-xs); box-shadow: 0 2px 4px rgba(76, 175, 80, 0.3);">
+                    <span style="font-size: 14px;">✏️</span>
+                    <span>Updated {{ meeting.labels_updated_at[:10] if meeting.labels_updated_at else 'Recently' }}</span>
+                    {% if meeting.get('labels_version') and meeting.labels_version > 1 %}
+                    <span style="opacity: 0.9; font-size: 10px;">(v{{ meeting.labels_version }})</span>
+                    {% endif %}
+                  </span>
+                  {% endif %}
+                </div>
+                {% if meeting.get('has_unknown_speakers') %}
+                <div class="unknown-speakers-card" style="margin: var(--space-lg) 0; padding: var(--space-lg); background: linear-gradient(135deg, rgba(255, 149, 0, 0.08) 0%, rgba(255, 193, 7, 0.12) 100%); border: 2px solid rgba(255, 149, 0, 0.2); border-radius: var(--border-radius-lg); box-shadow: 0 4px 20px rgba(255, 149, 0, 0.1); backdrop-filter: blur(10px); transition: all var(--transition-base); animation: slideInUp 0.4s ease-out;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-md);">
+                    <div style="flex: 1; min-width: 200px;">
+                      <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-xs);">
+                        <span style="font-size: 24px; animation: pulse 2s ease-in-out infinite;">🔍</span>
+                        <strong style="color: #FF9500; font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); letter-spacing: -0.3px;">Unidentified Speakers Detected</strong>
+                      </div>
+                      <p style="margin: 0; font-size: var(--font-size-sm); color: rgba(133, 100, 4, 0.8); line-height: 1.5;">
+                        {{ meeting.unknown_speaker_count }} unknown speaker{% if meeting.unknown_speaker_count > 1 %}s{% endif %} need{% if meeting.unknown_speaker_count == 1 %}s{% endif %} labeling to improve transcript accuracy
+                      </p>
+                    </div>
+                    <button onclick="openLabelSpeakersModal('{{ meeting.id }}', {{ meeting.unknown_speakers|tojson }})" 
+                            class="btn btn-primary label-speakers-btn" style="white-space: nowrap; padding: 12px 24px; font-weight: var(--font-weight-semibold); box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); transition: all var(--transition-base); position: relative; overflow: hidden;">
+                      <span style="position: relative; z-index: 1;">🏷️ Label Speakers</span>
+                    </button>
+                  </div>
+                </div>
+                {% endif %}
+                <div class="actions">
+                  {% if meeting.transcript_path %}
+                  <a href="{{ url_for('meeting_transcript', meeting_id=meeting.id) }}" target="_blank" class="btn btn-sm btn-secondary">📄 View Transcript</a>
+                  {% endif %}
+                  <a href="{{ url_for('meeting_pdf', meeting_id=meeting.id) }}" target="_blank" class="btn btn-sm btn-secondary">📑 View PDF</a>
+                  {% if meeting.audio_path %}
+                  <a href="{{ url_for('meeting_audio', meeting_id=meeting.id) }}" class="btn btn-sm btn-secondary">🎵 Download Audio</a>
+                  {% endif %}
+                  <a href="#" onclick="deleteMeeting('{{ meeting.id }}', '{{ meeting.name or meeting.id }}'); return false;" class="btn btn-sm btn-danger">🗑️ Delete</a>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="empty-state">
+              <h3>No meetings found</h3>
+              <p>Record your first meeting to get started.</p>
+              <div style="margin-top: var(--space-lg);">
+                <a class="btn btn-primary" href="{{ url_for('record_meeting') }}">Record Meeting</a>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-inner">
+        <p>&copy; 2026 Phi AI. All rights reserved.</p>
+        <p style="margin-top: var(--space-sm); font-size: var(--font-size-sm); color: var(--text-secondary);">189 Vassar St, Cambridge, MA 02139</p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Label Speakers Modal -->
+  <div id="labelSpeakersModal" class="modal-overlay" style="display: none; backdrop-filter: blur(8px); background: rgba(0, 0, 0, 0.5);">
+    <div class="modal label-speakers-modal" style="max-width: 640px; background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.95) 100%); backdrop-filter: blur(20px); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.5); animation: modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+      <div class="modal-header" style="padding: var(--space-xl) var(--space-xl) var(--space-lg); border-bottom: 1px solid rgba(0, 0, 0, 0.06); background: linear-gradient(135deg, rgba(0, 122, 255, 0.05) 0%, rgba(0, 122, 255, 0.02) 100%);">
+        <div style="display: flex; align-items: center; gap: var(--space-md);">
+          <div style="width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);">
+            <span style="font-size: 24px;">🏷️</span>
+          </div>
+          <div>
+            <h3 class="modal-title" style="margin: 0; font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); color: var(--text-primary); letter-spacing: -0.5px; font-family: var(--font-title);">Label Unidentified Speakers</h3>
+            <p style="margin: var(--space-xs) 0 0 0; font-size: var(--font-size-sm); color: var(--text-secondary);">Assign names to improve accuracy</p>
+          </div>
+        </div>
+        <button type="button" class="modal-close" onclick="closeLabelSpeakersModal()" style="background: rgba(0, 0, 0, 0.05); border: none; width: 36px; height: 36px; border-radius: 8px; font-size: 20px; cursor: pointer; color: var(--text-secondary); transition: all var(--transition-fast); display: flex; align-items: center; justify-content: center; margin-left: auto;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: var(--space-xl);">
+        <div style="padding: var(--space-md); background: linear-gradient(135deg, rgba(0, 122, 255, 0.05) 0%, rgba(0, 122, 255, 0.02) 100%); border-radius: var(--border-radius); border-left: 3px solid var(--accent); margin-bottom: var(--space-xl);">
+          <p style="margin: 0; color: var(--text-primary); font-size: var(--font-size-sm); line-height: 1.6;">
+            <strong style="color: var(--accent);">💡 Tip:</strong> These labels will update the transcript and regenerate your report. Leave blank to keep as "Unknown Speaker".
+          </p>
+        </div>
+        <form id="labelSpeakersForm">
+          <div id="speakerInputs" style="display: flex; flex-direction: column; gap: var(--space-lg);">
+            <!-- Inputs will be dynamically added here -->
+          </div>
+          <div id="previewSection" style="display: none; margin-top: var(--space-xl); padding: var(--space-lg); background: linear-gradient(135deg, rgba(52, 199, 89, 0.08) 0%, rgba(52, 199, 89, 0.04) 100%); border-radius: var(--border-radius-lg); border: 2px solid rgba(52, 199, 89, 0.2); box-shadow: 0 4px 16px rgba(52, 199, 89, 0.1); animation: fadeInUp 0.3s ease-out;">
+            <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-md);">
+              <span style="font-size: 20px;">✨</span>
+              <strong style="font-size: var(--font-size-sm); color: var(--success); font-weight: var(--font-weight-semibold); text-transform: uppercase; letter-spacing: 0.5px;">Preview Changes</strong>
+            </div>
+            <div id="previewContent" style="font-size: var(--font-size-sm); color: var(--text-primary); line-height: 1.8;">
+              <!-- Preview will be dynamically added here -->
+            </div>
+          </div>
+          <div class="form-actions" style="display: flex; gap: var(--space-md); margin-top: var(--space-xl); padding-top: var(--space-lg); border-top: 1px solid rgba(0, 0, 0, 0.06); justify-content: flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="closeLabelSpeakersModal()" style="padding: 12px 24px; font-weight: var(--font-weight-medium);">Cancel</button>
+            <button type="submit" class="btn btn-primary" style="padding: 12px 24px; font-weight: var(--font-weight-semibold); box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);">Save Labels</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Double Confirmation Modals -->
+  <div id="confirmRegenerateModal" class="modal-overlay" style="display: none; backdrop-filter: blur(8px); background: rgba(0, 0, 0, 0.5);">
+    <div class="modal" style="max-width: 520px; background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.95) 100%); backdrop-filter: blur(20px); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.5); animation: modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+      <div class="modal-header" style="padding: var(--space-xl); border-bottom: 1px solid rgba(0, 0, 0, 0.06);">
+        <div style="display: flex; align-items: center; gap: var(--space-md);">
+          <div style="width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #FF9500 0%, #FF6B00 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(255, 149, 0, 0.3);">
+            <span style="font-size: 24px;">⚠️</span>
+          </div>
+          <h3 class="modal-title" style="margin: 0; font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); color: var(--text-primary); letter-spacing: -0.5px; font-family: var(--font-title);">Regenerate Report?</h3>
+        </div>
+      </div>
+      <div class="modal-body" style="padding: var(--space-xl);">
+        <p style="font-size: var(--font-size-md); color: var(--text-primary); margin-bottom: var(--space-md); line-height: 1.6;">Regenerate report with new speaker names?</p>
+        <div style="padding: var(--space-md); background: rgba(255, 149, 0, 0.08); border-radius: var(--border-radius); border-left: 3px solid var(--warning);">
+          <p style="margin: 0; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6;">
+            This will replace the existing PDF and resend it to recipients and connected apps.
+          </p>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: var(--space-lg) var(--space-xl); border-top: 1px solid rgba(0, 0, 0, 0.06); display: flex; gap: var(--space-md); justify-content: flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="closeConfirmRegenerateModal()" style="padding: 12px 24px; font-weight: var(--font-weight-medium);">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="proceedToFinalConfirm()" style="padding: 12px 24px; font-weight: var(--font-weight-semibold); box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="finalConfirmModal" class="modal-overlay" style="display: none; backdrop-filter: blur(8px); background: rgba(0, 0, 0, 0.5);">
+    <div class="modal" style="max-width: 520px; background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.95) 100%); backdrop-filter: blur(20px); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.5); animation: modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+      <div class="modal-header" style="padding: var(--space-xl); border-bottom: 1px solid rgba(0, 0, 0, 0.06);">
+        <div style="display: flex; align-items: center; gap: var(--space-md);">
+          <div style="width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #34C759 0%, #28A745 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3);">
+            <span style="font-size: 24px;">✓</span>
+          </div>
+          <h3 class="modal-title" style="margin: 0; font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); color: var(--text-primary); letter-spacing: -0.5px; font-family: var(--font-title);">Final Confirmation</h3>
+        </div>
+      </div>
+      <div class="modal-body" style="padding: var(--space-xl);">
+        <p style="margin-bottom: var(--space-lg); font-size: var(--font-size-md); color: var(--text-primary); line-height: 1.6;">Please confirm you want to update this meeting with new speaker labels.</p>
+        <input type="text" id="finalConfirmInput" placeholder="Type CONFIRM to proceed" 
+               class="final-confirm-input"
+               style="width: 100%; padding: 14px 18px; border: 2px solid var(--border); border-radius: var(--border-radius); font-size: var(--font-size-base); margin-bottom: var(--space-md); transition: all var(--transition-base); background: var(--bg-primary); font-weight: var(--font-weight-medium); letter-spacing: 0.5px;"
+               autocomplete="off">
+        <div style="padding: var(--space-md); background: rgba(52, 199, 89, 0.08); border-radius: var(--border-radius); border-left: 3px solid var(--success);">
+          <p style="margin: 0; font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.6;">
+            This action will regenerate the PDF, replace the old file, and resend to all recipients.
+          </p>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: var(--space-lg) var(--space-xl); border-top: 1px solid rgba(0, 0, 0, 0.06); display: flex; gap: var(--space-md); justify-content: flex-end;">
+        <button type="button" class="btn btn-secondary" onclick="closeFinalConfirmModal()" style="padding: 12px 24px; font-weight: var(--font-weight-medium);">Cancel</button>
+        <button type="button" id="finalConfirmBtn" class="btn btn-primary" disabled onclick="submitLabelSpeakers()" style="padding: 12px 24px; font-weight: var(--font-weight-semibold); box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%); opacity: 0.5; transition: all var(--transition-base);">Confirm Update</button>
+      </div>
+    </div>
+  </div>
+
   <script>
+    let currentMeetingId = null;
+    let currentLabels = {};
+
+    function openLabelSpeakersModal(meetingId, unknownSpeakers) {
+      currentMeetingId = meetingId;
+      currentLabels = {};
+      
+      const inputsContainer = document.getElementById('speakerInputs');
+      inputsContainer.innerHTML = '';
+      
+      unknownSpeakers.forEach((speaker, index) => {
+        const div = document.createElement('div');
+        div.className = 'speaker-input-group';
+        div.style.cssText = 'animation: fadeInUp 0.3s ease-out; animation-delay: ' + (index * 0.1) + 's; animation-fill-mode: both;';
+        div.innerHTML = `
+          <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-xs);">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, rgba(0, 122, 255, 0.1) 0%, rgba(0, 122, 255, 0.05) 100%); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: var(--font-weight-semibold); color: var(--accent); flex-shrink: 0;">
+              ${index + 1}
+            </div>
+            <label class="form-label" style="font-weight: var(--font-weight-semibold); color: var(--text-primary); font-size: var(--font-size-sm); margin: 0;">${escapeHtml(speaker)}</label>
+          </div>
+          <input type="text" 
+                 data-speaker="${escapeHtml(speaker)}" 
+                 class="speaker-name-input" 
+                 placeholder="Enter name (e.g., John Smith)" 
+                 maxlength="100"
+                 oninput="updateLabelPreview(); checkDuplicateNames(this)"
+                 onblur="trimInput(this)"
+                 onfocus="this.style.borderColor='var(--accent)'; this.style.boxShadow='0 0 0 3px rgba(0, 122, 255, 0.1)';"
+                 style="width: 100%; padding: 14px 18px; border: 2px solid var(--border); border-radius: var(--border-radius); font-size: var(--font-size-base); transition: all var(--transition-base); background: var(--bg-primary); font-weight: var(--font-weight-regular);">
+        `;
+        inputsContainer.appendChild(div);
+      });
+      
+      // Initialize preview
+      updateLabelPreview();
+    }
+
+    function closeLabelSpeakersModal() {
+      document.getElementById('labelSpeakersModal').style.display = 'none';
+      currentMeetingId = null;
+      currentLabels = {};
+    }
+
+    function updateLabelPreview() {
+      const inputs = document.querySelectorAll('#speakerInputs input[data-speaker]');
+      currentLabels = {};
+      const previewSection = document.getElementById('previewSection');
+      const previewContent = document.getElementById('previewContent');
+      
+      inputs.forEach(input => {
+        const speaker = input.getAttribute('data-speaker');
+        const value = input.value.trim();
+        if (value) {
+          currentLabels[speaker] = value;
+        }
+      });
+      
+      // Update preview
+      if (Object.keys(currentLabels).length > 0) {
+        let previewHtml = '';
+        let index = 0;
+        for (const [unknown, name] of Object.entries(currentLabels)) {
+          previewHtml += `
+            <div style="display: flex; align-items: center; gap: var(--space-md); padding: var(--space-sm) 0; border-bottom: 1px solid rgba(52, 199, 89, 0.1); animation: fadeIn 0.2s ease-out; animation-delay: ${index * 0.05}s; animation-fill-mode: both;">
+              <span style="color: var(--text-secondary); font-size: var(--font-size-sm); min-width: 140px;">${escapeHtml(unknown)}</span>
+              <span style="color: var(--text-secondary); font-size: 18px;">→</span>
+              <strong style="color: var(--success); font-size: var(--font-size-base); font-weight: var(--font-weight-semibold); flex: 1;">${escapeHtml(name)}</strong>
+            </div>`;
+          index++;
+        }
+        previewContent.innerHTML = previewHtml;
+        previewSection.style.display = 'block';
+      } else {
+        previewSection.style.display = 'none';
+      }
+    }
+
+    document.getElementById('labelSpeakersForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      closeLabelSpeakersModal();
+      document.getElementById('confirmRegenerateModal').style.display = 'flex';
+    });
+
+    function closeConfirmRegenerateModal() {
+      document.getElementById('confirmRegenerateModal').style.display = 'none';
+    }
+
+    function proceedToFinalConfirm() {
+      closeConfirmRegenerateModal();
+      document.getElementById('finalConfirmModal').style.display = 'flex';
+      document.getElementById('finalConfirmInput').value = '';
+      document.getElementById('finalConfirmBtn').disabled = true;
+      setTimeout(() => document.getElementById('finalConfirmInput').focus(), 100);
+    }
+
+    document.getElementById('finalConfirmInput').addEventListener('input', function() {
+      const btn = document.getElementById('finalConfirmBtn');
+      btn.disabled = this.value.trim() !== 'CONFIRM';
+    });
+
+    document.getElementById('finalConfirmInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter' && this.value.trim() === 'CONFIRM') {
+        submitLabelSpeakers();
+      }
+    });
+
+    function closeFinalConfirmModal() {
+      document.getElementById('finalConfirmModal').style.display = 'none';
+    }
+
+    async function submitLabelSpeakers() {
+      if (!currentMeetingId) return;
+      
+      const btn = document.getElementById('finalConfirmBtn');
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
+      
+      try {
+        const response = await fetch(`/api/meetings/${currentMeetingId}/label_speakers`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ labels: currentLabels })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+          closeFinalConfirmModal();
+          await showConfirmModal("Success", 
+            `Speaker labels updated successfully!\n\n${result.summary || ''}`, 
+            "OK");
+          window.location.reload();
+        } else {
+          await showConfirmModal("Error", result.error || result.message || "Failed to update speaker labels", "OK");
+          btn.disabled = false;
+          btn.textContent = 'Confirm Update';
+        }
+      } catch (error) {
+        await showConfirmModal("Error", `An error occurred: ${error.message}`, "OK");
+        btn.disabled = false;
+        btn.textContent = 'Confirm Update';
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function trimInput(input) {
+      input.value = input.value.trim();
+      updateLabelPreview();
+    }
+
+    function checkDuplicateNames(input) {
+      const speaker = input.getAttribute('data-speaker');
+      const value = input.value.trim().toLowerCase();
+      
+      if (!value) {
+        input.style.borderColor = '';
+        input.style.boxShadow = '';
+        input.style.background = '';
+        return;
+      }
+      
+      // Check for duplicates
+      const inputs = document.querySelectorAll('#speakerInputs input[data-speaker]');
+      let duplicateFound = false;
+      inputs.forEach(otherInput => {
+        if (otherInput !== input && otherInput.value.trim().toLowerCase() === value) {
+          duplicateFound = true;
+        }
+      });
+      
+      if (duplicateFound) {
+        input.style.borderColor = 'var(--error)';
+        input.style.boxShadow = '0 0 0 3px rgba(255, 59, 48, 0.1)';
+        input.style.background = 'rgba(255, 59, 48, 0.05)';
+        input.title = 'This name is already assigned to another speaker';
+      } else {
+        input.style.borderColor = 'var(--success)';
+        input.style.boxShadow = '0 0 0 3px rgba(52, 199, 89, 0.1)';
+        input.style.background = 'rgba(52, 199, 89, 0.03)';
+        input.title = '';
+      }
+    }
+
+    // Close modals on outside click
+    window.onclick = function(event) {
+      const modals = ['labelSpeakersModal', 'confirmRegenerateModal', 'finalConfirmModal'];
+      modals.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (event.target === modal) {
+          if (modalId === 'labelSpeakersModal') closeLabelSpeakersModal();
+          else if (modalId === 'confirmRegenerateModal') closeConfirmRegenerateModal();
+          else if (modalId === 'finalConfirmModal') closeFinalConfirmModal();
+        }
+      });
+    }
+
     async function deleteMeeting(meetingId, meetingName) {
       const confirmed = await showConfirmModal(
         "Delete Meeting",
@@ -292,25 +572,28 @@
       }
     }
 
-    // Confirmation Modal
+    // Confirmation Modal - Preserved functionality
     function showConfirmModal(title, message, okText = "OK", cancelText = "Cancel") {
       return new Promise((resolve) => {
-        // Create modal if it doesn't exist
         let modal = document.getElementById("confirmModal");
         if (!modal) {
           modal = document.createElement('div');
           modal.id = 'confirmModal';
-          modal.style.cssText = 'display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1001; align-items: center; justify-content: center;';
+          modal.className = 'modal-overlay';
           document.body.appendChild(modal);
         }
         
         modal.innerHTML = `
-          <div style="background: white; border-radius: var(--radius); padding: 24px; max-width: 400px; width: 90%; box-shadow: var(--shadow-hover);">
-            <h3 style="margin-bottom: 16px; font-size: 18px; color: var(--text-primary);">${title}</h3>
-            <p style="margin-bottom: 20px; font-size: 15px; color: var(--text-secondary); white-space: pre-line;">${message}</p>
-            <div style="display: flex; justify-content: flex-end; gap: 12px;">
-              <button type="button" id="confirmCancel" class="btn" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);">${cancelText}</button>
-              <button type="button" id="confirmOk" class="btn btnPrimary">${okText}</button>
+          <div class="modal">
+            <div class="modal-header">
+              <h3 class="modal-title">${title}</h3>
+            </div>
+            <div class="modal-body">
+              <p style="white-space: pre-line;">${message}</p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" id="confirmCancel" class="btn btn-secondary">${cancelText}</button>
+              <button type="button" id="confirmOk" class="btn btn-primary">${okText}</button>
             </div>
           </div>
         `;
@@ -345,73 +628,5 @@
       });
     }
   </script>
-</head>
-<body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <a href="{{ url_for('account_home') }}">
-        <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi Ai Logo" class="logo-img" onerror="this.style.display='none';">
-        <div class="title">
-          <h1>Phi AI</h1>
-          <div class="tag">Past Meetings</div>
-        </div>
-        </a>
-      </div>
-    </div>
-
-    <div class="nav-tabs">
-      <a href="{{ url_for('account_home') }}">Dashboard</a>
-      <a href="{{ url_for('account_meetings') }}" class="active">Past Meetings</a>
-      <a href="{{ url_for('connect_apps_get') }}">Connect Apps</a>
-      <a href="{{ url_for('account_get') }}">Settings</a>
-      <a href="{{ url_for('logout') }}">Logout</a>
-    </div>
-
-    <div class="card">
-      <h2>All Meetings ({{ meetings|length }})</h2>
-      {% if meetings %}
-        <div class="meeting-list">
-          {% for meeting in meetings %}
-          <div class="meeting-item">
-            <h3>{{ meeting.name or meeting.id }}</h3>
-            <div class="meta">
-              <span>📅 Date: {{ meeting.processed_at[:10] if meeting.processed_at else 'N/A' }}</span>
-              <span>⏰ Time: {{ meeting.processed_at[11:16] if meeting.processed_at and 'T' in meeting.processed_at else 'N/A' }}</span>
-              <span>👥 Speakers: {{ meeting.speaker_count }}</span>
-              {% if meeting.participants %}
-              <span class="speakers">Participants: {{ meeting.participants|length }}</span>
-              {% endif %}
-              {% if meeting.speakers %}
-              <span class="speakers">Identified voices: {{ meeting.speakers|join(', ') }}</span>
-              {% endif %}
-              {% if meeting.audio_size_bytes %}
-              <span>💾 Size: {{ (meeting.audio_size_bytes / 1024 / 1024)|round(2) }} MB</span>
-              {% endif %}
-            </div>
-            <div class="actions">
-              {% if meeting.transcript_path %}
-              <a href="{{ url_for('meeting_transcript', meeting_id=meeting.id) }}" target="_blank">📄 View Transcript</a>
-              {% endif %}
-              <a href="{{ url_for('meeting_pdf', meeting_id=meeting.id) }}" target="_blank">📑 View PDF</a>
-              {% if meeting.audio_path %}
-              <a href="{{ url_for('meeting_audio', meeting_id=meeting.id) }}">🎵 Download Audio</a>
-              {% endif %}
-              <a href="#" onclick="deleteMeeting('{{ meeting.id }}', '{{ meeting.name or meeting.id }}'); return false;" style="color: var(--accent-red); padding: 6px 10px; display: inline-block;">🗑️ Delete</a>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <div class="empty-state">
-          <h3>No meetings found</h3>
-          <p>Record your first meeting to get started.</p>
-          <div style="margin-top: 16px;">
-            <a class="btn btnPrimary" href="{{ url_for('record_meeting') }}">Record Meeting</a>
-          </div>
-        </div>
-      {% endif %}
-    </div>
-  </div>
 </body>
 </html>

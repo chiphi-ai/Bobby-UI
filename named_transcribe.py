@@ -140,7 +140,68 @@ def upload_audio(wav_path: Path, headers: dict) -> str:
     return upload_url
 
 
-def submit_transcript(upload_url: str, headers: dict, speakers_expected: int | None, speech_threshold: float | None):
+def load_custom_vocabulary(vocab_path: Path = None, user_email: str = None) -> list[str]:
+    """
+    Load custom vocabulary for word boosting in AssemblyAI.
+    
+    Priority:
+    1. User-specific vocabulary from database (if user_email provided)
+    2. Fallback to custom_vocabulary.txt file (backward compatible)
+    
+    Args:
+        vocab_path: Optional path to vocabulary file (for backward compatibility)
+        user_email: Optional user email to load user-specific vocabulary
+    
+    Returns:
+        List of vocabulary terms
+    """
+    words = []
+    
+    # Try to load user-specific vocabulary from database first
+    if user_email:
+        try:
+            # Import here to avoid circular imports
+            import sys
+            # Add parent directory to path to import web_app functions
+            parent_dir = Path(__file__).parent
+            if str(parent_dir) not in sys.path:
+                sys.path.insert(0, str(parent_dir))
+            
+            # Try to import vocabulary functions
+            try:
+                from web_app import get_user_custom_vocabulary
+                user_words = get_user_custom_vocabulary(user_email)
+                if user_words:
+                    words.extend(user_words)
+                    print(f"Loaded {len(user_words)} custom vocabulary terms for user {user_email}")
+            except ImportError:
+                # web_app not available (standalone script), skip user vocab
+                pass
+        except Exception as e:
+            print(f"Warning: Could not load user vocabulary: {e}")
+    
+    # Fallback to file-based vocabulary (backward compatible)
+    if vocab_path is None:
+        vocab_path = Path(__file__).parent / "custom_vocabulary.txt"
+    
+    if vocab_path.exists():
+        try:
+            with open(vocab_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    word = line.strip()
+                    # Skip empty lines and comments
+                    if word and not word.startswith("#"):
+                        if word not in words:  # Avoid duplicates
+                            words.append(word)
+            if words and not user_email:
+                print(f"Loaded {len(words)} custom vocabulary words from {vocab_path.name}")
+        except Exception as e:
+            print(f"Warning: Could not load custom vocabulary file: {e}")
+    
+    return words
+
+
+def submit_transcript(upload_url: str, headers: dict, speakers_expected: int | None, speech_threshold: float | None, custom_vocab: list[str] = None):
     print("3) Submitting transcription job...")
     payload = {
         "audio_url": upload_url,
@@ -152,6 +213,11 @@ def submit_transcript(upload_url: str, headers: dict, speakers_expected: int | N
         payload["speakers_expected"] = int(speakers_expected)
     if speech_threshold is not None:
         payload["speech_threshold"] = float(speech_threshold)
+    
+    # Custom vocabulary for word boosting (improves recognition of domain-specific terms)
+    if custom_vocab:
+        payload["word_boost"] = custom_vocab
+        print(f"   Using {len(custom_vocab)} custom vocabulary words for word boosting")
 
     r = requests.post(f"{API_BASE}/transcript", headers=headers, json=payload)
     if r.status_code >= 300:
@@ -287,9 +353,14 @@ def main():
     to_wav_16k_mono(input_path, meeting_wav)
     print(f"   meeting wav: {meeting_wav}")
 
+    # Load custom vocabulary (optional - won't break if file doesn't exist)
+    # Try to get user email from environment (set by web_app.py pipeline)
+    user_email = os.environ.get("VOCABULARY_USER_EMAIL", "").strip() or None
+    custom_vocab = load_custom_vocabulary(user_email=user_email)
+
     # Transcribe with diarization
     upload_url = upload_audio(meeting_wav, headers=headers)
-    tid = submit_transcript(upload_url, headers=headers, speakers_expected=args.speakers, speech_threshold=args.speech_threshold)
+    tid = submit_transcript(upload_url, headers=headers, speakers_expected=args.speakers, speech_threshold=args.speech_threshold, custom_vocab=custom_vocab)
     full = poll_transcript(tid, headers=headers)
 
     # Save raw AssemblyAI JSON + cleaned utterances
@@ -333,6 +404,10 @@ def main():
     tmp_segs = Path("output") / "_seg_wavs"
     tmp_segs.mkdir(parents=True, exist_ok=True)
 
+    # Track unknown speakers: map diarization speaker ID -> Unknown Speaker N
+    unknown_speaker_map = {}  # diarization_speaker_id -> "Unknown Speaker N"
+    unknown_counter = 1  # Next unknown speaker number
+
     labeled = []
     prev_name: str | None = None
 
@@ -356,17 +431,36 @@ def main():
             scores, prev=prev_name, switch_penalty=args.switch_penalty
         )
 
+        # Get diarization speaker ID for tracking unknowns
+        diarization_speaker = u.get("speaker", f"SPEAKER_{i}")
+
         # Confidence gating
         if best_score < args.min_score or gap < args.min_gap:
-            speaker_name = "Unknown"
+            # Low confidence or no match -> assign to unknown speaker
+            # Use diarization speaker ID to track consistency
+            if diarization_speaker not in unknown_speaker_map:
+                # New unknown speaker - assign next number
+                unknown_speaker_map[diarization_speaker] = f"Unknown Speaker {unknown_counter}"
+                unknown_counter += 1
+            
+            speaker_name = unknown_speaker_map[diarization_speaker]
+            prev_name = None  # Don't use unknown for smoothing
         else:
             speaker_name = best_name
             prev_name = speaker_name  # only advance prev when confident
 
         # Normalize speaker name: remove (2), (3) etc. if present
         normalized_name = speaker_name
-        if normalized_name and normalized_name != "Unknown":
+        is_unknown = speaker_name.startswith("Unknown Speaker")
+        if normalized_name and not is_unknown and normalized_name != "Unknown":
             normalized_name = re.sub(r"\(\d+\)", "", normalized_name).strip()
+        elif not is_unknown and normalized_name == "Unknown":
+            # Legacy "Unknown" -> convert to "Unknown Speaker 1" for consistency
+            if diarization_speaker not in unknown_speaker_map:
+                unknown_speaker_map[diarization_speaker] = "Unknown Speaker 1"
+                unknown_counter = max(unknown_counter, 2)  # Ensure next is 2+
+            normalized_name = unknown_speaker_map[diarization_speaker]
+            is_unknown = True
         
         labeled.append({
             "start": start,
@@ -376,6 +470,8 @@ def main():
             "gap": float(gap),
             "aai_speaker": u.get("speaker"),
             "text": txt,
+            "is_unknown": is_unknown,
+            "diarization_speaker": diarization_speaker
         })
 
     # Merge consecutive lines
@@ -389,19 +485,36 @@ def main():
     lines = []
     for r in labeled:
         speaker_name = r['speaker_name']
-        # Remove any (2), (3) etc. patterns
-        speaker_name = re.sub(r"\(\d+\)", "", speaker_name)
-        # Convert "bobby,jones" to "Bobby Jones" for display
-        if "," in speaker_name and speaker_name != "Unknown":
-            parts = speaker_name.split(",")
-            if len(parts) == 2:
-                first = parts[0].strip().capitalize()
-                last = parts[1].strip().capitalize()
-                speaker_name = f"{first} {last}"
-        elif speaker_name != "Unknown":
-            speaker_name = speaker_name.strip().capitalize()
-        lines.append(f"{speaker_name}: {r['text']}")
+        is_unknown = r.get('is_unknown', False)
+        
+        # Handle unknown speakers (keep as "Unknown Speaker N")
+        if is_unknown or speaker_name.startswith("Unknown Speaker"):
+            # Keep unknown speaker labels as-is
+            formatted_name = speaker_name
+        else:
+            # Remove any (2), (3) etc. patterns
+            speaker_name = re.sub(r"\(\d+\)", "", speaker_name)
+            # Convert "bobby,jones" to "Bobby Jones" for display
+            if "," in speaker_name and speaker_name != "Unknown":
+                parts = speaker_name.split(",")
+                if len(parts) == 2:
+                    first = parts[0].strip().capitalize()
+                    last = parts[1].strip().capitalize()
+                    formatted_name = f"{first} {last}"
+            elif speaker_name != "Unknown":
+                formatted_name = speaker_name.strip().capitalize()
+            else:
+                # Legacy "Unknown" -> convert to "Unknown Speaker 1"
+                formatted_name = "Unknown Speaker 1"
+        
+        lines.append(f"{formatted_name}: {r['text']}")
     out_txt.write_text("\n\n".join(lines) + "\n", encoding="utf-8")
+    
+    # Print summary of unknown speakers
+    unknown_speakers_found = [r['speaker_name'] for r in labeled if r.get('is_unknown', False) or r['speaker_name'].startswith("Unknown Speaker")]
+    if unknown_speakers_found:
+        unique_unknowns = sorted(set(unknown_speakers_found))
+        print(f"Identified {len(unique_unknowns)} unknown speaker(s): {', '.join(unique_unknowns)}")
     out_json.write_text(json.dumps(labeled, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"\nDONE. Wrote:\n  {out_txt}\n  {out_json}\n  {out_utter}\n")

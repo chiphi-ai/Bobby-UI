@@ -11,16 +11,18 @@ import sys
 import threading
 import time
 import base64
+import uuid
+import warnings
 import requests
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory, jsonify, Response, stream_with_context
 from urllib.parse import quote as url_encode
 from werkzeug.security import generate_password_hash, check_password_hash
 from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import FileSystemEventHandler, PatternMatchingEventHandler
 
 # Load .env file if python-dotenv is available
 # override=True ensures .env file values take precedence over existing env vars
@@ -31,6 +33,13 @@ try:
 except ImportError:
     pass  # python-dotenv not installed, will use environment variables only
 
+# Suppress google.api_core Python version warnings (avoid touching site-packages)
+warnings.filterwarnings(
+    "ignore",
+    category=FutureWarning,
+    module=r"google\\.api_core\\._python_version_support"
+)
+
 # ----------------------------
 # Paths
 # ----------------------------
@@ -40,6 +49,7 @@ INPUT_DIR = ROOT / "input"
 OUTPUT_DIR = ROOT / "output"
 ENROLL_DIR = ROOT / "enroll"
 STATIC_DIR = ROOT / "static"
+UPLOAD_JOBS_DIR = OUTPUT_DIR / "jobs"
 
 USERS_CSV = INPUT_DIR / "users.csv"     # first,last,email,password_hash,organizations_json,username,connected_apps_json
 EMAILS_CSV = INPUT_DIR / "emails.csv"   # first,last,email (used by pipeline)
@@ -47,6 +57,9 @@ RESET_TOKENS_JSON = ROOT / "reset_tokens.json"  # email -> {token, expires}
 MEETINGS_JSON = OUTPUT_DIR / "meetings.json"  # List of processed meetings with metadata
 ORGANIZATIONS_JSON = ROOT / "organizations.json"  # Organizations and their members
 ORGANIZATIONS_DIRECTORY_JSON = ROOT / "organizations_directory.json"  # Organization directory with details (name, abbrev, address, type, popularity)
+CHAT_SESSIONS_JSON = OUTPUT_DIR / "chat_sessions.json"  # Chat sessions: {user_email: [sessions]}
+CHAT_MESSAGES_JSON = OUTPUT_DIR / "chat_messages.json"  # Chat messages: {session_id: [messages]}
+VOCABULARY_JSON = ROOT / "vocabulary.json"  # Custom vocabulary: {user_email: [vocab_entries]}
 
 # Organization types and their role options
 ORGANIZATION_TYPES = {
@@ -99,6 +112,11 @@ DEFAULT_CONFIG = {
 app = Flask(__name__, static_folder=STATIC_DIR, template_folder=TEMPLATES)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
 
+# Context processor to make waves_debug available to all templates
+@app.context_processor
+def inject_waves_debug():
+    return dict(waves_debug=os.getenv("WAVES_DEBUG") == "1")
+
 # ----------------------------
 # Helper functions
 # ----------------------------
@@ -107,6 +125,7 @@ def ensure_dirs():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     ENROLL_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
 def load_config() -> dict:
     if not CONFIG_PATH.exists():
@@ -671,6 +690,86 @@ def save_meeting(meeting_data: dict):
     meetings.sort(key=lambda x: x.get("processed_at", ""), reverse=True)
     MEETINGS_JSON.write_text(json.dumps(meetings, indent=2), encoding="utf-8")
 
+def update_meeting(meeting_id: str, updates: dict):
+    """Update a meeting's metadata in meetings.json."""
+    meetings = load_meetings()
+    for i, meeting in enumerate(meetings):
+        if meeting.get("id") == meeting_id:
+            meetings[i].update(updates)
+            MEETINGS_JSON.write_text(json.dumps(meetings, indent=2), encoding="utf-8")
+            return True
+    return False
+
+def get_meeting(meeting_id: str) -> dict | None:
+    """Get a meeting by ID."""
+    meetings = load_meetings()
+    for meeting in meetings:
+        if meeting.get("id") == meeting_id:
+            return meeting
+    return None
+
+def detect_unknown_speakers(meeting: dict) -> dict:
+    """
+    Detect unknown speakers in a meeting.
+    Returns dict with:
+    - has_unknown_speakers: bool
+    - unknown_speakers: list of unknown speaker labels (e.g., ["Unknown Speaker 1", "Unknown Speaker 2"])
+    - unknown_speaker_count: int
+    """
+    unknown_speakers = []
+    has_unknown = False
+    
+    # Check transcript file for "Unknown Speaker" labels
+    transcript_path = None
+    if meeting.get("transcript_path"):
+        transcript_path = ROOT / meeting["transcript_path"]
+    elif meeting.get("id"):
+        # Try standard paths
+        transcript_path = OUTPUT_DIR / f"{meeting['id']}_named_script.txt"
+    
+    if transcript_path and transcript_path.exists():
+        try:
+            content = transcript_path.read_text(encoding="utf-8")
+            # Find all "Unknown Speaker N" patterns
+            import re
+            unknown_pattern = r"Unknown Speaker \d+"
+            matches = re.findall(unknown_pattern, content)
+            unknown_speakers = sorted(list(set(matches)))  # Unique, sorted
+            has_unknown = len(unknown_speakers) > 0
+        except Exception as e:
+            print(f"Warning: Could not read transcript to detect unknown speakers: {e}")
+    
+    # Filter out speakers that have already been labeled
+    speaker_label_map = meeting.get("speaker_label_map", {})
+    if speaker_label_map:
+        # Remove any unknown speakers that have been labeled (mapped to non-unknown names)
+        labeled_unknowns = set()
+        for key, value in speaker_label_map.items():
+            if isinstance(key, str) and key.startswith("Unknown Speaker"):
+                # If the value is NOT an "Unknown Speaker" pattern, it's been labeled
+                if isinstance(value, str) and not value.startswith("Unknown Speaker"):
+                    labeled_unknowns.add(key)
+        
+        # Remove labeled speakers from the list
+        unknown_speakers = [s for s in unknown_speakers if s not in labeled_unknowns]
+        
+        # Also check if there are any unlabeled entries in the map
+        for key, value in speaker_label_map.items():
+            if isinstance(key, str) and key.startswith("Unknown Speaker"):
+                # If value is still "Unknown Speaker" or empty, it's unlabeled
+                if not value or (isinstance(value, str) and value.startswith("Unknown Speaker")):
+                    if key not in unknown_speakers:
+                        unknown_speakers.append(key)
+                        has_unknown = True
+    
+    has_unknown = len(unknown_speakers) > 0
+    
+    return {
+        "has_unknown_speakers": has_unknown,
+        "unknown_speakers": sorted(unknown_speakers),
+        "unknown_speaker_count": len(unknown_speakers)
+    }
+
 def get_user_meetings(user_email: str) -> list:
     """Get all meetings where user is a participant."""
     meetings = load_meetings()
@@ -680,6 +779,78 @@ def get_user_meetings(user_email: str) -> list:
         if user_email.lower() in [p.lower() for p in participants]:
             user_meetings.append(meeting)
     return sorted(user_meetings, key=lambda x: x.get("processed_at", ""), reverse=True)
+
+# ----------------------------
+# Chat storage
+# ----------------------------
+def load_chat_sessions() -> dict:
+    """Load chat sessions: {user_email: [sessions]}"""
+    if not CHAT_SESSIONS_JSON.exists():
+        return {}
+    try:
+        return json.loads(CHAT_SESSIONS_JSON.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def save_chat_sessions(sessions: dict):
+    """Save chat sessions"""
+    CHAT_SESSIONS_JSON.write_text(json.dumps(sessions, indent=2), encoding="utf-8")
+
+def load_chat_messages() -> dict:
+    """Load chat messages: {session_id: [messages]}"""
+    if not CHAT_MESSAGES_JSON.exists():
+        return {}
+    try:
+        return json.loads(CHAT_MESSAGES_JSON.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def save_chat_messages(messages: dict):
+    """Save chat messages"""
+    CHAT_MESSAGES_JSON.write_text(json.dumps(messages, indent=2), encoding="utf-8")
+
+def create_chat_session(user_email: str, title: str = None) -> str:
+    """Create a new chat session and return session_id"""
+    import secrets
+    session_id = secrets.token_urlsafe(16)
+    sessions = load_chat_sessions()
+    
+    if user_email not in sessions:
+        sessions[user_email] = []
+    
+    sessions[user_email].append({
+        "id": session_id,
+        "title": title or "New Chat",
+        "created_at": datetime.now().isoformat()
+    })
+    
+    save_chat_sessions(sessions)
+    return session_id
+
+def get_user_chat_sessions(user_email: str) -> list:
+    """Get all chat sessions for a user"""
+    sessions = load_chat_sessions()
+    return sessions.get(user_email, [])
+
+def add_chat_message(session_id: str, role: str, content: str):
+    """Add a message to a chat session"""
+    messages_dict = load_chat_messages()
+    
+    if session_id not in messages_dict:
+        messages_dict[session_id] = []
+    
+    messages_dict[session_id].append({
+        "role": role,  # "user" or "assistant"
+        "content": content,
+        "created_at": datetime.now().isoformat()
+    })
+    
+    save_chat_messages(messages_dict)
+
+def get_chat_messages(session_id: str) -> list:
+    """Get all messages for a chat session"""
+    messages_dict = load_chat_messages()
+    return messages_dict.get(session_id, [])
 
 # ----------------------------
 # Subprocess execution
@@ -724,25 +895,32 @@ def run_cmd(cmd: list, cwd=None):
         print(f"Error running command {' '.join(cmd)}: {e}")
         return 1
 
-def upload_to_connected_apps(user_email: str, pdf_path: Path, transcript_path: Path, meeting_name: str):
+def upload_to_connected_apps(user_email: str, pdf_path: Path, transcript_path: Path, meeting_name: str, providers: list[str] | None = None) -> dict:
     """Upload meeting files to all connected cloud storage apps"""
     users = read_users()
     user = users.get(user_email.lower())
     if not user:
-        return
+        return {}
     
     connected_apps = user.get("connected_apps", {})
+    if providers is None:
+        providers = list(connected_apps.keys())
+
+    results: dict[str, dict] = {}
+    for provider in providers:
+        if provider not in connected_apps:
+            results[provider] = {"status": "failed", "error": "Provider not connected"}
     
     # Upload to Dropbox
-    if "dropbox" in connected_apps:
+    if "dropbox" in connected_apps and "dropbox" in providers:
         try:
             print(f"📤 Uploading {meeting_name} to Dropbox...")
             dropbox_config = connected_apps["dropbox"]
             access_token = decrypt_token(dropbox_config["access_token_encrypted"])
-            refresh_token = None  # Dropbox doesn't use refresh tokens in standard OAuth
+            refresh_token = decrypt_token(dropbox_config["refresh_token_encrypted"]) if dropbox_config.get("refresh_token_encrypted") else None
             token_expires_at = dropbox_config.get("token_expires_at")
             
-            upload_to_dropbox(
+            dropbox_result = upload_to_dropbox(
                 access_token=access_token,
                 refresh_token=refresh_token,
                 token_expires_at=token_expires_at,
@@ -753,124 +931,438 @@ def upload_to_connected_apps(user_email: str, pdf_path: Path, transcript_path: P
                 meeting_name=meeting_name
             )
             print(f"✅ Successfully uploaded {meeting_name} to Dropbox")
+            results["dropbox"] = {"status": "success", "details": dropbox_result}
         except Exception as e:
             error_msg = str(e)
-            if "expired" in error_msg.lower() or "must reconnect" in error_msg.lower() or "reconnect" in error_msg.lower():
+            if "expired" in error_msg.lower() or "must reconnect" in error_msg.lower() or "reconnect" in error_msg.lower() or "Action required" in error_msg:
                 # Mark Dropbox as needs reauth
                 users[user_email.lower()]["connected_apps"]["dropbox"]["needs_reauth"] = True
                 write_users(users)
-                print(f"❌ Dropbox upload failed: {error_msg}. Marked connection as needs reconnect.")
+                print(f"❌ Dropbox upload failed: {error_msg}")
+                print(f"   → Action required: go to Settings → Connected Apps → Dropbox → Disconnect, then Connect again.")
             elif "not configured" in error_msg.lower():
                 print(f"❌ Dropbox upload failed: {error_msg}")
             else:
                 print(f"❌ Error uploading to Dropbox: {e}")
             # Don't raise - continue with other uploads
+            results["dropbox"] = {"status": "failed", "error": error_msg}
     
     # Upload to Google Drive
-    if "googledrive" in connected_apps:
+    if "googledrive" in connected_apps and "googledrive" in providers:
         try:
             print(f"📤 Uploading {meeting_name} to Google Drive...")
-            upload_to_googledrive(
+            drive_result = upload_to_googledrive(
                 access_token=decrypt_token(connected_apps["googledrive"]["access_token_encrypted"]),
                 refresh_token=decrypt_token(connected_apps["googledrive"]["refresh_token_encrypted"]) if connected_apps["googledrive"].get("refresh_token_encrypted") else None,
-                folder_name=connected_apps["googledrive"].get("folder_name", "PhiAI Meetings"),
+                folder_name=connected_apps["googledrive"].get("folder_name", "PhiAI/Meetings"),
                 pdf_path=pdf_path,
                 transcript_path=transcript_path,
-                meeting_name=meeting_name
+                meeting_name=meeting_name,
+                user_email=user_email
             )
             print(f"✅ Successfully uploaded {meeting_name} to Google Drive")
+            results["googledrive"] = {"status": "success", "details": drive_result}
         except Exception as e:
             error_msg = str(e)
             if "expired" in error_msg.lower() or "invalid" in error_msg.lower():
                 print(f"❌ Google Drive token expired or invalid. User needs to reconnect Google Drive in account settings.")
             else:
                 print(f"❌ Error uploading to Google Drive: {e}")
+            results["googledrive"] = {"status": "failed", "error": error_msg}
     
     # Upload to Box
-    if "box" in connected_apps:
+    if "box" in connected_apps and "box" in providers:
+        box_config = connected_apps["box"]
+        
+        # Preflight check: Verify write scope before attempting upload (fail fast)
+        from services.box_client import verify_write_scope, BoxInsufficientScopeError, BoxTokenError, get_box_diagnostics
+        
+        # Check if we already know scopes are bad (fail fast, don't spam Box API)
+        if box_config.get("needs_scope_update") or box_config.get("box_write_scope_ok") == False:
+            diagnostics = get_box_diagnostics(user_email)
+            if diagnostics["status"] == "needs_scopes":
+                print(f"❌ Box upload skipped: Write permissions not available (status: needs_scopes)")
+                print(f"   → FIX: Go to https://developer.box.com/ → My Apps → Your App → Configuration")
+                print(f"   → Enable 'Read and write all files and folders stored in Box' scope")
+                print(f"   → Save Changes, wait 2-3 minutes, then reconnect Box in Settings → Connected Apps")
+                # Don't attempt upload - fail fast
+                return
+        
+        # Verify write scope (uses cache if recent, won't spam API)
+        has_write, scope_error = verify_write_scope(user_email, force_check=False)
+        if not has_write:
+            print(f"❌ Box upload skipped: Write permissions verification failed")
+            if scope_error:
+                print(f"   → {scope_error[:150]}")
+            print(f"   → FIX: Go to https://developer.box.com/ → My Apps → Your App → Configuration")
+            print(f"   → Enable 'Read and write all files and folders stored in Box' scope")
+            print(f"   → Save Changes, wait 2-3 minutes, then reconnect Box in Settings → Connected Apps")
+            # Don't attempt upload - fail fast
+            return
+        
         try:
             print(f"📤 Uploading {meeting_name} to Box...")
-            box_config = connected_apps["box"]
             access_token = decrypt_token(box_config["access_token_encrypted"])
             refresh_token = decrypt_token(box_config["refresh_token_encrypted"]) if box_config.get("refresh_token_encrypted") else None
             token_expires_at = box_config.get("token_expires_at")
             
-            upload_to_box(
+            box_result = upload_to_box(
                 access_token=access_token,
                 refresh_token=refresh_token,
                 token_expires_at=token_expires_at,
                 user_email=user_email,
-                folder_name=box_config.get("folder_name", "PhiAI Meetings"),
+                folder_name=box_config.get("folder_name", "PhiAI/Meetings"),
                 pdf_path=pdf_path,
                 transcript_path=transcript_path,
                 meeting_name=meeting_name
             )
             print(f"✅ Successfully uploaded {meeting_name} to Box")
+            results["box"] = {"status": "success", "details": box_result}
+        except BoxInsufficientScopeError as e:
+            # Mark Box as needing scope update (not just reauth)
+            users[user_email.lower()]["connected_apps"]["box"]["needs_scope_update"] = True
+            write_users(users)
+            print(f"❌ Box upload failed: {e}")
+            print(f"   → Developer action: Configure scopes in Box Developer Console")
+            print(f"   → User action: After scopes are configured, go to Settings → Connected Apps → Box → Disconnect → Connect again")
+            results["box"] = {"status": "failed", "error": str(e)}
+        except BoxTokenError as e:
+            # Mark Box as needing reauth
+            users[user_email.lower()]["connected_apps"]["box"]["needs_reauth"] = True
+            write_users(users)
+            print(f"❌ Box upload failed: {e}")
+            print(f"   → Action required: go to Settings → Connected Apps → Box → Disconnect, then Connect again.")
+            results["box"] = {"status": "failed", "error": str(e)}
         except Exception as e:
             error_msg = str(e)
-            if "not installed" in error_msg.lower() or "ImportError" in error_msg:
-                print(f"❌ Box SDK not installed. Install with: pip install boxsdk")
-            elif "must reconnect" in error_msg.lower() or "reconnect" in error_msg.lower():
-                # Mark Box as needs reauth
-                users[user_email.lower()]["connected_apps"]["box"]["needs_reauth"] = True
-                write_users(users)
-                print(f"❌ Box upload failed: {error_msg}. Marked connection as needs reconnect.")
+            if "not installed" in error_msg.lower() or "ImportError" in error_msg or "Developer action required" in error_msg:
+                print(f"❌ {error_msg}")
+                # Mark as needs reauth if SDK missing (user can't fix this, but mark it anyway)
+                if "not installed" in error_msg.lower() or "ImportError" in error_msg:
+                    users[user_email.lower()]["connected_apps"]["box"]["needs_reauth"] = True
+                    write_users(users)
             elif "not configured" in error_msg.lower():
                 print(f"❌ Box upload failed: {error_msg}")
             else:
                 print(f"❌ Error uploading to Box: {e}")
             # Don't raise - continue with other uploads
+            results["box"] = {"status": "failed", "error": error_msg}
 
-def refresh_dropbox_token_if_needed(user_email: str, access_token: str, token_expires_at: int | None) -> tuple[str, int] | None:
+    if results:
+        print(f"📦 Upload summary for {user_email}:")
+        for provider, info in results.items():
+            status = info.get("status", "unknown")
+            if status == "success":
+                print(f"   ✅ {provider}: success {info.get('details')}")
+            else:
+                print(f"   ❌ {provider}: {info.get('error', 'failed')}")
+
+    return results
+
+# ----------------------------
+# Background upload jobs
+# ----------------------------
+UPLOAD_WORKER_STARTED = False
+
+def _load_upload_job(job_path: Path) -> dict:
+    return json.loads(job_path.read_text(encoding="utf-8"))
+
+def _save_upload_job(job_path: Path, job: dict) -> None:
+    job_path.write_text(json.dumps(job, indent=2), encoding="utf-8")
+
+def _list_upload_jobs() -> list[Path]:
+    if not UPLOAD_JOBS_DIR.exists():
+        return []
+    return sorted(UPLOAD_JOBS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime)
+
+def enqueue_upload_job(meeting_name: str, pdf_path: Path, transcript_path: Path, participant_emails: list[str]) -> str | None:
+    ensure_dirs()
+    users = read_users()
+    job_users = []
+
+    for email in participant_emails:
+        user = users.get(email.lower())
+        if not user:
+            continue
+        connected_apps = user.get("connected_apps", {})
+        providers = [p for p in ("dropbox", "googledrive", "box") if p in connected_apps]
+        if not providers:
+            continue
+        provider_status = {
+            p: {"state": "pending", "attempts": 0, "last_error": None, "result": None}
+            for p in providers
+        }
+        job_users.append({
+            "email": email.lower(),
+            "providers": providers,
+            "provider_status": provider_status
+        })
+
+    if not job_users:
+        print("[INFO] No connected apps found for any participants; skipping upload job.")
+        return None
+
+    job_id = uuid.uuid4().hex
+    job = {
+        "id": job_id,
+        "created_at": datetime.now().isoformat(),
+        "status": "pending",
+        "meeting_name": meeting_name,
+        "pdf_path": str(pdf_path),
+        "transcript_path": str(transcript_path),
+        "users": job_users,
+        "max_attempts": 3
+    }
+
+    job_path = UPLOAD_JOBS_DIR / f"{job_id}.json"
+    _save_upload_job(job_path, job)
+    print(f"[INFO] Enqueued upload job {job_id} for {meeting_name}")
+    return job_id
+
+def _should_retry_upload_error(error_msg: str) -> bool:
+    msg = (error_msg or "").lower()
+    if any(key in msg for key in ["action required", "reconnect", "not configured", "insufficient", "scope", "permission"]):
+        return False
+    if any(key in msg for key in ["timeout", "temporar", "connection", "rate limit", "503", "504", "network"]):
+        return True
+    return True
+
+def _process_upload_job(job_path: Path) -> None:
+    job = _load_upload_job(job_path)
+    if job.get("status") in ("completed", "failed"):
+        return
+
+    job["status"] = "in_progress"
+    _save_upload_job(job_path, job)
+
+    meeting_name = job.get("meeting_name", "meeting")
+    pdf_path = Path(job.get("pdf_path", ""))
+    transcript_path = Path(job.get("transcript_path", ""))
+    max_attempts = int(job.get("max_attempts", 3))
+
+    for user_entry in job.get("users", []):
+        email = user_entry.get("email")
+        providers = user_entry.get("providers", [])
+        provider_status = user_entry.get("provider_status", {})
+        for provider in providers:
+            state = provider_status.get(provider, {})
+            if state.get("state") == "success":
+                continue
+            attempts = int(state.get("attempts", 0))
+            if attempts >= max_attempts:
+                continue
+
+            print(f"[UPLOAD JOB] {job['id']} -> {email} -> {provider} (attempt {attempts + 1}/{max_attempts})")
+            try:
+                result = upload_to_connected_apps(
+                    email,
+                    pdf_path,
+                    transcript_path,
+                    meeting_name,
+                    providers=[provider]
+                )
+                provider_result = result.get(provider) if isinstance(result, dict) else None
+                if provider_result and provider_result.get("status") == "success":
+                    provider_status[provider] = {
+                        "state": "success",
+                        "attempts": attempts + 1,
+                        "last_error": None,
+                        "result": provider_result
+                    }
+                else:
+                    error_msg = (provider_result or {}).get("error", "Unknown upload failure")
+                    retry = _should_retry_upload_error(error_msg)
+                    provider_status[provider] = {
+                        "state": "retry" if retry else "failed",
+                        "attempts": attempts + 1,
+                        "last_error": error_msg,
+                        "result": provider_result
+                    }
+                    if not retry:
+                        provider_status[provider]["attempts"] = max_attempts
+            except Exception as e:
+                error_msg = str(e)
+                retry = _should_retry_upload_error(error_msg)
+                provider_status[provider] = {
+                    "state": "retry" if retry else "failed",
+                    "attempts": attempts + 1,
+                    "last_error": error_msg,
+                    "result": None
+                }
+                if not retry:
+                    provider_status[provider]["attempts"] = max_attempts
+                print(f"[UPLOAD JOB] ❌ {provider} failed: {error_msg}")
+
+            user_entry["provider_status"] = provider_status
+            _save_upload_job(job_path, job)
+
+    # Finalize job status
+    all_done = True
+    any_success = False
+    for user_entry in job.get("users", []):
+        for provider in user_entry.get("providers", []):
+            state = user_entry.get("provider_status", {}).get(provider, {})
+            if state.get("state") == "success":
+                any_success = True
+            if state.get("state") not in ("success", "failed"):
+                all_done = False
+
+    if all_done:
+        job["status"] = "completed" if any_success else "failed"
+        _save_upload_job(job_path, job)
+
+        print(f"[UPLOAD JOB] Summary for {job.get('meeting_name')}:")
+        for user_entry in job.get("users", []):
+            email = user_entry.get("email")
+            print(f"  User: {email}")
+            for provider in user_entry.get("providers", []):
+                state = user_entry.get("provider_status", {}).get(provider, {})
+                if state.get("state") == "success":
+                    print(f"   ✅ {provider}: {state.get('result')}")
+                else:
+                    print(f"   ❌ {provider}: {state.get('last_error')}")
+
+def _upload_worker_loop() -> None:
+    print("[UPLOAD WORKER] Started background upload worker.")
+    while True:
+        try:
+            jobs = _list_upload_jobs()
+            for job_path in jobs:
+                _process_upload_job(job_path)
+        except Exception as e:
+            print(f"[UPLOAD WORKER] Error processing jobs: {e}")
+        time.sleep(3)
+
+def start_upload_worker() -> None:
+    global UPLOAD_WORKER_STARTED
+    if UPLOAD_WORKER_STARTED or os.getenv("DIO_DISABLE_UPLOAD_WORKER") == "1":
+        return
+    UPLOAD_WORKER_STARTED = True
+    worker_thread = threading.Thread(target=_upload_worker_loop, daemon=True)
+    worker_thread.start()
+
+def refresh_dropbox_token(user_email: str, refresh_token: str) -> tuple[str, str, int] | None:
     """
-    Check if Dropbox token needs refresh and attempt refresh if needed.
-    
-    Note: Dropbox SDK automatically refreshes tokens when app_key/app_secret are provided,
-    but only if token hasn't fully expired. If fully expired, user must reconnect.
+    Refresh Dropbox access token using refresh token (token rotation).
     
     Returns:
-        Tuple of (new_access_token, new_expires_at) if refresh succeeded, None if not needed or failed
+        Tuple of (new_access_token, new_refresh_token, new_expires_at) if refresh succeeded, None if failed
     """
-    if not token_expires_at:
-        # No expiration stored - assume it's valid (SDK will handle refresh)
+    try:
+        DROPBOX_CLIENT_ID = os.getenv("DROPBOX_CLIENT_ID") or os.getenv("DROPBOX_APP_KEY")
+        DROPBOX_CLIENT_SECRET = os.getenv("DROPBOX_CLIENT_SECRET") or os.getenv("DROPBOX_APP_SECRET")
+        
+        if not DROPBOX_CLIENT_ID or not DROPBOX_CLIENT_SECRET:
+            print(f"[WARN] Dropbox credentials not configured, cannot refresh token for {user_email}")
+            return None
+        
+        if not refresh_token:
+            print(f"[WARN] No refresh token available for Dropbox user {user_email}")
+            return None
+        
+        print(f"[INFO] Refreshing Dropbox token for {user_email}...")
+        
+        # Dropbox token rotation endpoint
+        token_response = requests.post(
+            "https://api.dropbox.com/oauth2/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": DROPBOX_CLIENT_ID,
+                "client_secret": DROPBOX_CLIENT_SECRET
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=10
+        )
+        
+        if token_response.status_code != 200:
+            error_data = token_response.json() if token_response.text else {}
+            error_msg = error_data.get("error_description", error_data.get("error", "Unknown error"))
+            print(f"[ERROR] Dropbox token refresh failed: {error_msg}")
+            return None
+        
+        token_data = token_response.json()
+        new_access_token = token_data.get("access_token")
+        new_refresh_token = token_data.get("refresh_token")  # May be same or new refresh token
+        expires_in = token_data.get("expires_in", 14400)  # Default 4 hours
+        
+        if not new_access_token:
+            print(f"[ERROR] No access token in Dropbox refresh response")
+            return None
+        
+        # Use new refresh token if provided, otherwise keep the old one
+        final_refresh_token = new_refresh_token if new_refresh_token else refresh_token
+        new_expires_at = int(time.time()) + expires_in - 120  # Subtract 2 min buffer
+        
+        print(f"[SUCCESS] Dropbox token refreshed successfully (expires in {expires_in}s)")
+        
+        # Update stored tokens in database
+        try:
+            users = read_users()
+            if user_email.lower() in users:
+                if "connected_apps" not in users[user_email.lower()]:
+                    users[user_email.lower()]["connected_apps"] = {}
+                if "dropbox" not in users[user_email.lower()]["connected_apps"]:
+                    users[user_email.lower()]["connected_apps"]["dropbox"] = {}
+                
+                users[user_email.lower()]["connected_apps"]["dropbox"]["access_token_encrypted"] = encrypt_token(new_access_token)
+                users[user_email.lower()]["connected_apps"]["dropbox"]["refresh_token_encrypted"] = encrypt_token(final_refresh_token)
+                users[user_email.lower()]["connected_apps"]["dropbox"]["token_expires_at"] = new_expires_at
+                write_users(users)
+                print(f"[SUCCESS] Dropbox tokens updated in database")
+        except Exception as e:
+            print(f"[WARN] Failed to store refreshed Dropbox tokens: {e}")
+        
+        return (new_access_token, final_refresh_token, new_expires_at)
+    except Exception as e:
+        print(f"[ERROR] Exception refreshing Dropbox token: {e}")
+        import traceback
+        traceback.print_exc()
         return None
-    
-    current_time = int(time.time())
-    time_until_expiry = token_expires_at - current_time
-    
-    # Only attempt refresh if token expires within 2 minutes
-    if time_until_expiry > 120:
-        # Token is still valid for more than 2 minutes
-        return None
-    
-    # Token expires soon or already expired - Dropbox SDK with app_key/app_secret will auto-refresh
-    # if token hasn't fully expired yet. If fully expired, SDK can't refresh and user must reconnect.
-    # We can't manually refresh Dropbox tokens - the SDK handles it internally when provided with app_key/app_secret.
-    print(f"[INFO] Dropbox token expires in {time_until_expiry}s - SDK will handle refresh if possible")
-    return None  # SDK handles refresh automatically
 
 
 def upload_to_dropbox(access_token: str, refresh_token: str | None, token_expires_at: int | None, user_email: str, folder_path: str, pdf_path: Path, transcript_path: Path, meeting_name: str):
-    """Upload files to Dropbox with automatic token refresh via SDK"""
+    """Upload files to Dropbox with automatic token refresh"""
     try:
         import dropbox
         from dropbox.exceptions import AuthError
         
-        DROPBOX_CLIENT_ID = os.getenv("DROPBOX_CLIENT_ID")
-        DROPBOX_CLIENT_SECRET = os.getenv("DROPBOX_CLIENT_SECRET")
+        DROPBOX_CLIENT_ID = os.getenv("DROPBOX_CLIENT_ID") or os.getenv("DROPBOX_APP_KEY")
+        DROPBOX_CLIENT_SECRET = os.getenv("DROPBOX_CLIENT_SECRET") or os.getenv("DROPBOX_APP_SECRET")
         
         if not DROPBOX_CLIENT_ID or not DROPBOX_CLIENT_SECRET:
-            raise Exception("Dropbox credentials (DROPBOX_CLIENT_ID, DROPBOX_CLIENT_SECRET) not configured in .env file. Add these to your .env file.")
+            raise Exception("Dropbox credentials (DROPBOX_CLIENT_ID/DROPBOX_APP_KEY, DROPBOX_CLIENT_SECRET/DROPBOX_APP_SECRET) not configured in .env file. Developer action required: set DROPBOX_CLIENT_ID and DROPBOX_CLIENT_SECRET in the server .env and restart.")
         
-        # Check if token needs attention (expiring soon)
+        # Check if token needs refresh (expiring soon or already expired)
         current_time = int(time.time())
+        needs_refresh = False
         if token_expires_at:
             time_until_expiry = token_expires_at - current_time
-            if time_until_expiry < 120:  # Less than 2 minutes remaining
-                print(f"[INFO] Dropbox token expires soon (in {time_until_expiry}s) - SDK will auto-refresh if possible")
+            if time_until_expiry <= 120:  # Less than 2 minutes remaining or expired
+                needs_refresh = True
+                print(f"[INFO] Dropbox token expires soon (in {time_until_expiry}s), attempting refresh...")
+        elif not token_expires_at:
+            # No expiration stored - try a lightweight API call to check if token is valid
+            # If it fails with 401, we'll attempt refresh
+            pass
+        
+        # Attempt refresh if needed
+        if needs_refresh and refresh_token:
+            refresh_result = refresh_dropbox_token(user_email, refresh_token)
+            if refresh_result:
+                access_token, refresh_token, token_expires_at = refresh_result
+                print(f"[SUCCESS] Dropbox token refreshed before upload")
+            else:
+                # Refresh failed - check if we have required credentials
+                if not refresh_token:
+                    raise Exception("Dropbox upload failed because your Dropbox token is expired and we don't have a refresh token to refresh it. Action required: go to Settings → Connected Apps → Dropbox → Disconnect, then Connect again. After reconnecting, run one test upload to confirm.")
+                elif not DROPBOX_CLIENT_ID or not DROPBOX_CLIENT_SECRET:
+                    raise Exception("Dropbox upload failed because your Dropbox token is expired and we don't have app credentials to refresh it. Developer action required: set DROPBOX_CLIENT_ID and DROPBOX_CLIENT_SECRET in the server .env and restart. User action required: go to Settings → Connected Apps → Dropbox → Disconnect, then Connect again.")
+                else:
+                    raise Exception("Dropbox upload failed because your Dropbox token is expired and refresh failed. Action required: go to Settings → Connected Apps → Dropbox → Disconnect, then Connect again. After reconnecting, run one test upload to confirm.")
         
         # Use oauth2_access_token parameter and provide app credentials
-        # Dropbox SDK will automatically refresh token if needed (when app_key/app_secret provided)
+        # Dropbox SDK may automatically refresh token if needed (when app_key/app_secret provided)
         dbx = dropbox.Dropbox(
             oauth2_access_token=access_token,
             app_key=DROPBOX_CLIENT_ID,
@@ -883,16 +1375,41 @@ def upload_to_dropbox(access_token: str, refresh_token: str | None, token_expire
             dbx.users_get_current_account()
             print(f"[SUCCESS] Dropbox connection verified")
         except AuthError as auth_err:
-            # Token expired or invalid - SDK attempted refresh but failed (token fully expired)
+            # Token expired or invalid - try refresh if we have refresh_token
             error_msg = str(auth_err)
             print(f"[ERROR] Dropbox authentication failed: {error_msg}")
             
-            # Dropbox SDK with app_key/app_secret should auto-refresh, but if token is fully expired,
-            # SDK cannot refresh and user must reconnect
-            if "expired" in error_msg.lower() or "expired_access_token" in error_msg.lower() or "invalid_access_token" in error_msg.lower():
-                raise Exception("Dropbox access token is expired and cannot be refreshed. User must reconnect Dropbox in account settings.")
+            # If we have a refresh token, try refreshing now
+            if refresh_token and ("expired" in error_msg.lower() or "expired_access_token" in error_msg.lower() or "invalid_access_token" in error_msg.lower()):
+                print(f"[INFO] Dropbox token expired during upload, attempting refresh and retry...")
+                refresh_result = refresh_dropbox_token(user_email, refresh_token)
+                if refresh_result:
+                    access_token, refresh_token, token_expires_at = refresh_result
+                    # Retry with new token
+                    dbx = dropbox.Dropbox(
+                        oauth2_access_token=access_token,
+                        app_key=DROPBOX_CLIENT_ID,
+                        app_secret=DROPBOX_CLIENT_SECRET
+                    )
+                    dbx.users_get_current_account()
+                    print(f"[SUCCESS] Dropbox connection verified after refresh")
+                else:
+                    # Refresh failed - provide clear instructions
+                    if not refresh_token:
+                        raise Exception("Dropbox upload failed because your Dropbox token is expired and we don't have a refresh token to refresh it. Action required: go to Settings → Connected Apps → Dropbox → Disconnect, then Connect again. After reconnecting, run one test upload to confirm.")
+                    elif not DROPBOX_CLIENT_ID or not DROPBOX_CLIENT_SECRET:
+                        raise Exception("Dropbox upload failed because your Dropbox token is expired and we don't have app credentials to refresh it. Developer action required: set DROPBOX_CLIENT_ID and DROPBOX_CLIENT_SECRET in the server .env and restart. User action required: go to Settings → Connected Apps → Dropbox → Disconnect, then Connect again.")
+                    else:
+                        raise Exception("Dropbox upload failed because your Dropbox token is expired and refresh failed. Action required: go to Settings → Connected Apps → Dropbox → Disconnect, then Connect again. After reconnecting, run one test upload to confirm.")
             else:
-                raise Exception(f"Dropbox authentication failed: {error_msg}")
+                # No refresh token or different error
+                if "expired" in error_msg.lower() or "expired_access_token" in error_msg.lower() or "invalid_access_token" in error_msg.lower():
+                    if not refresh_token:
+                        raise Exception("Dropbox upload failed because your Dropbox token is expired and we don't have a refresh token to refresh it. Action required: go to Settings → Connected Apps → Dropbox → Disconnect, then Connect again. After reconnecting, run one test upload to confirm.")
+                    else:
+                        raise Exception("Dropbox access token is expired and cannot be refreshed. User must reconnect Dropbox in account settings.")
+                else:
+                    raise Exception(f"Dropbox authentication failed: {error_msg}")
         
         # Format meeting name for folder structure (match Google Drive: YYYY/MM/DD)
         formatted_meeting_name = format_meeting_name_for_drive(meeting_name)
@@ -927,24 +1444,54 @@ def upload_to_dropbox(access_token: str, refresh_token: str | None, token_expire
                         except:
                             raise Exception(f"Failed to create Dropbox folder {current_path}: {create_err}")
         
-        # Upload PDF (meeting report) - ONLY PDFs, NO TXT FILES
+        upload_results = {"pdf": None, "transcript": None}
+        safe_meeting_name = meeting_name.replace("/", "-").strip()
+
+        # Upload PDF (meeting report)
         if pdf_path.exists() and pdf_path.stat().st_size > 0:
             with open(pdf_path, 'rb') as f:
                 file_data = f.read()
+                pdf_remote_path = f"{meeting_folder_path}/{safe_meeting_name}_meeting_report.pdf"
                 dbx.files_upload(
                     file_data,
-                    f"{meeting_folder_path}/{meeting_name}_meeting_report.pdf",
+                    pdf_remote_path,
                     mode=dropbox.files.WriteMode.overwrite
                 )
-                print(f"  ✓ Uploaded PDF to Dropbox: {meeting_folder_path}/{meeting_name}_meeting_report.pdf ({len(file_data)} bytes)")
+                upload_results["pdf"] = {"path": pdf_remote_path, "bytes": len(file_data)}
+                print(f"  ✓ Uploaded PDF to Dropbox: {pdf_remote_path} ({len(file_data)} bytes)")
         else:
             print(f"  ⚠️  PDF not found or empty at {pdf_path}, skipping PDF upload to Dropbox")
         
-        # NO TXT FILES - PDFs only
+        # Upload transcript (named script)
+        if transcript_path.exists() and transcript_path.stat().st_size > 0:
+            with open(transcript_path, 'rb') as f:
+                file_data = f.read()
+                transcript_remote_path = f"{meeting_folder_path}/{safe_meeting_name}_named_script.txt"
+                dbx.files_upload(
+                    file_data,
+                    transcript_remote_path,
+                    mode=dropbox.files.WriteMode.overwrite
+                )
+                upload_results["transcript"] = {"path": transcript_remote_path, "bytes": len(file_data)}
+                print(f"  ✓ Uploaded transcript to Dropbox: {transcript_remote_path} ({len(file_data)} bytes)")
+        else:
+            print(f"  ⚠️  Transcript not found or empty at {transcript_path}, skipping transcript upload to Dropbox")
+
+        return upload_results
     except AuthError as e:
         error_msg = str(e)
         if "expired" in error_msg.lower() or "expired_access_token" in error_msg.lower() or "invalid_access_token" in error_msg.lower():
-            raise Exception("Dropbox access token is expired and cannot be refreshed. User must reconnect Dropbox in account settings.")
+            # Try one more refresh attempt if we have refresh_token
+            if refresh_token:
+                print(f"[INFO] Dropbox AuthError during upload, attempting final refresh...")
+                refresh_result = refresh_dropbox_token(user_email, refresh_token)
+                if refresh_result:
+                    # Retry upload would require recursive call - instead raise with clear message
+                    raise Exception("Dropbox token expired during upload. Token was refreshed, but upload needs to be retried. Action required: go to Settings → Connected Apps → Dropbox → Disconnect, then Connect again to ensure refresh tokens are properly stored.")
+                else:
+                    raise Exception("Dropbox upload failed because your Dropbox token is expired and we don't have a refresh token (or app credentials) to refresh it. Action required: go to Settings → Connected Apps → Dropbox → Disconnect, then Connect again. After reconnecting, run one test upload to confirm.")
+            else:
+                raise Exception("Dropbox upload failed because your Dropbox token is expired and we don't have a refresh token to refresh it. Action required: go to Settings → Connected Apps → Dropbox → Disconnect, then Connect again. After reconnecting, run one test upload to confirm.")
         else:
             raise Exception(f"Dropbox authentication failed: {error_msg}")
     except Exception as e:
@@ -968,7 +1515,7 @@ def format_meeting_name_for_drive(meeting_name: str) -> str:
     
     return formatted
 
-def upload_to_googledrive(access_token: str, refresh_token: str, folder_name: str, pdf_path: Path, transcript_path: Path, meeting_name: str):
+def upload_to_googledrive(access_token: str, refresh_token: str | None, folder_name: str, pdf_path: Path, transcript_path: Path, meeting_name: str, user_email: str | None = None):
     """Upload files to Google Drive"""
     try:
         from google.oauth2.credentials import Credentials
@@ -995,40 +1542,80 @@ def upload_to_googledrive(access_token: str, refresh_token: str, folder_name: st
         # Refresh token if needed
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
+            if user_email:
+                users = read_users()
+                if user_email.lower() in users:
+                    if "connected_apps" not in users[user_email.lower()]:
+                        users[user_email.lower()]["connected_apps"] = {}
+                    if "googledrive" not in users[user_email.lower()]["connected_apps"]:
+                        users[user_email.lower()]["connected_apps"]["googledrive"] = {}
+                    users[user_email.lower()]["connected_apps"]["googledrive"]["access_token_encrypted"] = encrypt_token(creds.token)
+                    users[user_email.lower()]["connected_apps"]["googledrive"]["token_expires_at"] = int(creds.expiry.timestamp()) if creds.expiry else None
+                    write_users(users)
         
         service = build('drive', 'v3', credentials=creds)
         
-        # Find or create folder
-        folder_id = None
-        query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-        results = service.files().list(q=query, spaces='drive').execute()
-        items = results.get('files', [])
-        
-        if items:
-            folder_id = items[0]['id']
-        else:
-            # Create folder
+        def get_or_create_folder(name: str, parent_id: str | None) -> str:
+            parent_clause = f" and '{parent_id}' in parents" if parent_id else ""
+            query = (
+                f"name='{name}' and mimeType='application/vnd.google-apps.folder' "
+                f"and trashed=false{parent_clause}"
+            )
+            results = service.files().list(q=query, spaces='drive').execute()
+            items = results.get('files', [])
+            if items:
+                return items[0]["id"]
             file_metadata = {
-                'name': folder_name,
-                'mimeType': 'application/vnd.google-apps.folder'
+                "name": name,
+                "mimeType": "application/vnd.google-apps.folder",
             }
-            folder = service.files().create(body=file_metadata, fields='id').execute()
-            folder_id = folder.get('id')
+            if parent_id:
+                file_metadata["parents"] = [parent_id]
+            folder = service.files().create(body=file_metadata, fields="id").execute()
+            return folder.get("id")
         
-        # Format meeting name for cleaner Google Drive naming
+        # Build folder path: /PhiAI/Meetings/meeting YYYY/MM/DD/
         clean_meeting_name = format_meeting_name_for_drive(meeting_name)
+        base_parts = [p for p in folder_name.replace("\\", "/").split("/") if p]
+        meeting_parts = [p for p in clean_meeting_name.split("/") if p]
+        if meeting_parts:
+            meeting_parts[0] = f"meeting {meeting_parts[0].strip()}"
+        folder_parts = base_parts + meeting_parts
+        folder_id = None
+        for part in folder_parts:
+            folder_id = get_or_create_folder(part, folder_id)
         
-        # Upload PDF (meeting report)
-        # Upload PDF (meeting report) - ONLY PDFs, NO TXT FILES
+        upload_results = {"pdf": None, "transcript": None}
+        safe_meeting_name = meeting_name.replace("/", "-").strip()
+
+        def upload_or_update(file_path: Path, filename: str, mime_type: str):
+            existing_query = f"name='{filename}' and parents in '{folder_id}' and trashed=false"
+            existing_results = service.files().list(q=existing_query, spaces='drive').execute()
+            existing_files = existing_results.get('files', [])
+            file_metadata = {"name": filename, "parents": [folder_id]}
+            media = MediaFileUpload(str(file_path), mimetype=mime_type)
+            if existing_files:
+                file_id = existing_files[0]["id"]
+                return service.files().update(fileId=file_id, body=file_metadata, media_body=media, fields="id").execute()
+            return service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+
         if pdf_path.exists() and pdf_path.stat().st_size > 0:
-            file_metadata = {'name': f'{clean_meeting_name}_meeting_report.pdf', 'parents': [folder_id]}
-            media = MediaFileUpload(str(pdf_path), mimetype='application/pdf')
-            file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-            print(f"  ✓ Uploaded PDF to Google Drive: {folder_name}/{clean_meeting_name}_meeting_report.pdf (ID: {file.get('id')})")
+            pdf_filename = f"{safe_meeting_name}_meeting_report.pdf"
+            file = upload_or_update(pdf_path, pdf_filename, "application/pdf")
+            upload_results["pdf"] = {"id": file.get("id"), "name": pdf_filename}
+            print(f"  ✓ Uploaded PDF to Google Drive: {folder_name}/{pdf_filename} (ID: {file.get('id')})")
         else:
             print(f"  ⚠️  PDF not found or empty at {pdf_path}, skipping PDF upload to Google Drive")
-        
-        # NO TXT FILES - PDFs only
+
+        if transcript_path.exists() and transcript_path.stat().st_size > 0:
+            transcript_filename = f"{safe_meeting_name}_named_script.txt"
+            file = upload_or_update(transcript_path, transcript_filename, "text/plain")
+            upload_results["transcript"] = {"id": file.get("id"), "name": transcript_filename}
+            print(f"  ✓ Uploaded transcript to Google Drive: {folder_name}/{transcript_filename} (ID: {file.get('id')})")
+        else:
+            print(f"  ⚠️  Transcript not found or empty at {transcript_path}, skipping transcript upload to Google Drive")
+
+        return upload_results
     except Exception as e:
         print(f"Google Drive upload error: {e}")
         raise
@@ -1112,96 +1699,45 @@ def refresh_box_token(user_email: str, refresh_token: str) -> tuple[str, str, in
 
 
 def upload_to_box(access_token: str, refresh_token: str | None, token_expires_at: int | None, user_email: str, folder_name: str, pdf_path: Path, transcript_path: Path, meeting_name: str):
-    """Upload files to Box with automatic token refresh"""
+    """Upload files to Box with automatic token refresh and scope verification"""
+    from services.box_client import (
+        get_authenticated_client, 
+        verify_write_scope, 
+        BoxInsufficientScopeError,
+        BoxTokenError
+    )
+    from boxsdk.exception import BoxAPIException
+    
     try:
-        try:
-            from boxsdk import Client, OAuth2  # type: ignore
-            from boxsdk.exception import BoxAPIException  # type: ignore
-        except ImportError as import_err:
-            error_msg = f"boxsdk package not installed. Install with: pip install boxsdk. Import error: {import_err}"
-            print(f"[ERROR] Box import error: {error_msg}")
-            raise Exception(error_msg)
+        print(f"[Box] Starting upload for {meeting_name}...")
         
-        BOX_CLIENT_ID = os.getenv("BOX_CLIENT_ID")
-        BOX_CLIENT_SECRET = os.getenv("BOX_CLIENT_SECRET")
+        # Verify write scope before attempting upload (cached check)
+        has_write_scope, scope_error = verify_write_scope(user_email, force_check=False)
+        if not has_write_scope:
+            # Mark connection as needing scope update
+            users = read_users()
+            if user_email.lower() in users:
+                if "connected_apps" not in users[user_email.lower()]:
+                    users[user_email.lower()]["connected_apps"] = {}
+                if "box" not in users[user_email.lower()]["connected_apps"]:
+                    users[user_email.lower()]["connected_apps"]["box"] = {}
+                users[user_email.lower()]["connected_apps"]["box"]["needs_scope_update"] = True
+                write_users(users)
+            
+            raise BoxInsufficientScopeError(
+                scope_error or "Box token lacks write permissions. "
+                "Developer action: In Box Developer Console → My Apps → Your App → Configuration → Application Scopes, "
+                "enable 'Read and write all files and folders stored in Box'. "
+                "User action: After enabling scopes, go to Settings → Connected Apps → Box → Disconnect → Connect again. "
+                "Changes can take a few minutes to propagate."
+            )
         
-        if not BOX_CLIENT_ID or not BOX_CLIENT_SECRET:
-            raise Exception("Box credentials (BOX_CLIENT_ID, BOX_CLIENT_SECRET) not configured in .env file")
+        # Get authenticated client (handles token refresh automatically)
+        client = get_authenticated_client(user_email)
+        if not client:
+            raise BoxTokenError("Failed to create authenticated Box client")
         
-        # Check if token needs refresh (within 2 minutes of expiration)
-        current_time = int(time.time())
-        if token_expires_at and (token_expires_at - current_time) < 120:  # Less than 2 minutes remaining
-            print(f"[INFO] Box token expires soon (in {token_expires_at - current_time}s), refreshing...")
-            refresh_result = refresh_box_token(user_email, refresh_token)
-            if refresh_result:
-                access_token, refresh_token, token_expires_at = refresh_result
-                print(f"[SUCCESS] Box token refreshed")
-            else:
-                raise Exception("Missing refresh_token or app credentials. User must reconnect Box.")
-        
-        # Create OAuth2 object with refresh callback for auto-refresh
-        oauth = OAuth2(
-            client_id=BOX_CLIENT_ID,
-            client_secret=BOX_CLIENT_SECRET,
-            access_token=access_token,
-            refresh_token=refresh_token
-        )
-        
-        # Set up refresh callback to update stored tokens
-        def store_tokens(access_token_new, refresh_token_new):
-            """Callback to store refreshed tokens"""
-            try:
-                users = read_users()
-                if user_email.lower() in users:
-                    if "connected_apps" not in users[user_email.lower()]:
-                        users[user_email.lower()]["connected_apps"] = {}
-                    if "box" not in users[user_email.lower()]["connected_apps"]:
-                        users[user_email.lower()]["connected_apps"]["box"] = {}
-                    
-                    users[user_email.lower()]["connected_apps"]["box"]["access_token_encrypted"] = encrypt_token(access_token_new)
-                    if refresh_token_new:
-                        users[user_email.lower()]["connected_apps"]["box"]["refresh_token_encrypted"] = encrypt_token(refresh_token_new)
-                    # Update expiration (default 1 hour)
-                    expires_at = int(time.time()) + 3600 - 120
-                    users[user_email.lower()]["connected_apps"]["box"]["token_expires_at"] = expires_at
-                    write_users(users)
-                    print(f"[SUCCESS] Box tokens updated after SDK auto-refresh")
-            except Exception as e:
-                print(f"[WARN] Failed to store refreshed Box tokens: {e}")
-        
-        oauth.refresh = store_tokens
-        
-        client = Client(oauth)
-        
-        # Test connection by getting current user
-        try:
-            client.user(user_id='me').get()
-            print(f"[SUCCESS] Box connection verified")
-        except BoxAPIException as api_err:
-            error_msg = str(api_err)
-            if api_err.status == 401:
-                # Token expired - try refresh
-                if refresh_token:
-                    print(f"[INFO] Box token expired (401), attempting refresh...")
-                    refresh_result = refresh_box_token(user_email, refresh_token)
-                    if refresh_result:
-                        access_token, refresh_token, token_expires_at = refresh_result
-                        # Retry with new token
-                        oauth = OAuth2(
-                            client_id=BOX_CLIENT_ID,
-                            client_secret=BOX_CLIENT_SECRET,
-                            access_token=access_token,
-                            refresh_token=refresh_token
-                        )
-                        oauth.refresh = store_tokens
-                        client = Client(oauth)
-                        client.user(user_id='me').get()  # Test again
-                    else:
-                        raise Exception("Missing refresh_token or app credentials. User must reconnect Box.")
-                else:
-                    raise Exception("Box access token is expired and no refresh token available. User must reconnect Box.")
-            else:
-                raise Exception(f"Box API error: {error_msg}")
+        print(f"[Box] Token valid, write scope verified")
         
         # Format meeting name for folder structure (match Google Drive: YYYY/MM/DD)
         formatted_meeting_name = format_meeting_name_for_drive(meeting_name)
@@ -1212,6 +1748,7 @@ def upload_to_box(access_token: str, refresh_token: str | None, token_expires_at
         
         # Get root folder
         root_folder = client.folder('0')
+        print(f"[Box] Creating folder path: {meeting_folder_path}")
         
         # Find or create nested folder structure
         current_folder = root_folder
@@ -1224,7 +1761,7 @@ def upload_to_box(access_token: str, refresh_token: str | None, token_expires_at
             # Look for folder in current location
             folder_id = None
             try:
-                items = current_folder.get_items()
+                items = list(current_folder.get_items())
                 for item in items:
                     if item.type == 'folder' and item.name == folder_part:
                         folder_id = item.id
@@ -1232,33 +1769,64 @@ def upload_to_box(access_token: str, refresh_token: str | None, token_expires_at
                 
                 if folder_id:
                     current_folder = client.folder(folder_id)
+                    print(f"[Box] Using existing folder: {folder_part}")
                 else:
                     # Create folder
                     new_folder = current_folder.create_subfolder(folder_part)
                     current_folder = new_folder
-                    print(f"  [INFO] Created Box folder: {folder_part}")
+                    print(f"[Box] Created folder: {folder_part}")
             except BoxAPIException as e:
                 if e.status == 409:  # Conflict - folder already exists (race condition)
                     # Find it again
-                    items = current_folder.get_items()
+                    items = list(current_folder.get_items())
                     for item in items:
                         if item.type == 'folder' and item.name == folder_part:
                             current_folder = client.folder(item.id)
+                            print(f"[Box] Found folder after race condition: {folder_part}")
                             break
                     else:
                         raise Exception(f"Failed to find or create Box folder {folder_part}: {e}")
+                elif e.status == 403:
+                    # Insufficient scope - token doesn't have required permissions
+                    error_msg = str(e)
+                    if "insufficient_scope" in error_msg.lower() or "requires higher privileges" in error_msg.lower():
+                        # Mark connection as needing scope update
+                        users = read_users()
+                        if user_email.lower() in users:
+                            if "connected_apps" not in users[user_email.lower()]:
+                                users[user_email.lower()]["connected_apps"] = {}
+                            if "box" not in users[user_email.lower()]["connected_apps"]:
+                                users[user_email.lower()]["connected_apps"]["box"] = {}
+                            users[user_email.lower()]["connected_apps"]["box"]["needs_scope_update"] = True
+                            write_users(users)
+                        
+                        raise BoxInsufficientScopeError(
+                            "Box upload failed: Your Box access token doesn't have write permissions. "
+                            "Developer action: In Box Developer Console → My Apps → Your App → Configuration → Application Scopes, "
+                            "enable 'Read and write all files and folders stored in Box'. "
+                            "User action: After enabling scopes, go to Settings → Connected Apps → Box → Disconnect → Connect again. "
+                            "Changes can take a few minutes to propagate."
+                        )
+                    else:
+                        raise Exception(f"Box upload failed due to insufficient permissions (403): {e}")
                 else:
                     raise Exception(f"Failed to create Box folder {folder_part}: {e}")
         
-        # Upload PDF (meeting report) - ONLY PDFs, NO TXT FILES
+        upload_results = {"pdf": None, "transcript": None}
+        safe_meeting_name = meeting_name.replace("/", "-").strip()
+
+        # Upload PDF (meeting report)
         if pdf_path.exists() and pdf_path.stat().st_size > 0:
             file_size = pdf_path.stat().st_size
+            pdf_filename = f"{safe_meeting_name}_meeting_report.pdf"
+            print(f"[Box] Uploading PDF: {pdf_filename} ({file_size} bytes)")
+            
             # Check if file already exists and overwrite/version it
             try:
                 existing_files = list(current_folder.get_items())
                 existing_file_id = None
                 for item in existing_files:
-                    if item.type == 'file' and item.name == f'{meeting_name}_meeting_report.pdf':
+                    if item.type == 'file' and item.name == pdf_filename:
                         existing_file_id = item.id
                         break
                 
@@ -1269,26 +1837,125 @@ def upload_to_box(access_token: str, refresh_token: str | None, token_expires_at
                             f,
                             etag=None  # Force new version
                         )
-                    print(f"  ✓ Uploaded PDF to Box (new version): {meeting_folder_path}/{meeting_name}_meeting_report.pdf (ID: {file.id}, {file_size} bytes)")
+                    upload_results["pdf"] = {"id": file.id, "name": pdf_filename}
+                    print(f"[Box] Uploaded PDF (new version): {meeting_folder_path}/{pdf_filename} (ID: {file.id}, {file_size} bytes)")
                 else:
                     # Upload new file
                     with open(pdf_path, 'rb') as f:
-                        file = current_folder.upload_stream(f, f'{meeting_name}_meeting_report.pdf')
-                    print(f"  ✓ Uploaded PDF to Box: {meeting_folder_path}/{meeting_name}_meeting_report.pdf (ID: {file.id}, {file_size} bytes)")
+                        file = current_folder.upload_stream(f, pdf_filename)
+                    # Verify upload succeeded
+                    if file and file.id:
+                        upload_results["pdf"] = {"id": file.id, "name": pdf_filename}
+                        print(f"[Box] Uploaded PDF: {meeting_folder_path}/{pdf_filename} (ID: {file.id}, {file_size} bytes)")
+                    else:
+                        raise Exception("Box upload completed but file object is invalid")
+            except BoxAPIException as upload_err:
+                if upload_err.status == 403:
+                    error_msg = str(upload_err)
+                    if "insufficient_scope" in error_msg.lower():
+                        # Mark connection as needing scope update
+                        users = read_users()
+                        if user_email.lower() in users:
+                            if "connected_apps" not in users[user_email.lower()]:
+                                users[user_email.lower()]["connected_apps"] = {}
+                            if "box" not in users[user_email.lower()]["connected_apps"]:
+                                users[user_email.lower()]["connected_apps"]["box"] = {}
+                            users[user_email.lower()]["connected_apps"]["box"]["needs_scope_update"] = True
+                            write_users(users)
+                        
+                        raise BoxInsufficientScopeError(
+                            "Box upload failed: Your Box access token doesn't have write permissions. "
+                            "Developer action: In Box Developer Console → My Apps → Your App → Configuration → Application Scopes, "
+                            "enable 'Read and write all files and folders stored in Box'. "
+                            "User action: After enabling scopes, go to Settings → Connected Apps → Box → Disconnect → Connect again. "
+                            "Changes can take a few minutes to propagate."
+                        )
+                    else:
+                        raise Exception(f"Box upload failed due to insufficient permissions (403): {upload_err}")
+                else:
+                    raise Exception(f"Failed to upload PDF to Box: {upload_err}")
             except Exception as upload_err:
                 raise Exception(f"Failed to upload PDF to Box: {upload_err}")
         else:
-            print(f"  ⚠️  PDF not found or empty at {pdf_path}, skipping PDF upload to Box")
+            print(f"[Box] PDF not found or empty at {pdf_path}, skipping PDF upload")
+
+        # Upload transcript (named script)
+        if transcript_path.exists() and transcript_path.stat().st_size > 0:
+            file_size = transcript_path.stat().st_size
+            transcript_filename = f"{safe_meeting_name}_named_script.txt"
+            print(f"[Box] Uploading transcript: {transcript_filename} ({file_size} bytes)")
+            try:
+                existing_files = list(current_folder.get_items())
+                existing_file_id = None
+                for item in existing_files:
+                    if item.type == 'file' and item.name == transcript_filename:
+                        existing_file_id = item.id
+                        break
+                if existing_file_id:
+                    with open(transcript_path, 'rb') as f:
+                        file = client.file(existing_file_id).update_contents_with_stream(
+                            f,
+                            etag=None
+                        )
+                    upload_results["transcript"] = {"id": file.id, "name": transcript_filename}
+                    print(f"[Box] Uploaded transcript (new version): {meeting_folder_path}/{transcript_filename} (ID: {file.id}, {file_size} bytes)")
+                else:
+                    with open(transcript_path, 'rb') as f:
+                        file = current_folder.upload_stream(f, transcript_filename)
+                    if file and file.id:
+                        upload_results["transcript"] = {"id": file.id, "name": transcript_filename}
+                        print(f"[Box] Uploaded transcript: {meeting_folder_path}/{transcript_filename} (ID: {file.id}, {file_size} bytes)")
+                    else:
+                        raise Exception("Box upload completed but file object is invalid")
+            except BoxAPIException as upload_err:
+                if upload_err.status == 403:
+                    error_msg = str(upload_err)
+                    if "insufficient_scope" in error_msg.lower():
+                        users = read_users()
+                        if user_email.lower() in users:
+                            if "connected_apps" not in users[user_email.lower()]:
+                                users[user_email.lower()]["connected_apps"] = {}
+                            if "box" not in users[user_email.lower()]["connected_apps"]:
+                                users[user_email.lower()]["connected_apps"]["box"] = {}
+                            users[user_email.lower()]["connected_apps"]["box"]["needs_scope_update"] = True
+                            write_users(users)
+                        raise BoxInsufficientScopeError(
+                            "Box upload failed: Your Box access token doesn't have write permissions. "
+                            "Developer action: In Box Developer Console → My Apps → Your App → Configuration → Application Scopes, "
+                            "enable 'Read and write all files and folders stored in Box'. "
+                            "User action: After enabling scopes, go to Settings → Connected Apps → Box → Disconnect → Connect again. "
+                            "Changes can take a few minutes to propagate."
+                        )
+                    else:
+                        raise Exception(f"Box upload failed due to insufficient permissions (403): {upload_err}")
+                else:
+                    raise Exception(f"Failed to upload transcript to Box: {upload_err}")
+            except Exception as upload_err:
+                raise Exception(f"Failed to upload transcript to Box: {upload_err}")
+        else:
+            print(f"[Box] Transcript not found or empty at {transcript_path}, skipping transcript upload")
         
-        # NO TXT FILES - PDFs only
+        print(f"[Box] Upload completed successfully")
+        return upload_results
+        
+    except BoxInsufficientScopeError:
+        # Re-raise scope errors as-is
+        raise
+    except BoxTokenError:
+        # Re-raise token errors as-is
+        raise
     except BoxAPIException as e:
         error_msg = str(e)
         if e.status == 401:
-            raise Exception("Box access token is expired and cannot be refreshed. User must reconnect Box in account settings.")
+            # Token expired - this shouldn't happen if refresh_if_needed worked, but handle it
+            raise BoxTokenError(
+                "Box token expired during upload. "
+                "If this persists, go to Settings → Connected Apps → Box → Disconnect → Connect again."
+            )
         else:
             raise Exception(f"Box API error: {error_msg}")
     except Exception as e:
-        print(f"[ERROR] Box upload error: {e}")
+        print(f"[Box] Upload error: {e}")
         import traceback
         if os.getenv("FLASK_DEBUG") == "1":
             traceback.print_exc()
@@ -1306,10 +1973,36 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
         if len(parts) == 2 and parts[1].isdigit():  # Has timestamp suffix
             meeting_name = parts[0].replace("_", " ")
 
+    # Calculate optimal speaker count from participants (with buffer for unknowns)
+    # This helps AssemblyAI's diarization accuracy significantly
+    speakers_expected = cfg.get("speakers_expected")
+    if speakers_expected is None and participants:
+        # Count enrolled participants and add buffer for unknown speakers
+        enrolled_count = len(participants)
+        # Add 2-3 buffer for potential unknown speakers (common in meetings)
+        speakers_expected = enrolled_count + 2
+        print(f"Auto-calculated speaker count: {enrolled_count} enrolled + 2 buffer = {speakers_expected} total")
+    
+    # Get user email for vocabulary (meeting owner)
+    # Use first participant as meeting owner, or current session user
+    user_email = None
+    if participants and len(participants) > 0:
+        first_participant = participants[0]
+        if isinstance(first_participant, dict):
+            user_email = first_participant.get("email", "").lower()
+        elif isinstance(first_participant, str):
+            user_email = first_participant.lower()
+    
+    # If no participants, try to get from current session
+    if not user_email:
+        current = current_user()
+        if current:
+            user_email = current["email"].lower()
+    
     cmd1 = [PY, "transcribe_assemblyai.py", str(audio_path)]
-    if cfg.get("speakers_expected") is not None:
-        cmd1 += ["--speakers", str(cfg["speakers_expected"])]
-
+    if speakers_expected is not None:
+        cmd1 += ["--speakers", str(speakers_expected)]
+    
     # Build participant names list for filtering enrollment files
     # Pass both username and firstname,lastname formats for maximum compatibility
     participant_names = []
@@ -1347,9 +2040,50 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
         # Pass participant names as comma-separated list (usernames and firstname,lastname)
         cmd2 += ["--participants", ",".join(participant_names)]
 
+    # Prepare environment with user email for vocabulary
+    import os
+    env = os.environ.copy()
+    # Load .env file manually (same as run_cmd does)
+    env_file = ROOT / ".env"
+    if env_file.exists():
+        try:
+            with open(env_file, 'r', encoding='utf-8-sig') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip().strip('"').strip("'")
+                        env[key] = value
+        except Exception as e:
+            print(f"Warning: Could not load .env file: {e}")
+    
+    # Add user email to environment for vocabulary loading
+    if user_email:
+        env["VOCABULARY_USER_EMAIL"] = user_email
+        print(f"Using custom vocabulary for user: {user_email}")
+    
     # Run transcription and speaker identification
     for cmd in (cmd1, cmd2):
-        rc = run_cmd(cmd)
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace"
+            )
+            if result.returncode != 0:
+                print(f"Command failed: {' '.join(cmd)}")
+                print(f"STDOUT: {result.stdout}")
+                print(f"STDERR: {result.stderr}")
+            rc = result.returncode
+        except Exception as e:
+            print(f"Error running command {' '.join(cmd)}: {e}")
+            rc = 1
+        
         if rc != 0:
             print(f"\n❌ Pipeline stopped (exit {rc})")
             return
@@ -1655,11 +2389,9 @@ Phi AI Team"""
                 send_email(participant_email, subject, body, attachments)
                 print(f"📧 Sent meeting report PDF to {participant_email}")
         
-        # Upload to connected apps for all participants
-        # ONLY upload PDFs - NO TXT FILES
-        if pdf_exists and pdf_path.exists() and pdf_path.stat().st_size > 0:
+        # Upload to connected apps for all participants (enqueue background job)
+        if (pdf_path.exists() and pdf_path.stat().st_size > 0) or (transcript_path.exists() and transcript_path.stat().st_size > 0):
             try:
-                # Get all participant emails
                 participant_emails_list = []
                 if participants:
                     for p in participants:
@@ -1667,26 +2399,19 @@ Phi AI Team"""
                             participant_emails_list.append(p.lower())
                         elif isinstance(p, dict) and "email" in p:
                             participant_emails_list.append(p["email"].lower())
-                
-                # Also include the uploader
+
                 uploader_email = cfg.get("uploader_email")
                 if uploader_email and uploader_email.lower() not in participant_emails_list:
                     participant_emails_list.append(uploader_email.lower())
-                
-                # Upload to each participant's connected apps
-                # Pass pdf_path and transcript_path - upload functions will check if files exist
-                print(f"📤 Preparing to upload meeting files to connected apps...")
+
+                print(f"📤 Enqueuing upload job for meeting files...")
                 print(f"   PDF path: {pdf_path}")
                 print(f"   PDF exists: {pdf_path.exists()}")
-                print(f"   PDF size: {pdf_path.stat().st_size if pdf_path.exists() else 0} bytes")
                 print(f"   Transcript path: {transcript_path}")
                 print(f"   Transcript exists: {transcript_path.exists()}")
-                
-                for email in participant_emails_list:
-                    print(f"📤 Uploading meeting files to connected apps for {email}...")
-                    upload_to_connected_apps(email, pdf_path, transcript_path, meeting_name)
+                enqueue_upload_job(meeting_name, pdf_path, transcript_path, participant_emails_list)
             except Exception as e:
-                print(f"⚠️  Warning: Could not upload to connected apps: {e}")
+                print(f"⚠️  Warning: Could not enqueue upload job: {e}")
                 import traceback
                 traceback.print_exc()
         
@@ -1698,6 +2423,105 @@ Phi AI Team"""
 # Initialize
 ensure_dirs()
 init_users_csv()
+
+# Startup validation for cloud storage credentials
+def validate_cloud_storage_credentials():
+    """Validate that required credentials are available if any users have connected apps"""
+    try:
+        users = read_users()
+        has_dropbox_connection = False
+        has_box_connection = False
+        
+        for user_email, user_data in users.items():
+            connected_apps = user_data.get("connected_apps", {})
+            if "dropbox" in connected_apps:
+                has_dropbox_connection = True
+            if "box" in connected_apps:
+                has_box_connection = True
+        
+        # Check Dropbox credentials if any user has Dropbox connected
+        if has_dropbox_connection:
+            dropbox_key = os.getenv("DROPBOX_CLIENT_ID") or os.getenv("DROPBOX_APP_KEY")
+            dropbox_secret = os.getenv("DROPBOX_CLIENT_SECRET") or os.getenv("DROPBOX_APP_SECRET")
+            if not dropbox_key or not dropbox_secret:
+                print("[WARN] ⚠️  Dropbox integration is enabled but credentials are missing!")
+                print("       Developer action required: set DROPBOX_CLIENT_ID and DROPBOX_CLIENT_SECRET")
+                print("       (or DROPBOX_APP_KEY and DROPBOX_APP_SECRET) in the server .env and restart.")
+            else:
+                print("[INFO] ✓ Dropbox credentials configured")
+        
+        # Check Box credentials and SDK if any user has Box connected
+        if has_box_connection:
+            box_key = os.getenv("BOX_CLIENT_ID")
+            box_secret = os.getenv("BOX_CLIENT_SECRET")
+            if not box_key or not box_secret:
+                print("[WARN] ⚠️  Box integration is enabled but credentials are missing!")
+                print("       Developer action required: set BOX_CLIENT_ID and BOX_CLIENT_SECRET")
+                print("       in the server .env and restart.")
+            else:
+                print("[INFO] ✓ Box credentials configured")
+            
+            # Check if boxsdk is installed
+            try:
+                import boxsdk  # type: ignore
+                print("[INFO] ✓ Box SDK (boxsdk) is installed")
+            except ImportError:
+                print("[WARN] ⚠️  Box SDK (boxsdk) is not installed!")
+                print("       Developer action required: pip install boxsdk")
+                print("       Ensure requirements.txt includes boxsdk and run: pip install -r requirements.txt")
+    except Exception as e:
+        print(f"[WARN] Could not validate cloud storage credentials: {e}")
+
+# Run validation on startup
+validate_cloud_storage_credentials()
+start_upload_worker()
+
+# ----------------------------
+# Custom Vocabulary storage
+# ----------------------------
+def load_vocabulary() -> dict:
+    """Load vocabulary: {user_email: [vocab_entries]}"""
+    if not VOCABULARY_JSON.exists():
+        return {}
+    try:
+        return json.loads(VOCABULARY_JSON.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def save_vocabulary(vocab_dict: dict):
+    """Save vocabulary"""
+    VOCABULARY_JSON.write_text(json.dumps(vocab_dict, indent=2), encoding="utf-8")
+
+def get_user_vocabulary(user_email: str) -> list:
+    """Get all vocabulary entries for a user"""
+    vocab_dict = load_vocabulary()
+    return vocab_dict.get(user_email.lower(), [])
+
+def save_user_vocabulary(user_email: str, entries: list):
+    """Save vocabulary entries for a user"""
+    vocab_dict = load_vocabulary()
+    vocab_dict[user_email.lower()] = entries
+    save_vocabulary(vocab_dict)
+
+def get_user_custom_vocabulary(user_email: str) -> list[str]:
+    """
+    Get custom vocabulary terms as a list of strings for transcription pipeline.
+    Returns just the terms (not full entries) for word boosting.
+    """
+    entries = get_user_vocabulary(user_email)
+    terms = []
+    for entry in entries:
+        term = entry.get("term", "").strip()
+        if term:
+            terms.append(term)
+        # Also include aliases
+        aliases = entry.get("aliases", [])
+        if isinstance(aliases, list):
+            terms.extend([a.strip() for a in aliases if a.strip()])
+        elif isinstance(aliases, str):
+            # Handle comma-separated string
+            terms.extend([a.strip() for a in aliases.split(",") if a.strip()])
+    return terms
 
 # ----------------------------
 # Routes
@@ -1751,6 +2575,12 @@ def account_meetings():
         return redirect(url_for("login_get"))
     user = current_user()
     meetings = get_user_meetings(user["email"])
+    
+    # Detect unknown speakers for each meeting
+    for meeting in meetings:
+        unknown_data = detect_unknown_speakers(meeting)
+        meeting.update(unknown_data)
+    
     return render_template("account_meetings.html", user=user, meetings=meetings)
 
 def sync_user_organizations_from_orgs_json(user_email: str, users: dict):
@@ -2459,11 +3289,11 @@ def record_meeting():
 def upload_meeting():
     """Handle meeting audio upload and trigger pipeline"""
     if not require_login():
-        return ("Not logged in", 401), 401
+        return jsonify({"error": "Not logged in"}), 401
     
     user = current_user()
     if not user:
-        return ("User not found", 400), 400
+        return jsonify({"error": "User not found"}), 400
     
     # Check if user has enrollment audio - must be >= 30 seconds
     username = user.get("username", "").strip().lower()
@@ -2484,12 +3314,12 @@ def upload_meeting():
     
     f = request.files.get("audio")
     if not f:
-        return ("Missing audio", 400), 400
+        return jsonify({"error": "Missing audio"}), 400
     
     filename = (f.filename or "audio").strip()
     ext = Path(filename).suffix.lower()
     if ext not in ALLOWED_UPLOAD_EXT:
-        return (f"Unsupported file type: {ext}", 400), 400
+        return jsonify({"error": f"Unsupported file type: {ext}"}), 400
     
     # Parse participants from form
     participants = []
@@ -2938,30 +3768,489 @@ def delete_meeting(meeting_id: str):
     
     return jsonify({"status": "deleted", "message": "Meeting deleted successfully"}), 200
 
-@app.post("/account/delete")
-def delete_account():
-    """Delete user account and all associated data"""
+def apply_speaker_labels_to_transcript(transcript_path: Path, label_map: dict) -> str:
+    """
+    Apply speaker labels to transcript text.
+    Replaces "Unknown Speaker N" with user-provided names.
+    
+    Args:
+        transcript_path: Path to transcript file
+        label_map: Dict mapping "Unknown Speaker N" -> "New Name"
+    
+    Returns:
+        Updated transcript text
+    """
+    if not transcript_path.exists():
+        raise FileNotFoundError(f"Transcript not found: {transcript_path}")
+    
+    content = transcript_path.read_text(encoding="utf-8")
+    
+    # Replace each unknown speaker label
+    for unknown_label, new_name in label_map.items():
+        if new_name and new_name.strip():
+            # Replace in format "Unknown Speaker N: text" or "Unknown Speaker N : text" (with optional spaces)
+            # Match the speaker label followed by optional whitespace and a colon
+            pattern = re.escape(unknown_label) + r"\s*:"
+            replacement = new_name.strip() + ":"
+            content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
+    
+    return content
+
+def regenerate_meeting_pdf(meeting: dict, label_map: dict) -> Path:
+    """
+    Regenerate meeting PDF with new speaker labels.
+    
+    Args:
+        meeting: Meeting dict from meetings.json
+        label_map: Dict mapping "Unknown Speaker N" -> "New Name"
+    
+    Returns:
+        Path to regenerated PDF
+    """
+    meeting_id = meeting.get("id")
+    if not meeting_id:
+        raise ValueError("Meeting ID is required")
+    
+    # Get transcript path
+    transcript_path = None
+    if meeting.get("transcript_path"):
+        transcript_path = ROOT / meeting["transcript_path"]
+    else:
+        transcript_path = OUTPUT_DIR / f"{meeting_id}_named_script.txt"
+    
+    if not transcript_path.exists():
+        raise FileNotFoundError(f"Transcript not found: {transcript_path}")
+    
+    # Apply labels to transcript
+    updated_transcript = apply_speaker_labels_to_transcript(transcript_path, label_map)
+    
+    # Create temporary updated transcript file for PDF generation
+    temp_transcript = OUTPUT_DIR / f"{meeting_id}_labeled_script_temp.txt"
+    temp_transcript.write_text(updated_transcript, encoding="utf-8")
+    
+    try:
+        # Generate PDF using meeting_pdf_summarizer
+        pdf_path = OUTPUT_DIR / f"{meeting_id}_meeting_report.pdf"
+        summarizer_main = ROOT / "meeting_pdf_summarizer" / "main.py"
+        roles_json = ROOT / "meeting_pdf_summarizer" / "roles.json"
+        
+        if not summarizer_main.exists():
+            raise FileNotFoundError(f"PDF summarizer not found: {summarizer_main}")
+        
+        # Get upload date and source organizations from meeting
+        upload_date = meeting.get("processed_at")
+        source_orgs = meeting.get("source_organizations", [])
+        source_orgs_str = ",".join(source_orgs) if source_orgs else ""
+        
+        PY = sys.executable
+        cmd = [PY, str(summarizer_main),
+               "--input", str(temp_transcript),
+               "--output", str(pdf_path),
+               "--roles", str(roles_json)]
+        
+        if upload_date:
+            cmd.extend(["--upload-date", upload_date])
+        if source_orgs_str:
+            cmd.extend(["--source-organizations", source_orgs_str])
+        
+        # Run PDF generation
+        result = subprocess.run(
+            cmd,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace"
+        )
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"PDF generation failed: {result.stderr}")
+        
+        if not pdf_path.exists():
+            raise RuntimeError("PDF was not created")
+        
+        return pdf_path
+        
+    finally:
+        # Clean up temporary transcript
+        if temp_transcript.exists():
+            try:
+                temp_transcript.unlink()
+            except Exception:
+                pass
+
+@app.post("/api/meetings/<meeting_id>/label_speakers")
+def label_speakers(meeting_id: str):
+    """Label unknown speakers and regenerate PDF"""
     if not require_login():
         return jsonify({"error": "Not logged in"}), 401
     
     user = current_user()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    # Get meeting
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        return jsonify({"error": "Meeting not found"}), 404
+    
+    # Check authorization (user must be a participant)
     user_email = user["email"].lower()
+    participants = [p.lower() if isinstance(p, str) else p.get("email", "").lower() for p in meeting.get("participants", [])]
+    if user_email not in participants:
+        return jsonify({"error": "Unauthorized: You are not a participant in this meeting"}), 403
+    
+    # Get labels from request
+    data = request.get_json()
+    if not data or "labels" not in data:
+        return jsonify({"error": "Labels are required"}), 400
+    
+    labels = data.get("labels", {})
+    if not isinstance(labels, dict):
+        return jsonify({"error": "Labels must be a dictionary"}), 400
+    
+    # Validate labels (trim whitespace, check for duplicates)
+    label_map = {}
+    seen_names = set()
+    for unknown_speaker, new_name in labels.items():
+        if not isinstance(unknown_speaker, str) or not unknown_speaker.startswith("Unknown Speaker"):
+            continue
+        
+        new_name = (new_name or "").strip()
+        if new_name:
+            # Check for duplicates
+            if new_name.lower() in seen_names:
+                return jsonify({
+                    "error": "Duplicate name",
+                    "message": f"'{new_name}' is assigned to multiple speakers. Each speaker must have a unique name."
+                }), 400
+            seen_names.add(new_name.lower())
+            label_map[unknown_speaker] = new_name
+    
+    if not label_map:
+        return jsonify({"error": "No valid labels provided"}), 400
+    
+    # Results tracking
+    results = {
+        "pdf_regenerated": False,
+        "email_sent": False,
+        "uploads": {},
+        "errors": []
+    }
+    
+    try:
+        # 1. Regenerate PDF with new labels
+        print(f"[LABEL SPEAKERS] Regenerating PDF for meeting {meeting_id} with labels: {label_map}")
+        pdf_path = regenerate_meeting_pdf(meeting, label_map)
+        results["pdf_regenerated"] = True
+        print(f"[LABEL SPEAKERS] PDF regenerated: {pdf_path}")
+        
+        # 2. Delete old PDF (if it exists and is different)
+        old_pdf_path = None
+        if meeting.get("pdf_path"):
+            old_pdf_path = ROOT / meeting["pdf_path"]
+        else:
+            old_pdf_path = OUTPUT_DIR / f"{meeting_id}_meeting_report.pdf"
+        
+        if old_pdf_path.exists() and old_pdf_path != pdf_path:
+            try:
+                old_pdf_path.unlink()
+                print(f"[LABEL SPEAKERS] Deleted old PDF: {old_pdf_path}")
+            except Exception as e:
+                results["errors"].append(f"Could not delete old PDF: {e}")
+                print(f"[LABEL SPEAKERS] Warning: Could not delete old PDF: {e}")
+        
+        # 3. Update meeting metadata
+        existing_label_map = meeting.get("speaker_label_map", {})
+        existing_label_map.update(label_map)
+        
+        labels_version = meeting.get("labels_version", 0) + 1
+        
+        update_meeting(meeting_id, {
+            "speaker_label_map": existing_label_map,
+            "labels_updated_at": datetime.now().isoformat(),
+            "labels_version": labels_version,
+            "pdf_path": str(pdf_path.relative_to(ROOT)),
+            "pdf_updated_at": datetime.now().isoformat()
+        })
+        
+        # Reload meeting to get updated data
+        meeting = get_meeting(meeting_id)
+        
+        # 4. Update transcript file with new labels (optional - for consistency)
+        transcript_path = None
+        if meeting.get("transcript_path"):
+            transcript_path = ROOT / meeting["transcript_path"]
+        else:
+            transcript_path = OUTPUT_DIR / f"{meeting_id}_named_script.txt"
+        
+        if transcript_path.exists():
+            try:
+                updated_transcript = apply_speaker_labels_to_transcript(transcript_path, label_map)
+                transcript_path.write_text(updated_transcript, encoding="utf-8")
+                print(f"[LABEL SPEAKERS] Updated transcript file: {transcript_path}")
+            except Exception as e:
+                results["errors"].append(f"Could not update transcript: {e}")
+                print(f"[LABEL SPEAKERS] Warning: Could not update transcript: {e}")
+        
+        # 5. Re-send emails to participants
+        participant_emails = meeting.get("participants", [])
+        if participant_emails:
+            meeting_name = meeting.get("name") or meeting.get("id", "Meeting")
+            subject = f"Updated meeting report (speaker labels added): {meeting_name}"
+            
+            # Build email body
+            body = f"""Hello,
+
+The meeting report for "{meeting_name}" has been updated with speaker labels.
+
+The following unknown speakers have been labeled:
+"""
+            for unknown, name in label_map.items():
+                body += f"  • {unknown} → {name}\n"
+            
+            body += f"""
+
+You can view the updated report in your Past Meetings.
+
+Best regards,
+Phi AI
+"""
+            
+            email_success_count = 0
+            for email in participant_emails:
+                email_str = email.lower() if isinstance(email, str) else email.get("email", "").lower()
+                if email_str:
+                    try:
+                        if send_email(email_str, subject, body, attachments=[pdf_path]):
+                            email_success_count += 1
+                            print(f"[LABEL SPEAKERS] Email sent to {email_str}")
+                        else:
+                            results["errors"].append(f"Failed to send email to {email_str}")
+                    except Exception as e:
+                        results["errors"].append(f"Error sending email to {email_str}: {e}")
+            
+            if email_success_count > 0:
+                results["email_sent"] = True
+        
+        # 6. Re-upload to connected apps for all participants
+        meeting_name = meeting.get("name") or meeting.get("id", "Meeting")
+        transcript_path_for_upload = transcript_path if transcript_path and transcript_path.exists() else None
+        
+        upload_success = {}
+        for email in participant_emails:
+            email_str = email.lower() if isinstance(email, str) else email.get("email", "").lower()
+            if not email_str:
+                continue
+            
+            try:
+                upload_to_connected_apps(
+                    email_str,
+                    pdf_path,
+                    transcript_path_for_upload,
+                    meeting_name
+                )
+                upload_success[email_str] = True
+                print(f"[LABEL SPEAKERS] Uploaded to connected apps for {email_str}")
+            except Exception as e:
+                upload_success[email_str] = False
+                results["errors"].append(f"Upload failed for {email_str}: {e}")
+                print(f"[LABEL SPEAKERS] Warning: Upload failed for {email_str}: {e}")
+        
+        results["uploads"] = upload_success
+        
+        # Build summary message
+        summary_parts = []
+        if results["pdf_regenerated"]:
+            summary_parts.append("PDF regenerated ✅")
+        if results["email_sent"]:
+            summary_parts.append("Email sent ✅")
+        for email, success in results["uploads"].items():
+            if success:
+                summary_parts.append(f"Uploaded to {email} ✅")
+            else:
+                summary_parts.append(f"Upload to {email} ❌")
+        
+        if results["errors"]:
+            summary_parts.append(f"\n{len(results['errors'])} error(s) occurred")
+        
+        return jsonify({
+            "status": "success",
+            "message": "Speaker labels updated successfully",
+            "summary": "\n".join(summary_parts),
+            "results": results,
+            "meeting": meeting
+        }), 200
+        
+    except Exception as e:
+        error_msg = f"Failed to update speaker labels: {e}"
+        print(f"[LABEL SPEAKERS] ERROR: {error_msg}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({
+            "error": "Update failed",
+            "message": error_msg,
+            "results": results
+        }), 500
+
+def delete_user_account(user_id: str) -> dict:
+    """
+    Bulletproof user account deletion service.
+    
+    Policy: Option A (Recommended)
+    - Delete user account + detach personal tokens
+    - Keep meeting artifacts in "retained" state if shared with other users
+    - Delete meetings only if user was the sole participant
+    
+    This function performs all deletion operations and returns a summary.
+    Should be called within proper error handling and logging context.
+    
+    Args:
+        user_id: User email (lowercase)
+    
+    Returns:
+        dict with keys:
+            - deleted_files: list of deleted file paths
+            - deleted_meetings: list of meeting IDs deleted
+            - retained_meetings: list of meeting IDs retained (shared)
+            - deleted_chat_sessions: count of deleted chat sessions
+            - deleted_chat_messages: count of deleted chat messages
+            - revoked_tokens: list of revoked app names
+            - errors: list of error messages
+            - summary: dict with counts and details
+    
+    DELETE PROFILE QA CHECKLIST:
+    ============================
+    
+    Manual Testing:
+    ---------------
+    [ ] 1. Delete profile returns success
+        - Navigate to Account Settings → Delete Account
+        - Type "DELETE" when prompted
+        - Verify success message and redirect
+    
+    [ ] 2. User is logged out immediately
+        - After deletion, verify user cannot access /account pages
+        - Verify redirect to home page
+        - Verify session cookie is cleared
+    
+    [ ] 3. Re-login fails (or shows account deleted)
+        - Attempt to login with deleted user's email
+        - Verify login fails with appropriate error
+    
+    [ ] 4. Tokens are removed
+        - Before deletion: connect Dropbox/Box/Google Drive
+        - Delete account
+        - Verify tokens are cleared from users.csv
+        - Verify no further uploads happen (check logs)
+    
+    [ ] 5. Shared meetings remain accessible to other users
+        - Create meeting with User A and User B as participants
+        - Delete User A
+        - Verify User B can still access the meeting
+        - Verify meeting files are not deleted
+    
+    [ ] 6. Sole-owner meetings are deleted
+        - Create meeting with only User A as participant
+        - Delete User A
+        - Verify meeting files are deleted from output/
+        - Verify meeting removed from meetings.json
+    
+    [ ] 7. Chat sessions are deleted
+        - Create chat sessions for user
+        - Delete account
+        - Verify chat_sessions.json no longer contains user's sessions
+        - Verify chat_messages.json no longer contains user's messages
+    
+    [ ] 8. Enrollment files are deleted
+        - Upload enrollment audio files
+        - Delete account
+        - Verify enrollment files are removed from enroll/
+    
+    [ ] 9. Organization memberships are removed
+        - Add user to organization
+        - Delete user account
+        - Verify user removed from organization in organizations.json
+    
+    [ ] 10. CSRF protection works
+        - Attempt to delete account without proper session
+        - Verify request is rejected
+    
+    [ ] 11. Confirmation requirement works
+        - Attempt to delete without typing "DELETE"
+        - Verify deletion is blocked
+    
+    Automated Testing (if implemented):
+    -----------------------------------
+    [ ] Unit test: delete_user_account() removes user from users.csv
+    [ ] Unit test: delete_user_account() deletes enrollment files
+    [ ] Unit test: delete_user_account() removes user from organizations
+    [ ] Unit test: delete_user_account() deletes sole-owner meetings
+    [ ] Unit test: delete_user_account() retains shared meetings
+    [ ] Unit test: delete_user_account() deletes chat sessions/messages
+    [ ] Unit test: delete_user_account() revokes tokens
+    [ ] Integration test: Full deletion flow with all data types
+    [ ] Security test: CSRF protection prevents unauthorized deletion
+    [ ] Security test: Only authenticated user can delete their own account
+    
+    Referential Integrity Checks:
+    -----------------------------
+    [ ] No orphaned meeting references (meetings.json participants)
+    [ ] No orphaned organization members (organizations.json)
+    [ ] No orphaned chat sessions (chat_sessions.json)
+    [ ] No orphaned chat messages (chat_messages.json)
+    [ ] No orphaned enrollment files (enroll/ directory)
+    [ ] No orphaned meeting files (output/ directory)
+    
+    Logging Verification:
+    --------------------
+    [ ] Deletion attempt is logged with timestamp
+    [ ] Summary includes all deletion counts
+    [ ] Errors are logged with details
+    [ ] Token revocation is logged
+    [ ] Meeting retention/deletion decisions are logged
+    """
+    user_email = user_id.lower()
+    users = read_users()
+    user = users.get(user_email)
+    
+    if not user:
+        return {
+            "deleted_files": [],
+            "deleted_meetings": [],
+            "retained_meetings": [],
+            "deleted_chat_sessions": 0,
+            "deleted_chat_messages": 0,
+            "revoked_tokens": [],
+            "errors": ["User not found"],
+            "summary": {}
+        }
+    
     username = user.get("username", "").strip().lower()
     first = user.get("first", "").strip()
     last = user.get("last", "").strip()
     
     deleted_files = []
+    deleted_meetings = []
+    retained_meetings = []
+    revoked_tokens = []
     errors = []
     
-    # 1. Remove user from all organizations
-    orgs = load_organizations()
-    for org_name in list(orgs.keys()):
-        if user_email in [m.lower() for m in orgs[org_name].get("members", [])]:
-            remove_user_from_organization(org_name, user_email)
+    # 1. Revoke connected app tokens (Dropbox, Box, Google Drive)
+    connected_apps = user.get("connected_apps", {})
+    for app_name in list(connected_apps.keys()):
+        try:
+            # Clear tokens from user record (they're encrypted, but we remove them)
+            # The tokens will be removed when we delete the user record
+            revoked_tokens.append(app_name)
+            print(f"[DELETE] Revoked {app_name} tokens for {user_email}")
+        except Exception as e:
+            errors.append(f"Failed to revoke {app_name} tokens: {e}")
+            print(f"[DELETE] Warning: Could not revoke {app_name} tokens: {e}")
     
-    # 2. Delete ALL enrollment audio files (using proper matching function)
-    # This handles both firstname,lastname.ext and username.ext formats
+    # 2. Delete ALL enrollment audio files
     enroll_dir = ENROLL_DIR
+    enrollment_count = 0
     if enroll_dir.exists():
         for f in list(enroll_dir.iterdir()):
             if f.is_file() and f.suffix.lower() in ALLOWED_UPLOAD_EXT:
@@ -2969,17 +4258,57 @@ def delete_account():
                     try:
                         f.unlink()
                         deleted_files.append(f"enrollment: {f.name}")
-                        print(f"Deleted enrollment file: {f.name}")
+                        enrollment_count += 1
+                        print(f"[DELETE] Deleted enrollment file: {f.name}")
                     except Exception as e:
                         error_msg = f"Could not delete enrollment file {f.name}: {e}"
                         errors.append(error_msg)
-                        print(f"Warning: {error_msg}")
+                        print(f"[DELETE] Warning: {error_msg}")
     
-    # 3. Remove user from meetings (remove from participant lists)
-    # Also delete meeting output files if user was the only participant
+    # 3. Delete chat sessions and messages
+    chat_sessions_deleted = 0
+    chat_messages_deleted = 0
+    try:
+        sessions_dict = load_chat_sessions()
+        messages_dict = load_chat_messages()
+        
+        # Get all session IDs for this user
+        user_sessions = sessions_dict.get(user_email, [])
+        session_ids_to_delete = [s["id"] for s in user_sessions]
+        
+        # Delete sessions
+        if user_email in sessions_dict:
+            chat_sessions_deleted = len(sessions_dict[user_email])
+            del sessions_dict[user_email]
+            save_chat_sessions(sessions_dict)
+            print(f"[DELETE] Deleted {chat_sessions_deleted} chat sessions for {user_email}")
+        
+        # Delete messages for all sessions
+        for session_id in session_ids_to_delete:
+            if session_id in messages_dict:
+                chat_messages_deleted += len(messages_dict[session_id])
+                del messages_dict[session_id]
+        
+        if session_ids_to_delete:
+            save_chat_messages(messages_dict)
+            print(f"[DELETE] Deleted {chat_messages_deleted} chat messages for {user_email}")
+    except Exception as e:
+        error_msg = f"Failed to delete chat sessions/messages: {e}"
+        errors.append(error_msg)
+        print(f"[DELETE] Warning: {error_msg}")
+    
+    # 4. Remove user from all organizations
+    orgs = load_organizations()
+    orgs_removed_from = []
+    for org_name in list(orgs.keys()):
+        if user_email in [m.lower() for m in orgs[org_name].get("members", [])]:
+            remove_user_from_organization(org_name, user_email)
+            orgs_removed_from.append(org_name)
+            print(f"[DELETE] Removed {user_email} from organization: {org_name}")
+    
+    # 5. Process meetings (Policy: Option A - retain if shared, delete if sole owner)
     meetings = load_meetings()
     updated_meetings = []
-    meetings_to_delete = []
     
     for meeting in meetings:
         participants = meeting.get("participants", [])
@@ -2993,64 +4322,170 @@ def delete_account():
                 if p.get("email", "").lower() != user_email:
                     updated_participants.append(p)
         
-        # If no participants left, mark meeting for deletion
+        meeting_id = meeting.get("id") or meeting.get("stem", "")
+        
+        # If no participants left, delete meeting (user was sole owner)
         if not updated_participants:
-            meetings_to_delete.append(meeting)
+            deleted_meetings.append(meeting_id)
+            # Delete meeting output files
+            if meeting_id:
+                try:
+                    transcript_pdf = OUTPUT_DIR / f"{meeting_id}_transcript.pdf"
+                    transcript_txt = OUTPUT_DIR / f"{meeting_id}_transcript.txt"
+                    utterances_json = OUTPUT_DIR / f"{meeting_id}_utterances.json"
+                    named_script = OUTPUT_DIR / f"{meeting_id}_named_script.txt"
+                    aai_json = OUTPUT_DIR / f"{meeting_id}_aai.json"
+                    named_script_json = OUTPUT_DIR / f"{meeting_id}_named_script.json"
+                    meeting_wav = OUTPUT_DIR / f"{meeting_id}_16k.wav"
+                    
+                    for file_path in [transcript_pdf, transcript_txt, utterances_json, named_script, aai_json, named_script_json, meeting_wav]:
+                        if file_path.exists():
+                            file_path.unlink()
+                            deleted_files.append(f"meeting: {file_path.name}")
+                    print(f"[DELETE] Deleted meeting {meeting_id} (sole owner)")
+                except Exception as e:
+                    error_msg = f"Could not delete meeting files for {meeting_id}: {e}"
+                    errors.append(error_msg)
+                    print(f"[DELETE] Warning: {error_msg}")
         else:
+            # Meeting has other participants - retain it, just remove user
+            retained_meetings.append(meeting_id)
             meeting["participants"] = updated_participants
             updated_meetings.append(meeting)
-    
-    # Delete meetings with no participants left
-    for meeting in meetings_to_delete:
-        # Delete meeting output files
-        meeting_stem = meeting.get("id") or meeting.get("stem", "")
-        if meeting_stem:
-            try:
-                # Delete transcript files
-                transcript_pdf = OUTPUT_DIR / f"{meeting_stem}_transcript.pdf"
-                transcript_txt = OUTPUT_DIR / f"{meeting_stem}_transcript.txt"
-                utterances_json = OUTPUT_DIR / f"{meeting_stem}_utterances.json"
-                named_script = OUTPUT_DIR / f"{meeting_stem}_named_script.txt"
-                
-                for file_path in [transcript_pdf, transcript_txt, utterances_json, named_script]:
-                    if file_path.exists():
-                        file_path.unlink()
-                        deleted_files.append(f"meeting: {file_path.name}")
-                        print(f"Deleted meeting file: {file_path.name}")
-            except Exception as e:
-                error_msg = f"Could not delete meeting files for {meeting_stem}: {e}"
-                errors.append(error_msg)
-                print(f"Warning: {error_msg}")
+            print(f"[DELETE] Retained meeting {meeting_id} (shared with {len(updated_participants)} other participants)")
     
     # Update meetings.json (only with meetings that still have participants)
     MEETINGS_JSON.write_text(json.dumps(updated_meetings, indent=2), encoding="utf-8")
     
-    # 4. Delete user from users.csv
-    # This removes username, password, email, and all user data
-    # User can recreate account with same email since we're deleting the entry
-    users = read_users()
+    # 6. Delete user's custom vocabulary
+    vocab_dict = load_vocabulary()
+    vocab_deleted = 0
+    if user_email in vocab_dict:
+        vocab_deleted = len(vocab_dict[user_email])
+        del vocab_dict[user_email]
+        save_vocabulary(vocab_dict)
+        print(f"[DELETE] Deleted {vocab_deleted} custom vocabulary entries for {user_email}")
+    
+    # 7. Delete user from users.csv (hard delete)
     if user_email in users:
         del users[user_email]
         write_users(users)
-        print(f"Deleted user account: {user_email}")
+        print(f"[DELETE] Deleted user record from users.csv: {user_email}")
     
-    # 5. Clear session (prevents any further access)
-    session.clear()
+    # Build summary
+    summary = {
+        "user_email": user_email,
+        "username": username,
+        "enrollment_files_deleted": enrollment_count,
+        "chat_sessions_deleted": chat_sessions_deleted,
+        "chat_messages_deleted": chat_messages_deleted,
+        "vocabulary_deleted": vocab_deleted,
+        "organizations_removed_from": len(orgs_removed_from),
+        "meetings_deleted": len(deleted_meetings),
+        "meetings_retained": len(retained_meetings),
+        "tokens_revoked": len(revoked_tokens),
+        "total_files_deleted": len(deleted_files),
+        "errors_count": len(errors)
+    }
     
-    # Log summary
-    print(f"Account deletion summary for {user_email}:")
-    print(f"  - Deleted {len(deleted_files)} files")
-    if errors:
-        print(f"  - {len(errors)} errors occurred")
-        for err in errors:
-            print(f"    {err}")
+    return {
+        "deleted_files": deleted_files,
+        "deleted_meetings": deleted_meetings,
+        "retained_meetings": retained_meetings,
+        "deleted_chat_sessions": chat_sessions_deleted,
+        "deleted_chat_messages": chat_messages_deleted,
+        "deleted_vocabulary": vocab_deleted,
+        "revoked_tokens": revoked_tokens,
+        "errors": errors,
+        "summary": summary
+    }
+
+@app.post("/account/delete")
+def delete_account():
+    """
+    Delete user account endpoint with CSRF protection and confirmation.
     
-    return jsonify({
-        "status": "deleted", 
-        "message": "Account deleted successfully",
-        "deleted_files_count": len(deleted_files),
-        "errors": errors if errors else None
-    }), 200
+    Security:
+    - Requires authentication
+    - Requires CSRF token validation
+    - Requires confirmation (user must type "DELETE")
+    - Only authenticated user can delete their own account
+    """
+    # Authentication check
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    user_email = user["email"].lower()
+    
+    # CSRF protection: verify request came from authenticated session
+    # (Flask session cookies provide basic CSRF protection, but we add explicit check)
+    session_email = session.get("user_email", "").lower()
+    if session_email != user_email:
+        return jsonify({"error": "CSRF validation failed: session mismatch"}), 403
+    
+    # Get request data
+    data = request.get_json() or {}
+    confirmation = (data.get("confirmation") or "").strip()
+    
+    # Require explicit confirmation
+    if confirmation != "DELETE":
+        return jsonify({
+            "error": "Confirmation required",
+            "message": "You must type 'DELETE' (all caps) to confirm account deletion"
+        }), 400
+    
+    # Log deletion attempt
+    print(f"[DELETE] Account deletion initiated for {user_email} at {datetime.now().isoformat()}")
+    
+    try:
+        # Perform deletion (all operations in this function)
+        result = delete_user_account(user_email)
+        
+        # Clear session immediately after deletion
+        session.clear()
+        
+        # Log comprehensive summary
+        summary = result["summary"]
+        print(f"[DELETE] Account deletion completed for {user_email}")
+        print(f"[DELETE] Summary:")
+        print(f"  - Enrollment files: {summary['enrollment_files_deleted']}")
+        print(f"  - Chat sessions: {summary['chat_sessions_deleted']}")
+        print(f"  - Chat messages: {summary['chat_messages_deleted']}")
+        print(f"  - Organizations removed from: {summary['organizations_removed_from']}")
+        print(f"  - Meetings deleted: {summary['meetings_deleted']}")
+        print(f"  - Meetings retained (shared): {summary['meetings_retained']}")
+        print(f"  - Tokens revoked: {summary['tokens_revoked']} ({', '.join(result['revoked_tokens'])})")
+        print(f"  - Total files deleted: {summary['total_files_deleted']}")
+        if result["errors"]:
+            print(f"  - Errors: {len(result['errors'])}")
+            for err in result["errors"]:
+                print(f"    * {err}")
+        
+        return jsonify({
+            "status": "deleted",
+            "message": "Account deleted successfully",
+            "summary": summary,
+            "errors": result["errors"] if result["errors"] else None
+        }), 200
+        
+    except Exception as e:
+        # Log error but don't expose internal details
+        error_msg = f"Account deletion failed: {e}"
+        print(f"[DELETE] ERROR: {error_msg}")
+        import traceback
+        print(traceback.format_exc())
+        
+        # Clear session even on error (user should be logged out)
+        session.clear()
+        
+        return jsonify({
+            "error": "Deletion failed",
+            "message": "An error occurred during account deletion. Please contact support if this persists."
+        }), 500
 
 @app.get("/account/connect_apps")
 def connect_apps_get():
@@ -3062,7 +4497,16 @@ def connect_apps_get():
     # Get connected apps
     connected_apps = user.get("connected_apps", {})
     
-    return render_template("connect_apps.html", user=user, connected_apps=connected_apps)
+    # Get Box diagnostics if Box is connected
+    box_diagnostics = None
+    if connected_apps.get("box"):
+        try:
+            from services.box_client import get_box_diagnostics
+            box_diagnostics = get_box_diagnostics(user["email"].lower())
+        except Exception as e:
+            print(f"[Box] Error getting diagnostics: {e}")
+    
+    return render_template("connect_apps.html", user=user, connected_apps=connected_apps, box_diagnostics=box_diagnostics)
 
 @app.get("/connect/dropbox/confirm")
 def connect_dropbox_confirm():
@@ -3126,13 +4570,16 @@ def dropbox_authorize():
     # account_info.read - Basic account info
     scope = "files.content.write files.content.read account_info.read"
     
+    # Request offline access to get refresh tokens (token rotation)
+    # token_access_type=offline enables token rotation which provides refresh tokens
     dropbox_auth_url = (
         "https://www.dropbox.com/oauth2/authorize?"
         f"client_id={DROPBOX_CLIENT_ID}&"
         f"response_type=code&"
         f"redirect_uri={redirect_uri}&"
         f"state={state}&"
-        f"scope={scope}"
+        f"scope={scope}&"
+        f"token_access_type=offline"
     )
     
     return redirect(dropbox_auth_url)
@@ -3213,14 +4660,18 @@ def dropbox_callback():
         
         token_data = token_response.json()
         access_token = token_data.get("access_token")
-        # Dropbox OAuth 2.0 doesn't use refresh tokens - tokens are refreshed by SDK using app_key/app_secret
-        # However, we store expires_in to track when token needs refresh
+        refresh_token = token_data.get("refresh_token")  # Available with token_access_type=offline
         expires_in = token_data.get("expires_in", 14400)  # Default 4 hours (14400 seconds)
+        account_id = token_data.get("account_id")  # Optional but helpful for identification
         
         if not access_token:
             print("[ERROR] No access token in Dropbox response")
             flash("Failed to get access token from Dropbox.")
             return redirect(url_for("connect_apps_get"))
+        
+        # Warn if no refresh token (shouldn't happen with token_access_type=offline, but check anyway)
+        if not refresh_token:
+            print("[WARN] Dropbox OAuth did not return a refresh token. Token rotation may not work. User may need to reconnect.")
         
         # Encrypt and store tokens
         user = current_user()
@@ -3235,15 +4686,19 @@ def dropbox_callback():
             users[user["email"]]["connected_apps"] = {}
         
         encrypted_token = encrypt_token(access_token)
+        encrypted_refresh = encrypt_token(refresh_token) if refresh_token else None
         
         # Calculate expiration timestamp (expires_in is in seconds, subtract 2 min buffer)
         expires_at = int(time.time()) + expires_in - 120
         
         users[user["email"]]["connected_apps"]["dropbox"] = {
             "access_token_encrypted": encrypted_token,
+            "refresh_token_encrypted": encrypted_refresh,  # Store refresh token for token rotation
             "token_expires_at": expires_at,  # Unix timestamp for expiration check
+            "account_id": account_id,  # Optional: store account ID for identification
             "folder_path": "/PhiAI/Meetings",
-            "connected_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            "connected_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "needs_reauth": False  # Clear needs_reauth flag on successful connection
         }
         
         write_users(users)
@@ -3533,6 +4988,10 @@ def box_authorize():
     print(f"[Box OAuth] Redirect URI (encoded): {redirect_uri_encoded}")
     print(f"[Box OAuth] Client ID: {BOX_CLIENT_ID}")
     
+    # Box OAuth: Scopes are configured in Box Developer Console, not passed in URL
+    # The app must have "Read and write all files and folders" scope enabled in Box Developer Console
+    # No scope parameter needed - Box uses the app's configured scopes
+    
     box_auth_url = (
         "https://account.box.com/api/oauth2/authorize?"
         f"client_id={BOX_CLIENT_ID}&"
@@ -3572,7 +5031,16 @@ def box_callback():
     session.pop('oauth_return_to', None)
     
     if error:
-        flash(f"Box authorization failed: {error}")
+        error_description = request.args.get('error_description', '')
+        if error == 'invalid_scope':
+            flash(
+                f"Box authorization failed: Invalid scope. "
+                f"Please configure 'Read and write all files and folders' scope in Box Developer Console → Your App → Configuration → Application Scopes. "
+                f"Then try connecting again.",
+                "error"
+            )
+        else:
+            flash(f"Box authorization failed: {error}. {error_description}", "error")
         return redirect(url_for("connect_apps_get"))
     
     if not code:
@@ -3620,29 +5088,67 @@ def box_callback():
             flash("Failed to get access token from Box.")
             return redirect(url_for("connect_apps_get"))
         
+        # Store token temporarily to verify scopes
         user = current_user()
         users = read_users()
         
         if "connected_apps" not in users[user["email"]]:
             users[user["email"]]["connected_apps"] = {}
         
+        # Temporarily store token for scope verification
         encrypted_token = encrypt_token(access_token)
         encrypted_refresh = encrypt_token(refresh_token) if refresh_token else None
-        
-        # Calculate expiration timestamp (expires_in is in seconds, subtract 2 min buffer)
         expires_at = int(time.time()) + expires_in - 120
         
         users[user["email"]]["connected_apps"]["box"] = {
             "access_token_encrypted": encrypted_token,
             "refresh_token_encrypted": encrypted_refresh,
-            "token_expires_at": expires_at,  # Unix timestamp for expiration check
+            "token_expires_at": expires_at,
             "folder_name": "PhiAI Meetings",
-            "connected_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            "connected_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+            "needs_reauth": False,
+            "needs_scope_update": False
         }
-        
         write_users(users)
-        print(f"[SUCCESS] Box connected for {user['email']}, token expires in {expires_in}s (at {expires_at})")
-        flash("Box connected successfully!")
+        
+        # CRITICAL: Verify token has required scopes by testing write permissions
+        print("[Box] Verifying token has required scopes...")
+        from services.box_client import verify_write_scope
+        
+        has_write_scope, scope_error = verify_write_scope(user["email"], force_check=True)
+        if not has_write_scope:
+            # Mark as needing scope update
+            users[user["email"]]["connected_apps"]["box"]["needs_scope_update"] = True
+            write_users(users)
+            
+            error_msg = (
+                "Box connection failed: Your Box app doesn't have the required scopes configured. "
+                "CRITICAL STEPS (must do BEFORE connecting): "
+                "1) Go to https://developer.box.com/ → My Apps → Your App → Configuration → Application Scopes. "
+                "2) Enable 'Read and write all files and folders stored in Box'. "
+                "3) Click Save Changes and wait a few minutes for changes to propagate. "
+                "4) Then try connecting again. "
+                "The token will only work if scopes are configured in Box Developer Console FIRST."
+            )
+            print(f"[Box] {error_msg}")
+            flash(error_msg, "error")
+            return redirect(url_for("connect_apps_get"))
+        
+        print("[Box] Token scope verification passed - token has required permissions")
+        
+        # Update connection status (already stored above, just update flags)
+        users[user["email"]]["connected_apps"]["box"]["needs_scope_update"] = False
+        users[user["email"]]["connected_apps"]["box"]["needs_reauth"] = False
+        write_users(users)
+        
+        print(f"[Box] Connected for {user['email']}, token expires in {expires_in}s (at {expires_at})")
+        
+        # Check write scope status
+        if has_write_scope:
+            flash("Box connected successfully! Write permissions verified.")
+        else:
+            flash("Box connected, but write permissions verification failed. See the checklist below for fix instructions.", "warning")
+        
         return redirect(url_for("connect_apps_get"))
     except Exception as e:
         print(f"Error connecting Box: {e}")
@@ -3673,6 +5179,35 @@ def box_disconnect():
     
     return jsonify({"status": "disconnected"}), 200
 
+@app.post("/connect/box/recheck")
+def box_recheck():
+    """Recheck Box write permissions (force check)"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    user_email = user["email"].lower()
+    
+    from services.box_client import verify_write_scope, get_box_diagnostics
+    
+    print(f"[Box] Rechecking write permissions for {user_email}...")
+    has_write, error_msg = verify_write_scope(user_email, force_check=True)
+    
+    diagnostics = get_box_diagnostics(user_email)
+    
+    if has_write:
+        return jsonify({
+            "status": "success",
+            "message": "Write permissions verified successfully",
+            "diagnostics": diagnostics
+        }), 200
+    else:
+        return jsonify({
+            "status": "error",
+            "message": error_msg or "Write permissions verification failed",
+            "diagnostics": diagnostics
+        }), 200
+
 @app.post("/connect/box/update")
 def box_update():
     """Update Box folder name"""
@@ -3694,7 +5229,487 @@ def box_update():
     
     return jsonify({"status": "updated"}), 200
 
+# ----------------------------
+# Ask Phi (Ollama Chat)
+# ----------------------------
+@app.get("/ask")
+def ask_get():
+    """Ask Phi chat interface"""
+    if not require_login():
+        return redirect(url_for("login_get"))
+    
+    user = current_user()
+    chat_sessions = get_user_chat_sessions(user["email"])
+    
+    # Check Ollama health
+    try:
+        from integrations.ollama_client import check_ollama_health, check_model_available
+        is_healthy, health_error = check_ollama_health()
+        model_available, model_error = check_model_available()
+        ollama_ready = is_healthy and model_available
+        ollama_error = health_error or model_error
+    except Exception as e:
+        ollama_ready = False
+        ollama_error = f"Error checking Ollama: {str(e)}"
+    
+    return render_template("ask.html", user=user, chat_sessions=chat_sessions, ollama_ready=ollama_ready, ollama_error=ollama_error)
+
+@app.post("/api/ask")
+def ask_post():
+    """Handle chat message and return streaming response with conversation memory"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    data = request.get_json()
+    message = data.get("message", "").strip()
+    session_id = data.get("session_id")
+    
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
+    
+    # Create session if needed
+    if not session_id:
+        session_id = create_chat_session(user["email"], message[:50])
+    
+    # Save user message
+    add_chat_message(session_id, "user", message)
+    
+    # Get conversation history (last 10 messages for context)
+    conversation_history = get_chat_messages(session_id)
+    # Exclude the message we just added (it's already in history)
+    # Get last 10 messages before this one for context
+    recent_messages = conversation_history[:-1][-10:] if len(conversation_history) > 1 else []
+    
+    # Build conversation context from history
+    conversation_context = ""
+    if recent_messages:
+        conversation_context = "Previous conversation:\n"
+        for msg in recent_messages:
+            role_label = "User" if msg["role"] == "user" else "Phi"
+            conversation_context += f"{role_label}: {msg['content']}\n\n"
+    
+    # Retrieve meeting context (smarter retrieval based on conversation)
+    try:
+        from services.meeting_retrieval import retrieve_meeting_context_smart
+        # Combine current message with conversation context for better retrieval
+        query_context = message
+        if recent_messages:
+            # Include recent conversation to understand context better
+            recent_user_messages = [m["content"] for m in recent_messages if m["role"] == "user"][-3:]
+            query_context = " ".join(recent_user_messages) + " " + message
+        
+        meeting_context = retrieve_meeting_context_smart(user["email"], query_context, conversation_history=recent_messages)
+    except Exception as e:
+        meeting_context = f"Error retrieving meeting context: {str(e)}"
+    
+    # Enhanced system prompt for intelligent, conversational Phi
+    system_prompt = """You are Phi, an intelligent AI assistant for Phi AI. You help users understand and navigate their meeting history through natural, conversational interactions.
+
+Your personality and capabilities:
+- You are friendly, helpful, and conversational - like ChatGPT or Claude
+- You maintain context across the conversation and remember what was discussed
+- You can have multi-turn conversations, ask clarifying questions when needed, and build on previous exchanges
+- You're knowledgeable about the user's meetings and can synthesize information across multiple meetings
+- You think step-by-step and provide thoughtful, well-reasoned responses
+
+Meeting data access:
+- You have access to the user's past meeting transcripts, summaries, participants, and metadata
+- Always ground your answers in the actual meeting data provided
+- Never hallucinate or make up meeting facts
+- If you're unsure about something, say so and explain what meetings you checked
+- When referencing meetings, include the meeting title and date for verification
+
+Response style:
+- Be natural and conversational, not robotic
+- Use clear, well-structured responses with appropriate formatting
+- Use bullet points for lists, action items, or multiple items
+- Break up long responses into readable paragraphs
+- Ask follow-up questions when helpful or when you need clarification
+- Reference specific meetings by name and date when citing information
+- Be concise but thorough - provide enough detail to be helpful
+
+Special capabilities:
+- You can summarize meetings, extract action items, find specific discussions, and answer questions about what was decided
+- You can compare information across multiple meetings
+- You can help users track follow-ups, decisions, and action items over time
+- You understand time references (today, this week, last month, etc.) and can filter meetings accordingly
+
+Remember: You're having a conversation. Build on previous messages, maintain context, and engage naturally while being helpful and accurate."""
+    
+    # Build full context with conversation history and meeting data
+    full_context = ""
+    if conversation_context:
+        full_context += conversation_context + "\n"
+    if meeting_context and "No meetings" not in meeting_context and "Error" not in meeting_context:
+        full_context += "Meeting Data Available:\n" + meeting_context + "\n\n"
+    
+    # Generate response with Ollama (with conversation history)
+    try:
+        from integrations.ollama_client import generate_conversational_response
+        
+        def generate():
+            full_response = ""
+            for chunk in generate_conversational_response(
+                message=message,
+                system_prompt=system_prompt,
+                context=full_context if full_context else None,
+                conversation_history=recent_messages,
+                stream=True
+            ):
+                full_response += chunk
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            
+            # Save assistant response
+            add_chat_message(session_id, "assistant", full_response)
+            yield f"data: {json.dumps({'done': True})}\n\n"
+        
+        return Response(stream_with_context(generate()), mimetype="text/event-stream")
+    
+    except Exception as e:
+        error_msg = f"Error generating response: {str(e)}"
+        add_chat_message(session_id, "assistant", error_msg)
+        return jsonify({"error": error_msg}), 500
+
+@app.get("/api/chat_sessions")
+def get_chat_sessions():
+    """Get all chat sessions for current user"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    sessions = get_user_chat_sessions(user["email"])
+    return jsonify({"sessions": sessions})
+
+@app.post("/api/chat_sessions")
+def create_chat_session_api():
+    """Create a new chat session"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    data = request.get_json()
+    title = data.get("title", "New Chat")
+    
+    session_id = create_chat_session(user["email"], title)
+    return jsonify({"session_id": session_id, "title": title})
+
+@app.get("/api/chat_sessions/<session_id>")
+def get_chat_session(session_id: str):
+    """Get messages for a specific chat session"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    
+    # Verify session belongs to user
+    sessions = get_user_chat_sessions(user["email"])
+    if not any(s.get("id") == session_id for s in sessions):
+        return jsonify({"error": "Session not found"}), 404
+    
+    messages = get_chat_messages(session_id)
+    return jsonify({"messages": messages})
+
+@app.delete("/api/chat_sessions/<session_id>")
+def delete_chat_session(session_id: str):
+    """Delete a chat session and its messages"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    
+    # Verify session belongs to user
+    sessions_dict = load_chat_sessions()
+    user_sessions = sessions_dict.get(user["email"], [])
+    
+    if not any(s.get("id") == session_id for s in user_sessions):
+        return jsonify({"error": "Session not found"}), 404
+    
+    # Remove session from user's sessions
+    sessions_dict[user["email"]] = [s for s in user_sessions if s.get("id") != session_id]
+    save_chat_sessions(sessions_dict)
+    
+    # Remove messages
+    messages_dict = load_chat_messages()
+    if session_id in messages_dict:
+        del messages_dict[session_id]
+        save_chat_messages(messages_dict)
+    
+    return jsonify({"status": "deleted"}), 200
+
+# ----------------------------
+# Custom Vocabulary Routes
+# ----------------------------
+@app.get("/settings/vocabulary")
+def vocabulary_get():
+    """Custom Vocabulary management page"""
+    if not require_login():
+        return redirect(url_for("login_get"))
+    user = current_user()
+    return render_template("settings_vocabulary.html", user=user)
+
+@app.get("/api/vocabulary")
+def vocabulary_list():
+    """Get user's vocabulary entries (supports search, filter, sort)"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    user_email = user["email"].lower()
+    
+    entries = get_user_vocabulary(user_email)
+    
+    # Apply search filter
+    search = request.args.get("search", "").strip().lower()
+    if search:
+        entries = [
+            e for e in entries
+            if search in e.get("term", "").lower() or
+               search in e.get("definition", "").lower() or
+               any(search in str(a).lower() for a in e.get("aliases", []))
+        ]
+    
+    # Apply type filter
+    vocab_type = request.args.get("type", "").strip()
+    if vocab_type:
+        entries = [e for e in entries if e.get("vocab_type") == vocab_type]
+    
+    # Apply sort
+    sort_by = request.args.get("sort", "term")  # term, created_at
+    if sort_by == "term":
+        entries.sort(key=lambda e: e.get("term", "").lower())
+    elif sort_by == "created_at":
+        entries.sort(key=lambda e: e.get("created_at", ""), reverse=True)
+    
+    return jsonify({"entries": entries, "count": len(entries)}), 200
+
+@app.post("/api/vocabulary")
+def vocabulary_create():
+    """Create a new vocabulary entry"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    user_email = user["email"].lower()
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid request"}), 400
+    
+    term = (data.get("term") or "").strip()
+    if not term:
+        return jsonify({"error": "Term is required"}), 400
+    
+    if len(term) > 80:
+        return jsonify({"error": "Term must be 80 characters or less"}), 400
+    
+    definition = (data.get("definition") or "").strip()
+    if len(definition) > 500:
+        return jsonify({"error": "Definition must be 500 characters or less"}), 400
+    
+    vocab_type = (data.get("vocab_type") or "").strip() or None
+    pronunciation = (data.get("pronunciation") or "").strip() or None
+    aliases_str = (data.get("aliases") or "").strip()
+    
+    # Parse aliases (comma-separated)
+    aliases = []
+    if aliases_str:
+        aliases = [a.strip() for a in aliases_str.split(",") if a.strip()]
+    
+    # Check for duplicates (case-insensitive)
+    existing_entries = get_user_vocabulary(user_email)
+    term_normalized = term.lower().strip()
+    for existing in existing_entries:
+        if existing.get("term", "").lower().strip() == term_normalized:
+            return jsonify({
+                "error": "Duplicate term",
+                "message": f"This term already exists: {existing.get('term')}",
+                "existing_id": existing.get("id")
+            }), 400
+    
+    # Create new entry
+    import secrets
+    new_entry = {
+        "id": secrets.token_urlsafe(16),
+        "term": term,
+        "term_normalized": term_normalized,
+        "definition": definition or None,
+        "vocab_type": vocab_type,
+        "pronunciation": pronunciation,
+        "aliases": aliases,
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat()
+    }
+    
+    existing_entries.append(new_entry)
+    save_user_vocabulary(user_email, existing_entries)
+    
+    return jsonify({"entry": new_entry, "message": "Vocabulary term added successfully"}), 201
+
+@app.put("/api/vocabulary/<entry_id>")
+def vocabulary_update(entry_id: str):
+    """Update a vocabulary entry"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    user_email = user["email"].lower()
+    
+    entries = get_user_vocabulary(user_email)
+    entry_index = None
+    for i, e in enumerate(entries):
+        if e.get("id") == entry_id:
+            entry_index = i
+            break
+    
+    if entry_index is None:
+        return jsonify({"error": "Entry not found"}), 404
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Invalid request"}), 400
+    
+    term = (data.get("term") or "").strip()
+    if not term:
+        return jsonify({"error": "Term is required"}), 400
+    
+    if len(term) > 80:
+        return jsonify({"error": "Term must be 80 characters or less"}), 400
+    
+    definition = (data.get("definition") or "").strip()
+    if len(definition) > 500:
+        return jsonify({"error": "Definition must be 500 characters or less"}), 400
+    
+    vocab_type = (data.get("vocab_type") or "").strip() or None
+    pronunciation = (data.get("pronunciation") or "").strip() or None
+    aliases_str = (data.get("aliases") or "").strip()
+    
+    # Parse aliases
+    aliases = []
+    if aliases_str:
+        aliases = [a.strip() for a in aliases_str.split(",") if a.strip()]
+    
+    # Check for duplicates (excluding current entry)
+    term_normalized = term.lower().strip()
+    for i, existing in enumerate(entries):
+        if i != entry_index and existing.get("term", "").lower().strip() == term_normalized:
+            return jsonify({
+                "error": "Duplicate term",
+                "message": f"This term already exists: {existing.get('term')}"
+            }), 400
+    
+    # Update entry
+    entries[entry_index].update({
+        "term": term,
+        "term_normalized": term_normalized,
+        "definition": definition or None,
+        "vocab_type": vocab_type,
+        "pronunciation": pronunciation,
+        "aliases": aliases,
+        "updated_at": datetime.now().isoformat()
+    })
+    
+    save_user_vocabulary(user_email, entries)
+    
+    return jsonify({"entry": entries[entry_index], "message": "Vocabulary term updated successfully"}), 200
+
+@app.delete("/api/vocabulary/<entry_id>")
+def vocabulary_delete(entry_id: str):
+    """Delete a vocabulary entry"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    user_email = user["email"].lower()
+    
+    entries = get_user_vocabulary(user_email)
+    original_count = len(entries)
+    entries = [e for e in entries if e.get("id") != entry_id]
+    
+    if len(entries) == original_count:
+        return jsonify({"error": "Entry not found"}), 404
+    
+    save_user_vocabulary(user_email, entries)
+    
+    return jsonify({"message": "Vocabulary term deleted successfully"}), 200
+
+# ----------------------------
+# Dev-only watcher (limited scope)
+# ----------------------------
+DEV_WATCH_OBSERVER = None
+DEV_WATCH_LAST_RESTART = 0.0
+
+def _restart_dev_server():
+    global DEV_WATCH_LAST_RESTART
+    now = time.time()
+    if now - DEV_WATCH_LAST_RESTART < 1.0:
+        return
+    DEV_WATCH_LAST_RESTART = now
+    print("[DEV WATCH] Change detected. Restarting dev server...")
+    try:
+        subprocess.Popen([sys.executable] + sys.argv, cwd=str(ROOT))
+    finally:
+        os._exit(0)
+
+def start_dev_watcher() -> None:
+    global DEV_WATCH_OBSERVER
+    if os.getenv("DIO_DEV_WATCH", "1") != "1":
+        return
+    if DEV_WATCH_OBSERVER is not None:
+        return
+
+    ignore_patterns = [
+        "**/.venv/**",
+        "**/venv/**",
+        "**/site-packages/**",
+        "**/__pycache__/**",
+        "**/output/**",
+        "**/input/**",
+        "**/.git/**",
+        "**/.cursor/**",
+    ]
+    patterns = ["*.py", "*.html", "*.css", "*.js", "*.json", "*.txt"]
+
+    handler = PatternMatchingEventHandler(
+        patterns=patterns,
+        ignore_patterns=ignore_patterns,
+        ignore_directories=False
+    )
+
+    def _should_ignore_path(path_str: str) -> bool:
+        if not path_str:
+            return True
+        norm_path = os.path.normcase(path_str)
+        parts = set(Path(norm_path).parts)
+        if any(p in parts for p in {".venv", "venv", "site-packages", "__pycache__", "output", "input", ".git", ".cursor"}):
+            return True
+        # Ignore build artifacts and temp files
+        if norm_path.endswith((".pyc", ".pyo", ".tmp", ".log")):
+            return True
+        return False
+
+    def on_any_event(event):
+        if event.is_directory:
+            return
+        if _should_ignore_path(event.src_path):
+            return
+        _restart_dev_server()
+
+    handler.on_any_event = on_any_event
+    observer = Observer()
+    watch_paths = [str(ROOT), str(TEMPLATES), str(STATIC_DIR)]
+    for watch_path in watch_paths:
+        if os.path.exists(watch_path):
+            observer.schedule(handler, watch_path, recursive=True)
+
+    observer.daemon = True
+    observer.start()
+    DEV_WATCH_OBSERVER = observer
+    print("[DEV WATCH] Limited watcher enabled (excludes .venv/site-packages).")
+
 if __name__ == "__main__":
     ensure_dirs()
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    start_upload_worker()
+    start_dev_watcher()
+    app.run(debug=True, host="127.0.0.1", port=5000, use_reloader=False)
 

@@ -3,241 +3,100 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Upload Successful — Phi Ai</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <title>Upload Successful — Phi AI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <style>
-    :root{
-      --bg-primary: #ffffff;
-      --bg-secondary: #f5f5f7;
-      --text-primary: #1d1d1f;
-      --text-secondary: #6e6e73;
-      --text-tertiary: #86868b;
-      --accent-blue: #007AFF;
-      --accent-blue-hover: #0051D5;
-      --accent-green: #34C759;
-      --accent-red: #FF3B30;
-      --border: #d2d2d7;
-      --border-light: #e5e5ea;
-      --shadow: 0 2px 8px rgba(0,0,0,0.08);
-      --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
-      --radius: 12px;
-    }
-
-    *{ 
-      box-sizing:border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body{
-      margin:0;
-      font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      color: var(--text-primary);
-      background: var(--bg-primary);
-      line-height: 1.6;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-
-    .wrap{
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 40px 20px 60px;
-    }
-
-    .topbar{
-      background: #000000;
-      color: white;
-      padding: 20px 32px;
-      margin: -40px -20px 40px -20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    .brand{
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .logo-img{
-      height: 40px;
-      width: auto;
-    }
-
-    .title h1{
-      margin: 0;
-      font-size: 28px;
-      font-weight: 700;
-      color: white;
-      letter-spacing: -0.8px;
-      text-transform: uppercase;
-      font-family: "Inter", -apple-system, sans-serif;
-    }
-
-    .title h1 .phi-ai{
-      background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      display: inline-block;
-      font-weight: 800;
-      letter-spacing: 1px;
-    }
-
-    .title .tag{
-      margin-top: 4px;
-      color: rgba(255,255,255,0.7);
-      font-size: 14px;
-      font-weight: 400;
-    }
-
-    .card{
-      background: var(--bg-primary);
-      border: 1px solid var(--border-light);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 32px;
-      margin: 24px 0;
-    }
-
-    .card h2{
-      font-size: 24px;
-      font-weight: 700;
-      margin-bottom: 20px;
-      color: var(--text-primary);
-    }
-
-    .success-icon{
+    .success-icon {
       width: 80px;
       height: 80px;
-      background: var(--accent-green);
+      background: var(--success);
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 0 auto 24px;
+      margin: 0 auto var(--space-lg);
       font-size: 40px;
       color: white;
+      box-shadow: var(--shadow-md);
+      position: relative;
+      overflow: hidden;
     }
-
-    .info-box{
-      margin: 16px 0;
-      padding: 16px;
-      background: #f0f7ff;
-      border: 1px solid #d0e7ff;
-      border-radius: 8px;
-      font-size: 14px;
-      line-height: 1.6;
-      color: var(--text-secondary);
-    }
-
-    .btn{
-      display: inline-block;
-      padding: 12px 24px;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text-primary);
-      font-size: 15px;
-      font-weight: 500;
-      cursor: pointer;
-      text-decoration: none;
-      transition: all 0.2s ease;
-      font-family: inherit;
-    }
-
-    .btn:hover{
-      background: var(--border-light);
-      transform: translateY(-1px);
-      box-shadow: var(--shadow);
-    }
-
-    .btnPrimary{
-      background: var(--accent-blue);
-      color: white;
-      border: none;
-      padding: 14px 28px;
-      font-weight: 600;
-    }
-
-    .btnPrimary:hover{
-      background: var(--accent-blue-hover);
-      color: white;
-    }
-
-    .link{
-      display: inline-block;
-      margin-top: 24px;
-      color: var(--accent-blue);
-      font-size: 15px;
-      text-decoration: none;
-    }
-
-    .link:hover{
-      color: var(--accent-blue-hover);
-    }
-
-    ul{
-      margin: 16px 0;
-      padding-left: 24px;
-    }
-
-    li{
-      margin: 8px 0;
-      color: var(--text-secondary);
+    
+    .success-icon::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--holo-gradient-1);
+      opacity: 0.2;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <a href="{{ url_for('account_home') }}" style="display: flex; align-items: center; gap: 16px; text-decoration: none; color: inherit;">
-          <img src="{{ url_for('static', filename='images/phi-ai-logo.png') }}" alt="Phi Ai Logo" class="logo-img" onerror="this.style.display='none';">
-          <div class="title">
-            <h1><span class="phi-ai">PHI AI</span></h1>
-            <div class="tag">Upload Successful</div>
-          </div>
+  <!-- Animated Wave Background -->
+  <div class="bg-waves{% if waves_debug %} debug-mode{% endif %}" aria-hidden="true"></div>
+  {% if waves_debug %}
+  <div class="waves-debug-badge">🌊 WAVES ON</div>
+  {% endif %}
+  
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <a href="{{ url_for('account_home') }}" class="header-brand">
+          <img src="{{ url_for('static', filename='images/logo.png.png') }}" alt="Phi AI" class="header-logo">
         </a>
       </div>
-    </div>
+    </header>
 
-    <div class="card" style="text-align: center;">
-      <div class="success-icon">✓</div>
-      <h2>Upload Successful!</h2>
-      <p style="font-size: 16px; color: var(--text-secondary); margin-bottom: 24px;">
-        Your meeting audio has been uploaded and is now being processed.
-      </p>
+    <!-- Main Content -->
+    <main class="main-content enter">
+      <div class="card holo-border enter enter-delay-1" style="text-align: center;">
+        <div class="success-icon">✓</div>
+        <div class="card-header">
+          <h2 class="card-title">Upload Successful!</h2>
+        </div>
+        <div class="card-body">
+          <p class="text-muted" style="margin-bottom: var(--space-xl); font-size: var(--font-size-md);">
+            Your meeting audio has been uploaded and is now being processed.
+          </p>
 
-      <div class="info-box" style="text-align: left; margin: 24px 0;">
-        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">What happens next:</h3>
-        <ul>
-          <li>Your audio is being transcribed and speakers are being identified</li>
-          <li>A comprehensive meeting report PDF will be generated, including:
-            <ul style="margin-top: 8px; padding-left: 20px;">
-              <li>Executive summary with key insights</li>
-              <li>Participation metrics (speaker turns, word counts, participation share)</li>
-              <li>Top keywords and topics discussed</li>
-              <li>Action items, decisions, risks, and questions detected</li>
-              <li>Full named transcript with speaker identification</li>
+          <div class="alert alert-info" style="text-align: left; margin: var(--space-xl) 0;">
+            <h3 style="font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); margin-bottom: var(--space-md); color: var(--text-primary);">What happens next:</h3>
+            <ul class="list" style="list-style: disc; padding-left: var(--space-xl);">
+              <li style="margin: var(--space-sm) 0;">Your audio is being transcribed and speakers are being identified</li>
+              <li style="margin: var(--space-sm) 0;">A comprehensive meeting report PDF will be generated, including:
+                <ul style="margin-top: var(--space-sm); padding-left: var(--space-lg); list-style: circle;">
+                  <li>Executive summary with key insights</li>
+                  <li>Participation metrics (speaker turns, word counts, participation share)</li>
+                  <li>Top keywords and topics discussed</li>
+                  <li>Action items, decisions, risks, and questions detected</li>
+                  <li>Full named transcript with speaker identification</li>
+                </ul>
+              </li>
+              <li style="margin: var(--space-sm) 0;">You and all participants will receive an email with the meeting report when processing is complete</li>
+              <li style="margin: var(--space-sm) 0;">If you have connected cloud storage (Dropbox, Google Drive, or Box), the report will be automatically uploaded</li>
+              <li style="margin: var(--space-sm) 0;">The meeting will appear in your account's "Past Meetings" section</li>
             </ul>
-          </li>
-          <li>You and all participants will receive an email with the meeting report when processing is complete</li>
-          <li>If you have connected cloud storage (Dropbox, Google Drive, or Box), the report will be automatically uploaded</li>
-          <li>The meeting will appear in your account's "Past Meetings" section</li>
-        </ul>
-        <p style="margin-top: 16px; font-size: 14px;">
-          <strong>Processing time:</strong> Typically 2-5 minutes depending on the length of your meeting.
-        </p>
-      </div>
+            <p style="margin-top: var(--space-md); font-size: var(--font-size-sm);">
+              <strong>Processing time:</strong> Typically 2-5 minutes depending on the length of your meeting.
+            </p>
+          </div>
 
-      <a href="{{ url_for('account_home') }}" class="btn btnPrimary">Go to Home</a>
-    </div>
+          <a href="{{ url_for('account_home') }}" class="btn btn-primary">
+            Go to Home
+          </a>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-inner">
+        <p>&copy; 2026 Phi AI. All rights reserved.</p>
+        <p style="margin-top: var(--space-sm); font-size: var(--font-size-sm); color: var(--text-secondary);">189 Vassar St, Cambridge, MA 02139</p>
+      </div>
+    </footer>
   </div>
 </body>
 </html>
