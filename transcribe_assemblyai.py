@@ -194,18 +194,33 @@ def transcribe_with_whisper(wav_path: Path, custom_vocab: list[str] | None = Non
     model_name = os.getenv("WHISPER_MODEL", "small").strip() or "small"
     language = os.getenv("WHISPER_LANGUAGE", "").strip() or None
 
-    # Device selection: allow override, otherwise prefer cuda/mps if available
-    device = os.getenv("WHISPER_DEVICE", "").strip().lower()
-    if not device:
-        device = "cpu"
-        if torch is not None:
-            if getattr(torch, "cuda", None) and torch.cuda.is_available():
-                device = "cuda"
-            elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-                device = "mps"
+    # Device selection:
+    # - If WHISPER_DEVICE is set, honor it.
+    # - Otherwise: prefer CUDA (if available), else CPU.
+    #
+    # Note: MPS (Apple Silicon GPU) can be flaky for Whisper depending on torch/whisper versions.
+    # We only use MPS when explicitly requested, and we will automatically fall back to CPU if MPS fails.
+    requested_device = os.getenv("WHISPER_DEVICE", "").strip().lower()
+    device = requested_device or "cpu"
+    if not requested_device and torch is not None:
+        if getattr(torch, "cuda", None) and torch.cuda.is_available():
+            device = "cuda"
+
+    # If user explicitly requests MPS, enable fallback to CPU for unsupported ops.
+    if device == "mps":
+        os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
     print(f"2) Transcribing (Whisper: model={model_name}, device={device})...")
-    model = whisper.load_model(model_name, device=device)
+    try:
+        model = whisper.load_model(model_name, device=device)
+    except NotImplementedError as e:
+        # Common on macOS when some ops are not implemented for MPS/SparseMPS.
+        if device == "mps":
+            print(f"⚠️  Whisper failed on MPS ({e}). Falling back to CPU...")
+            device = "cpu"
+            model = whisper.load_model(model_name, device=device)
+        else:
+            raise
 
     initial_prompt = None
     if custom_vocab:
@@ -248,6 +263,25 @@ def diarize_with_pyannote(wav_path: Path, speakers_expected: int | None = None) 
             "Set HF_TOKEN (or HUGGINGFACE_TOKEN) in your environment or .env.\n"
             "Then accept the model license for `pyannote/speaker-diarization-3.1` in HuggingFace."
         )
+    # Compatibility shim:
+    # Some pyannote.audio versions call `huggingface_hub.hf_hub_download(..., use_auth_token=...)`,
+    # but newer huggingface_hub versions renamed that parameter to `token`.
+    # Patch in a wrapper so we don't have to pin fragile dependency versions.
+    try:
+        import huggingface_hub
+        from huggingface_hub import hf_hub_download as _orig_hf_hub_download
+
+        def _hf_hub_download_compat(*args, **kwargs):
+            if "use_auth_token" in kwargs and "token" not in kwargs:
+                kwargs["token"] = kwargs.pop("use_auth_token")
+            else:
+                kwargs.pop("use_auth_token", None)
+            return _orig_hf_hub_download(*args, **kwargs)
+
+        huggingface_hub.hf_hub_download = _hf_hub_download_compat  # type: ignore[attr-defined]
+    except Exception:
+        # If anything goes wrong, let pyannote/hub raise a normal error.
+        pass
     try:
         from pyannote.audio import Pipeline
     except Exception as e:

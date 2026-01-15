@@ -472,7 +472,11 @@
         <nav class="header-nav">
           <a href="{{ url_for('account_home') }}" class="header-link">Dashboard</a>
           <a href="{{ url_for('account_meetings') }}" class="header-link">Meetings</a>
-          <a href="{{ url_for('ask_get') }}" class="header-link active">Ask Phi</a>
+          {% if ollama_ready %}
+            <a href="{{ url_for('ask_get') }}" class="header-link active">Ask Phi</a>
+          {% else %}
+            <a href="#" class="header-link active" aria-disabled="true" title="Phi is starting up" onclick="return false;" style="opacity: 0.7; cursor: not-allowed;">Ask Phi</a>
+          {% endif %}
           <a href="{{ url_for('connect_apps_get') }}" class="header-link">Connect Apps</a>
           <a href="{{ url_for('account_get') }}" class="header-link">Settings</a>
           <a href="{{ url_for('logout') }}" class="header-link">Logout</a>
@@ -485,17 +489,20 @@
       {% if not ollama_ready %}
       <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: var(--space-2xl);">
         <div class="ollama-error-card">
-          <h3>⚠️ Phi is Offline</h3>
-          <p style="margin-bottom: var(--space-md); color: var(--text-secondary); line-height: var(--line-height-relaxed);">{{ ollama_error or "Ollama is not running." }}</p>
-          <div style="font-size: var(--font-size-sm); color: var(--text-secondary);">
-            <p style="margin-bottom: var(--space-sm);"><strong>To fix this:</strong></p>
-            <ol style="margin-left: var(--space-lg); line-height: var(--line-height-relaxed);">
-              <li>Install Ollama: <a href="https://ollama.com/download" target="_blank" style="color: var(--accent);">ollama.com/download</a></li>
-              <li>Run <code style="background: var(--bg-secondary); padding: 2px 6px; border-radius: 4px;">ollama serve</code></li>
-              <li>Pull the model: <code style="background: var(--bg-secondary); padding: 2px 6px; border-radius: 4px;">ollama pull llama3.1:8b</code></li>
-              <li>Refresh this page</li>
-            </ol>
+          <h3>Phi is warming up</h3>
+          <p style="margin-bottom: var(--space-md); color: var(--text-secondary); line-height: var(--line-height-relaxed);">
+            Ask Phi is temporarily unavailable. Please try again in a moment.
+          </p>
+          <div style="display: flex; gap: var(--space-sm); align-items: center;">
+            <button class="btn btn-primary" type="button" onclick="location.reload()">Retry</button>
+            <a href="{{ url_for('account_home') }}" class="btn" style="text-decoration: none;">Back to Dashboard</a>
           </div>
+          {% if ollama_error %}
+          <details style="margin-top: var(--space-lg); color: var(--text-secondary); font-size: var(--font-size-sm);">
+            <summary style="cursor: pointer;">Details</summary>
+            <div style="margin-top: var(--space-sm); white-space: pre-wrap;">{{ ollama_error }}</div>
+          </details>
+          {% endif %}
         </div>
       </div>
       {% else %}
@@ -559,13 +566,19 @@
   </div>
 
   <script>
-    let currentSessionId = null;
-    const chatInput = document.getElementById('chatInput');
-    const chatSendBtn = document.getElementById('chatSendBtn');
-    const chatMessages = document.getElementById('chatMessages');
-    const emptyState = document.getElementById('emptyState');
-    const newChatBtn = document.getElementById('newChatBtn');
-    const chatSessionsList = document.getElementById('chatSessionsList');
+    // When Phi is offline, the full chat DOM doesn't render. Avoid JS errors.
+    const OLLAMA_READY = {{ (ollama_ready | tojson) if ollama_ready is not none else "false" }};
+    if (!OLLAMA_READY) {
+      // Optional: auto-retry every 10s (keeps UX smooth while the server starts up).
+      setTimeout(() => location.reload(), 10000);
+    } else {
+      let currentSessionId = null;
+      const chatInput = document.getElementById('chatInput');
+      const chatSendBtn = document.getElementById('chatSendBtn');
+      const chatMessages = document.getElementById('chatMessages');
+      const emptyState = document.getElementById('emptyState');
+      const newChatBtn = document.getElementById('newChatBtn');
+      const chatSessionsList = document.getElementById('chatSessionsList');
 
     // Auto-resize textarea
     if (chatInput) {
@@ -854,6 +867,7 @@
           alert('Error loading chat');
         });
     }
+    } // end OLLAMA_READY guard
   </script>
 </body>
 </html>

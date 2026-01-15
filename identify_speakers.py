@@ -16,7 +16,12 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from speechbrain.inference.speaker import EncoderClassifier
+try:
+    # Newer SpeechBrain (some installs)
+    from speechbrain.inference.speaker import EncoderClassifier  # type: ignore
+except Exception:
+    # SpeechBrain 0.5.x (this repo's pinned version)
+    from speechbrain.pretrained import EncoderClassifier  # type: ignore
 
 
 def run(cmd):
@@ -143,6 +148,24 @@ def main():
     meeting_wav = Path("output") / f"{stem}_16k.wav"
     if not meeting_wav.exists():
         raise FileNotFoundError(f"Expected meeting wav at {meeting_wav}. Run your transcriber first.")
+
+    # Compatibility shim:
+    # Some SpeechBrain versions call `huggingface_hub.hf_hub_download(..., use_auth_token=...)`,
+    # but newer huggingface_hub renamed that kwarg to `token`.
+    try:
+        import huggingface_hub
+        from huggingface_hub import hf_hub_download as _orig_hf_hub_download
+
+        def _hf_hub_download_compat(*args, **kwargs):
+            if "use_auth_token" in kwargs and "token" not in kwargs:
+                kwargs["token"] = kwargs.pop("use_auth_token")
+            else:
+                kwargs.pop("use_auth_token", None)
+            return _orig_hf_hub_download(*args, **kwargs)
+
+        huggingface_hub.hf_hub_download = _hf_hub_download_compat  # type: ignore[attr-defined]
+    except Exception:
+        pass
 
     # Load speaker embedding model (ECAPA)
     device = "cuda" if torch.cuda.is_available() else "cpu"
