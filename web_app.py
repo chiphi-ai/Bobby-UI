@@ -117,6 +117,20 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
 def inject_waves_debug():
     return dict(waves_debug=os.getenv("WAVES_DEBUG") == "1")
 
+# Context processor for common template variables (current user + Ask Phi availability)
+@app.context_processor
+def inject_common_context():
+    cu = current_user()
+    phi_available = False
+    phi_error = None
+    if cu:
+        try:
+            from integrations.ollama_client import get_ollama_status_cached
+            phi_available, phi_error = get_ollama_status_cached()
+        except Exception:
+            phi_available, phi_error = False, None
+    return dict(current_user=cu, phi_available=phi_available, phi_error=phi_error)
+
 # ----------------------------
 # Helper functions
 # ----------------------------
@@ -2063,30 +2077,61 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
         env["VOCABULARY_USER_EMAIL"] = user_email
         print(f"Using custom vocabulary for user: {user_email}")
     
-    # Run transcription and speaker identification
-    for cmd in (cmd1, cmd2):
+    # Run transcription (required)
+    try:
+        result = subprocess.run(
+            cmd1,
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace"
+        )
+    except Exception as e:
+        print(f"Error running command {' '.join(cmd1)}: {e}")
+        print(f"\n❌ Pipeline stopped (exit 1)")
+        return
+    if result.returncode != 0:
+        print(f"Command failed: {' '.join(cmd1)}")
+        print(f"STDOUT: {result.stdout}")
+        print(f"STDERR: {result.stderr}")
+        print(f"\n❌ Pipeline stopped (exit {result.returncode})")
+        return
+
+    # Run speaker identification (optional – meeting should still show up even if this fails)
+    speaker_id_ok = True
+    try:
+        result2 = subprocess.run(
+            cmd2,
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace"
+        )
+    except Exception as e:
+        speaker_id_ok = False
+        print(f"Error running command {' '.join(cmd2)}: {e}")
+    else:
+        if result2.returncode != 0:
+            speaker_id_ok = False
+            print(f"Command failed: {' '.join(cmd2)}")
+            print(f"STDOUT: {result2.stdout}")
+            print(f"STDERR: {result2.stderr}")
+
+    if not speaker_id_ok:
+        # Fallback: if we have the diarized transcript, copy it into the "named" transcript path
+        # so the rest of the pipeline (PDF + meetings index) can still proceed.
         try:
-            result = subprocess.run(
-                cmd,
-                cwd=ROOT,
-                env=env,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace"
-            )
-            if result.returncode != 0:
-                print(f"Command failed: {' '.join(cmd)}")
-                print(f"STDOUT: {result.stdout}")
-                print(f"STDERR: {result.stderr}")
-            rc = result.returncode
+            raw_transcript_path = OUTPUT_DIR / f"{stem}_script.txt"
+            fallback_named_path = OUTPUT_DIR / f"{stem}_named_script.txt"
+            if raw_transcript_path.exists() and not fallback_named_path.exists():
+                fallback_named_path.write_text(raw_transcript_path.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
+                print(f"⚠️  Speaker ID failed; using fallback transcript at {fallback_named_path.name}")
         except Exception as e:
-            print(f"Error running command {' '.join(cmd)}: {e}")
-            rc = 1
-        
-        if rc != 0:
-            print(f"\n❌ Pipeline stopped (exit {rc})")
-            return
+            print(f"⚠️  Speaker ID failed and fallback transcript could not be created: {e}")
 
     # Create comprehensive meeting report PDF using meeting_pdf_summarizer
     # This uses Ollama AI to generate structured summaries from the named transcript
@@ -2291,15 +2336,25 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
         uploader_email = cfg.get("uploader_email")
         if uploader_email and uploader_email.lower() not in participant_emails:
             participant_emails.append(uploader_email.lower())
+
+        def _safe_relpath(p: Path | None) -> str | None:
+            if not p:
+                return None
+            try:
+                # Prefer a clean path relative to repo root
+                return str(p.resolve().relative_to(ROOT))
+            except Exception:
+                # Fallback: keep whatever we have (relative or absolute)
+                return str(p)
         
         meeting_data = {
             "id": stem,
             "name": meeting_name,
             "original_filename": audio_path.name,
             "processed_at": datetime.now().isoformat(),
-            "audio_path": str(audio_path.relative_to(ROOT)) if audio_path.exists() else None,
-            "transcript_path": str(transcript_path.relative_to(ROOT)) if transcript_exists else None,
-            "pdf_path": str(pdf_path.relative_to(ROOT)) if pdf_exists else None,
+            "audio_path": _safe_relpath(audio_path) if audio_path.exists() else None,
+            "transcript_path": _safe_relpath(transcript_path) if transcript_exists else None,
+            "pdf_path": _safe_relpath(pdf_path) if pdf_exists else None,
             "audio_size_bytes": audio_size,
             "speakers": sorted(list(speakers)),  # For labeling in transcript
             "speaker_count": len(speakers),
