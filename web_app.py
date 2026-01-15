@@ -3086,25 +3086,11 @@ def enroll_get():
     enroll_dir = ENROLL_DIR
     recordings = []
     
-    # Only show recordings that match this user's "firstname,lastname" or "username" format
-    first = user.get("first", "").strip().lower()
-    last = user.get("last", "").strip().lower()
-    user_prefix_comma = f"{first},{last}".lower() if first and last else ""
-    user_prefix_username = username.lower()
-    
     if enroll_dir.exists():
         for f in sorted(enroll_dir.iterdir()):
             if f.is_file() and f.suffix.lower() in ALLOWED_UPLOAD_EXT:
-                # Only include files that match user's firstname,lastname OR username format
-                filename_lower = f.name.lower()
-                # Check if filename starts with firstname,lastname or username (handles both formats)
-                matches_user = False
-                if user_prefix_comma and filename_lower.startswith(user_prefix_comma):
-                    matches_user = True
-                elif filename_lower.startswith(user_prefix_username):
-                    matches_user = True
-                
-                if matches_user and f.stat().st_size > 0:
+                # Only include files that match the current user (use the same logic as /enroll_audio security check)
+                if enrollment_file_matches_user(f.name, user) and f.stat().st_size > 0:
                     recordings.append({
                         "filename": f.name,
                         "size": f.stat().st_size,
@@ -5667,6 +5653,13 @@ def start_dev_watcher() -> None:
         "**/input/**",
         "**/.git/**",
         "**/.cursor/**",
+        # Runtime data files that change during normal app usage.
+        # If we watch these, the dev server restarts mid-request (causing browser "connection reset").
+        "**/organizations.json",
+        "**/organizations_directory.json",
+        "**/reset_tokens.json",
+        "**/vocabulary.json",
+        "**/config.json",
     ]
     patterns = ["*.py", "*.html", "*.css", "*.js", "*.json", "*.txt"]
 
@@ -5680,6 +5673,19 @@ def start_dev_watcher() -> None:
         if not path_str:
             return True
         norm_path = os.path.normcase(path_str)
+        # Ignore runtime files regardless of where they are written
+        runtime_basenames = {
+            "organizations.json",
+            "organizations_directory.json",
+            "reset_tokens.json",
+            "vocabulary.json",
+            "config.json",
+        }
+        try:
+            if os.path.basename(norm_path) in runtime_basenames:
+                return True
+        except Exception:
+            pass
         parts = set(Path(norm_path).parts)
         if any(p in parts for p in {".venv", "venv", "site-packages", "__pycache__", "output", "input", ".git", ".cursor"}):
             return True

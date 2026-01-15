@@ -346,36 +346,53 @@ function reindexOrganizations() {
           input.setAttribute("name", newName);
         }
       }
-      if (id && id.startsWith("org_role_")) {
-        input.setAttribute("id", `org_role_${newIndex}`);
-        const typeSelect = entry.querySelector(`select[name*="org_type"]`);
-        if (typeSelect) {
-          typeSelect.setAttribute("onchange", `updateRoleOptions(${newIndex})`);
-        }
-      }
       if (onclick && onclick.includes("removeOrganization")) {
         input.setAttribute("onclick", `removeOrganization(${newIndex})`);
       }
     });
+
+    // Fix role selects (these use names like org_roles_0[] which the generic rename above won't catch)
+    const roleSelects = entry.querySelectorAll(".role-select");
+    roleSelects.forEach((sel) => {
+      sel.setAttribute("name", `org_roles_${newIndex}[]`);
+      sel.setAttribute("data-org-index", String(newIndex));
+    });
+
+    // Ensure type select onchange points at the right index
+    const typeSelect = entry.querySelector(`select[name="org_type_${newIndex}"]`) || entry.querySelector(`select[name^="org_type_"]`);
+    if (typeSelect) {
+      typeSelect.setAttribute("onchange", `updateRoleOptions(${newIndex})`);
+    }
   });
 }
 
 function updateRoleOptions(index) {
   const typeSelect = document.querySelector(`select[name="org_type_${index}"]`);
-  const roleSelect = document.getElementById(`org_role_${index}`);
-  
-  if (!typeSelect || !roleSelect) return;
+  if (!typeSelect) return;
   
   const selectedType = typeSelect.value;
   if (!selectedType) {
-    roleSelect.innerHTML = '<option value="">Select organization type first...</option>';
+    // Update all role selects for this org (multi-role support)
+    const roleSelects = document.querySelectorAll(`#roles_list_${index} .role-select`);
+    roleSelects.forEach(select => {
+      select.innerHTML = '<option value="">Select organization type first...</option>';
+    });
     return;
   }
   
   const roles = orgTypes[selectedType]?.roles || [];
-  roleSelect.innerHTML = roles.map(role => 
-    `<option value="${role}">${role}</option>`
-  ).join("");
+  const roleOptions = roles.map(role => `<option value="${role}">${role}</option>`).join("");
+
+  // Update all role selects under this org
+  const roleSelects = document.querySelectorAll(`#roles_list_${index} .role-select`);
+  roleSelects.forEach(select => {
+    const currentValue = select.value;
+    select.innerHTML = '<option value="">Select your position/role...</option>' + roleOptions;
+    // Preserve selection if still valid
+    if (currentValue && roles.includes(currentValue)) {
+      select.value = currentValue;
+    }
+  });
 }
 
 function toggleOrgDropdown(index) {
@@ -684,8 +701,8 @@ window.addEventListener('DOMContentLoaded', function() {
             updateRoleOptions(index);
             if (orgRole) {
               setTimeout(() => {
-                const roleSelect = document.getElementById(`org_role_${index}`);
-                if (roleSelect) roleSelect.value = orgRole;
+                const firstRoleSelect = document.querySelector(`#roles_list_${index} .role-select`);
+                if (firstRoleSelect) firstRoleSelect.value = orgRole;
               }, 100);
             }
           }
