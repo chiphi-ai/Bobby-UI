@@ -8,6 +8,8 @@ torch==2.1.0
 torchaudio==2.1.0
 speechbrain==0.5.15
 soundfile==0.12.1
+openai-whisper>=20231117
+pyannote.audio>=3.1.1
 reportlab==4.0.7
 pypdf>=3.0.0
 pytesseract>=0.3.10

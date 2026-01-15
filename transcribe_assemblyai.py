@@ -4,6 +4,17 @@
 #   python -u transcribe_assemblyai.py input\thehagover.mp4 --speakers 5
 #   python -u transcribe_assemblyai.py input\meeting.mp4   (no speakers_expected)
 #
+# NOTE (2026-01):
+#   This script now supports a local backend (Whisper + pyannote) while preserving
+#   the exact same output files used by the rest of the app:
+#     - output/<stem>_16k.wav
+#     - output/<stem>_utterances.json   [{start,end,speaker,text}, ...]
+#     - output/<stem>_script.txt
+#     - output/<stem>_aai.json          (kept for compatibility; now contains backend metadata)
+#   Backend selection:
+#     TRANSCRIPTION_BACKEND=whisper  (default)  -> Whisper transcription + pyannote diarization
+#     TRANSCRIPTION_BACKEND=assemblyai         -> Original AssemblyAI flow
+#
 # Requires:
 #   - ffmpeg in PATH
 #   - pip install requests python-dotenv
@@ -148,6 +159,166 @@ def to_wav_16k_mono(input_path: Path, enhance_audio: bool = False, **kwargs) -> 
     print(f"   wrote: {out_wav}")
     return out_wav
 
+def _pick_token() -> str | None:
+    # pyannote uses HuggingFace auth tokens for model downloads (speaker-diarization-3.1 is gated)
+    return (
+        os.environ.get("HF_TOKEN", "").strip()
+        or os.environ.get("HUGGINGFACE_TOKEN", "").strip()
+        or None
+    )
+
+def _midpoint(a: float, b: float) -> float:
+    return (a + b) / 2.0
+
+def transcribe_with_whisper(wav_path: Path, custom_vocab: list[str] | None = None) -> dict:
+    """
+    Returns a dict with:
+      - text: full transcript text
+      - segments: [{start,end,text}, ...] (seconds)
+      - language (if available)
+    """
+    try:
+        import torch
+    except Exception:
+        torch = None
+
+    try:
+        import whisper  # openai-whisper
+    except Exception as e:
+        die(
+            "Whisper backend selected but dependency is missing.\n"
+            "Install: pip install -r requirements.txt\n"
+            f"Import error: {e}"
+        )
+
+    model_name = os.getenv("WHISPER_MODEL", "small").strip() or "small"
+    language = os.getenv("WHISPER_LANGUAGE", "").strip() or None
+
+    # Device selection: allow override, otherwise prefer cuda/mps if available
+    device = os.getenv("WHISPER_DEVICE", "").strip().lower()
+    if not device:
+        device = "cpu"
+        if torch is not None:
+            if getattr(torch, "cuda", None) and torch.cuda.is_available():
+                device = "cuda"
+            elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+                device = "mps"
+
+    print(f"2) Transcribing (Whisper: model={model_name}, device={device})...")
+    model = whisper.load_model(model_name, device=device)
+
+    initial_prompt = None
+    if custom_vocab:
+        # Keep prompt modest (Whisper prompt is not a strict vocab/boosting mechanism)
+        prompt_words = ", ".join(custom_vocab[:80])
+        initial_prompt = f"Important terms: {prompt_words}."
+
+    result = model.transcribe(
+        str(wav_path),
+        language=language,
+        fp16=(device == "cuda"),
+        initial_prompt=initial_prompt,
+        verbose=False,
+    )
+
+    segments = []
+    for s in (result.get("segments") or []):
+        segments.append({
+            "start": float(s.get("start", 0.0)),
+            "end": float(s.get("end", 0.0)),
+            "text": (s.get("text") or "").strip(),
+        })
+
+    full_text = " ".join([s["text"] for s in segments if s["text"]]).strip()
+    return {
+        "backend": "whisper",
+        "model": model_name,
+        "device": device,
+        "language": result.get("language"),
+        "text": full_text,
+        "segments": segments,
+    }
+
+def diarize_with_pyannote(wav_path: Path, speakers_expected: int | None = None) -> list[dict]:
+    print("3) Diarizing (pyannote)...")
+    token = _pick_token()
+    if not token:
+        die(
+            "Missing HuggingFace token for pyannote.\n"
+            "Set HF_TOKEN (or HUGGINGFACE_TOKEN) in your environment or .env.\n"
+            "Then accept the model license for `pyannote/speaker-diarization-3.1` in HuggingFace."
+        )
+    try:
+        from pyannote.audio import Pipeline
+    except Exception as e:
+        die(
+            "pyannote backend selected but dependency is missing.\n"
+            "Install: pip install -r requirements.txt\n"
+            f"Import error: {e}"
+        )
+
+    pipeline = Pipeline.from_pretrained(
+        "pyannote/speaker-diarization-3.1",
+        use_auth_token=token,
+    )
+
+    # pyannote pipelines accept num_speakers / min_speakers / max_speakers (varies by version).
+    diarization = None
+    if speakers_expected is not None:
+        try:
+            diarization = pipeline(str(wav_path), num_speakers=int(speakers_expected))
+        except TypeError:
+            diarization = pipeline(str(wav_path))
+    else:
+        diarization = pipeline(str(wav_path))
+
+    segments = []
+    for turn, _, speaker in diarization.itertracks(yield_label=True):
+        segments.append({
+            "speaker": str(speaker),
+            "start": float(turn.start),
+            "end": float(turn.end),
+        })
+
+    # Sort just in case
+    segments.sort(key=lambda d: (d["start"], d["end"]))
+    return segments
+
+def align_transcript_and_diarization(transcript: dict, diar_segments: list[dict]) -> list[dict]:
+    """
+    Simple alignment:
+      For each transcript segment, assign the diarization speaker whose segment contains the transcript midpoint.
+    Output matches the existing utterances schema used downstream.
+    """
+    diar_i = 0
+    diar_n = len(diar_segments)
+
+    utterances = []
+    for seg in (transcript.get("segments") or []):
+        s = float(seg.get("start", 0.0))
+        e = float(seg.get("end", 0.0))
+        txt = (seg.get("text") or "").strip()
+        if not txt:
+            continue
+
+        m = _midpoint(s, e)
+        while diar_i < diar_n and float(diar_segments[diar_i].get("end", 0.0)) < m:
+            diar_i += 1
+
+        speaker = "Unknown"
+        if diar_i < diar_n:
+            d = diar_segments[diar_i]
+            if float(d.get("start", 0.0)) <= m <= float(d.get("end", 0.0)):
+                speaker = d.get("speaker") or "Unknown"
+
+        utterances.append({
+            "start": s,
+            "end": e,
+            "speaker": speaker,
+            "text": txt,
+        })
+    return utterances
+
 
 def upload_audio(wav_path: Path, headers: dict) -> str:
     print("2) Uploading audio to AssemblyAI...")
@@ -226,18 +397,22 @@ def save_outputs(base_stem: str, full_json: dict):
 
     out_full.write_text(json.dumps(full_json, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    # AssemblyAI includes "utterances" when speaker_labels is enabled
-    utterances = full_json.get("utterances") or []
+    backend = (full_json.get("backend") or "").lower()
+    cleaned: list[dict] = []
 
-    # Normalize to the shape you already used: start/end/speaker/text
-    cleaned = []
-    for u in utterances:
-        cleaned.append({
-            "start": (u.get("start") or 0) / 1000.0,   # ms -> seconds
-            "end": (u.get("end") or 0) / 1000.0,
-            "speaker": u.get("speaker") or "Unknown",
-            "text": (u.get("text") or "").strip(),
-        })
+    if backend in {"whisper+pyannote", "whisper_pyannote", "whisper"}:
+        # Already in seconds with the desired schema
+        cleaned = full_json.get("utterances") or []
+    else:
+        # AssemblyAI includes "utterances" when speaker_labels is enabled (ms)
+        utterances = full_json.get("utterances") or []
+        for u in utterances:
+            cleaned.append({
+                "start": (u.get("start") or 0) / 1000.0,   # ms -> seconds
+                "end": (u.get("end") or 0) / 1000.0,
+                "speaker": u.get("speaker") or "Unknown",
+                "text": (u.get("text") or "").strip(),
+            })
 
     out_utter.write_text(json.dumps(cleaned, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -282,21 +457,6 @@ def main():
     parser.add_argument("--enhance-audio", action="store_true", help="Apply audio enhancement (denoising + normalization). Use for noisy recordings.")
     args = parser.parse_args()
 
-    api_key = os.environ.get("ASSEMBLYAI_API_KEY", "").strip()
-    if not api_key or api_key == "your-api-key-here":
-        # Debug output to help diagnose
-        print(f"\nDEBUG: ASSEMBLYAI_API_KEY in os.environ: {bool(os.environ.get('ASSEMBLYAI_API_KEY'))}")
-        if os.environ.get('ASSEMBLYAI_API_KEY'):
-            print(f"DEBUG: API key value (first 20 chars): {os.environ.get('ASSEMBLYAI_API_KEY', '')[:20]}...")
-        print(f"DEBUG: Current working directory: {os.getcwd()}")
-        print(f"DEBUG: Script directory: {Path(__file__).parent}")
-        print(f"DEBUG: .env file path: {Path(__file__).parent / '.env'}")
-        print(f"DEBUG: .env file exists: {(Path(__file__).parent / '.env').exists()}")
-        die("Missing ASSEMBLYAI_API_KEY. Set it in .env file (ASSEMBLYAI_API_KEY=your-key) or as env var in PowerShell.")
-    
-    # Debug: show we got the key (first 10 chars only for security)
-    print(f"DEBUG: Using API key (first 10 chars): {api_key[:10]}...")
-
     input_path = Path(args.input_file)
     if not input_path.exists():
         # Try inside ./input if they passed only filename
@@ -306,22 +466,56 @@ def main():
         else:
             die(f"File not found: {args.input_file}")
 
-    headers = {"authorization": api_key}
+    backend = os.getenv("TRANSCRIPTION_BACKEND", "whisper").strip().lower()
 
-    # Load custom vocabulary (optional - won't break if file doesn't exist)
-    custom_vocab = load_custom_vocabulary()
-
-    print("Uploading and transcribing with AssemblyAI (dynamic speakers)...")
+    # Convert to wav first (both backends need it)
     try:
         wav_path = to_wav_16k_mono(input_path, enhance_audio=args.enhance_audio)
     except TypeError:
         print("WARN: to_wav_16k_mono does not accept enhance_audio; running without enhancement.")
         wav_path = to_wav_16k_mono(input_path)
-    upload_url = upload_audio(wav_path, headers=headers)
-    tid = submit_transcript(upload_url, headers=headers, speakers_expected=args.speakers, speech_threshold=args.speech_threshold, custom_vocab=custom_vocab)
-    result = poll_transcript(tid, headers=headers)
 
-    save_outputs(base_stem=input_path.stem, full_json=result)
+    # Load custom vocabulary (optional)
+    user_email = os.environ.get("VOCABULARY_USER_EMAIL", "").strip() or None
+    custom_vocab = load_custom_vocabulary(user_email=user_email)
+
+    if backend in {"assemblyai", "aai"}:
+        api_key = os.environ.get("ASSEMBLYAI_API_KEY", "").strip()
+        if not api_key or api_key == "your-api-key-here":
+            die(
+                "TRANSCRIPTION_BACKEND=assemblyai but ASSEMBLYAI_API_KEY is missing.\n"
+                "Set it in .env (ASSEMBLYAI_API_KEY=...) or switch to local backend:\n"
+                "  TRANSCRIPTION_BACKEND=whisper"
+            )
+        headers = {"authorization": api_key}
+
+        print("Uploading and transcribing with AssemblyAI (speaker labels enabled)...")
+        upload_url = upload_audio(wav_path, headers=headers)
+        tid = submit_transcript(
+            upload_url,
+            headers=headers,
+            speakers_expected=args.speakers,
+            speech_threshold=args.speech_threshold,
+            custom_vocab=custom_vocab,
+        )
+        result = poll_transcript(tid, headers=headers)
+        save_outputs(base_stem=input_path.stem, full_json=result)
+        return
+
+    # Default: local Whisper + pyannote, but keep the same output contract.
+    transcript = transcribe_with_whisper(wav_path, custom_vocab=custom_vocab)
+    diar_segments = diarize_with_pyannote(wav_path, speakers_expected=args.speakers)
+    utterances = align_transcript_and_diarization(transcript, diar_segments)
+
+    full = {
+        "backend": "whisper+pyannote",
+        "input": str(input_path),
+        "wav": str(wav_path),
+        "transcript": transcript,
+        "diarization": diar_segments,
+        "utterances": utterances,
+    }
+    save_outputs(base_stem=input_path.stem, full_json=full)
 
 
 if __name__ == "__main__":

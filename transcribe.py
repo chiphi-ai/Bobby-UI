@@ -5,9 +5,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-print("=== DIARIZATION VERSION RUNNING (NO TOKEN ARGS) ===")
-
-
 # -------------------------
 # Helpers
 # -------------------------
@@ -43,36 +40,62 @@ def convert_to_wav_16k_mono(input_media: Path, wav_out: Path) -> None:
     run(cmd)
 
 
-def transcribe_with_faster_whisper(wav_path: Path, model_size: str = "small") -> dict:
-    from faster_whisper import WhisperModel
-
-    # If you have GPU, you can try device="cuda", compute_type="float16"
-    model = WhisperModel(model_size, device="cpu", compute_type="int8")
-
-    segments, info = model.transcribe(
-        str(wav_path),
-        language="en",
-        vad_filter=True,
-        word_timestamps=False,
-        beam_size=5,
+def _pick_token() -> str | None:
+    return (
+        os.environ.get("HF_TOKEN", "").strip()
+        or os.environ.get("HUGGINGFACE_TOKEN", "").strip()
+        or None
     )
 
-    segs = []
-    full_text_parts = []
-    for s in segments:
-        segs.append({
-            "start": float(s.start),
-            "end": float(s.end),
-            "text": s.text.strip()
-        })
-        if s.text:
-            full_text_parts.append(s.text.strip())
 
+def transcribe_with_whisper(wav_path: Path, model_name: str = "small", language: str | None = "en") -> dict:
+    """
+    Uses openai-whisper. Returns:
+      {language, segments:[{start,end,text}], text}
+    """
+    try:
+        import torch
+    except Exception:
+        torch = None
+
+    try:
+        import whisper
+    except Exception as e:
+        raise RuntimeError(
+            "Missing dependency: openai-whisper. Install with: pip install -r requirements.txt\n"
+            f"Import error: {e}"
+        )
+
+    device = os.getenv("WHISPER_DEVICE", "").strip().lower()
+    if not device:
+        device = "cpu"
+        if torch is not None:
+            if getattr(torch, "cuda", None) and torch.cuda.is_available():
+                device = "cuda"
+            elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+                device = "mps"
+
+    model = whisper.load_model(model_name, device=device)
+    result = model.transcribe(
+        str(wav_path),
+        language=language or None,
+        fp16=(device == "cuda"),
+        verbose=False,
+    )
+
+    segments = []
+    for s in (result.get("segments") or []):
+        segments.append({
+            "start": float(s.get("start", 0.0)),
+            "end": float(s.get("end", 0.0)),
+            "text": (s.get("text") or "").strip(),
+        })
+
+    full_text = " ".join([s["text"] for s in segments if s["text"]]).strip()
     return {
-        "language": getattr(info, "language", "unknown"),
-        "duration": float(getattr(info, "duration", 0.0) or 0.0),
-        "segments": segs,
-        "text": " ".join(full_text_parts).strip()
+        "language": result.get("language") or "unknown",
+        "segments": segments,
+        "text": full_text,
     }
 
 
@@ -83,7 +106,7 @@ def diarize_with_pyannote(wav_path):
 
     pipeline = Pipeline.from_pretrained(
     "pyannote/speaker-diarization-3.1",
-    use_auth_token=os.environ["HF_TOKEN"]
+    use_auth_token=_pick_token()
 )
 
     diarization = pipeline(str(wav_path))
@@ -203,15 +226,19 @@ def main() -> None:
     convert_to_wav_16k_mono(input_path, wav_path)
     print(f"   wrote: {wav_path}")
 
-    print("2) Transcribing (faster-whisper)...")
-    transcript = transcribe_with_faster_whisper(wav_path, model_size="small")
+    print("2) Transcribing (Whisper)...")
+    transcript = transcribe_with_whisper(
+        wav_path,
+        model_name=os.getenv("WHISPER_MODEL", "small").strip() or "small",
+        language=os.getenv("WHISPER_LANGUAGE", "en").strip() or None,
+    )
     transcript_path.write_text(json.dumps(transcript, indent=2), encoding="utf-8")
     print(f"   wrote: {transcript_path}")
 
     print("3) Diarizing (pyannote)...")
     # If HF_TOKEN isn't set, diarization will likely fail for gated models.
-    if not os.environ.get("HF_TOKEN"):
-        print("   WARNING: HF_TOKEN is not set. Diarization model download may fail.")
+    if not _pick_token():
+        print("   WARNING: HF_TOKEN / HUGGINGFACE_TOKEN is not set. Diarization model download will fail.")
 
     diar_segments = diarize_with_pyannote(wav_path)
     diar_path.write_text(json.dumps(diar_segments, indent=2), encoding="utf-8")

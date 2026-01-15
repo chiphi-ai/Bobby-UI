@@ -15,9 +15,27 @@ Create a file named `.env` in the project root directory (same folder as `web_ap
 
 ```env
 # ============================================
-# REQUIRED: AssemblyAI API Key
+# REQUIRED (if using AssemblyAI backend)
 # ============================================
 ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
+
+# ============================================
+# REQUIRED (for Whisper + pyannote diarization)
+# ============================================
+# HuggingFace token with access to gated pyannote models
+# - Create token: https://huggingface.co/settings/tokens
+# - Accept model license first: https://huggingface.co/pyannote/speaker-diarization-3.1
+HF_TOKEN=your_huggingface_token_here
+
+# Transcription/diarization backend selection
+# - whisper (default): Whisper transcription + pyannote diarization (local)
+# - assemblyai: original AssemblyAI transcription + diarization
+TRANSCRIPTION_BACKEND=whisper
+
+# Whisper tuning (optional)
+WHISPER_MODEL=small
+WHISPER_LANGUAGE=en
+WHISPER_DEVICE=
 
 # ============================================
 # OPTIONAL: Flask Secret Key
@@ -66,14 +84,20 @@ OLLAMA_MODEL=llama3.1:8b
 
 ### REQUIRED Variables
 
+#### `HF_TOKEN`
+- **Required:** YES (if `TRANSCRIPTION_BACKEND=whisper`)
+- **Purpose:** HuggingFace token used to download/use pyannote diarization models
+- **Where to get it:** `https://huggingface.co/settings/tokens`
+- **Also required:** Accept the license for `pyannote/speaker-diarization-3.1`
+
 #### `ASSEMBLYAI_API_KEY`
-- **Required:** YES
-- **Purpose:** API key for AssemblyAI transcription service
+- **Required:** YES (if `TRANSCRIPTION_BACKEND=assemblyai`)
+- **Purpose:** API key for AssemblyAI transcription service (legacy backend)
 - **Where to get it:** https://www.assemblyai.com/app/account
 - **Format:** A long string of letters and numbers
 - **Example:** `ASSEMBLYAI_API_KEY=98e0a0993e5b4849810df8cfced7aca4`
 
-**Without this, transcription will NOT work!**
+**Without the required variable for your chosen backend (`HF_TOKEN` for Whisper+pyannote, or `ASSEMBLYAI_API_KEY` for AssemblyAI), transcription will NOT work.**
 
 ### OPTIONAL Variables
 
@@ -134,7 +158,8 @@ OLLAMA_MODEL=llama3.1:8b
 ## Example .env File (Minimal - Just Required)
 
 ```env
-ASSEMBLYAI_API_KEY=98e0a0993e5b4849810df8cfced7aca4
+HF_TOKEN=your_huggingface_token_here
+TRANSCRIPTION_BACKEND=whisper
 ```
 
 ## Example .env File (Full - All Features)
