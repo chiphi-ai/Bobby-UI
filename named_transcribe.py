@@ -328,9 +328,16 @@ def main():
     parser.add_argument("--switch-penalty", type=float, default=0.02, help="Penalty applied when switching speakers to reduce jitter.")
     args = parser.parse_args()
 
+    backend = os.getenv("TRANSCRIPTION_BACKEND", "whisper").strip().lower()
+    headers = None
+    if backend in {"assemblyai", "aai"}:
     api_key = os.environ.get("ASSEMBLYAI_API_KEY", "").strip()
     if not api_key or api_key == "your-api-key-here":
-        die("Missing ASSEMBLYAI_API_KEY. Set it in .env file (ASSEMBLYAI_API_KEY=your-key) or as env var in PowerShell.")
+            die(
+                "TRANSCRIPTION_BACKEND=assemblyai but ASSEMBLYAI_API_KEY is missing.\n"
+                "Set it in .env file (ASSEMBLYAI_API_KEY=your-key) or switch to local backend:\n"
+                "  TRANSCRIPTION_BACKEND=whisper"
+            )
     headers = {"authorization": api_key}
 
     input_path = Path(args.input_file)
@@ -358,19 +365,46 @@ def main():
     user_email = os.environ.get("VOCABULARY_USER_EMAIL", "").strip() or None
     custom_vocab = load_custom_vocabulary(user_email=user_email)
 
-    # Transcribe with diarization
-    upload_url = upload_audio(meeting_wav, headers=headers)
-    tid = submit_transcript(upload_url, headers=headers, speakers_expected=args.speakers, speech_threshold=args.speech_threshold, custom_vocab=custom_vocab)
-    full = poll_transcript(tid, headers=headers)
-
-    # Save raw AssemblyAI JSON + cleaned utterances
     out_full = Path("output") / f"{stem}_aai.json"
     out_utter = Path("output") / f"{stem}_utterances.json"
-    out_full.write_text(json.dumps(full, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    if backend in {"assemblyai", "aai"}:
+        # Transcribe with diarization via AssemblyAI (legacy fallback)
+        upload_url = upload_audio(meeting_wav, headers=headers)
+        tid = submit_transcript(
+            upload_url,
+            headers=headers,
+            speakers_expected=args.speakers,
+            speech_threshold=args.speech_threshold,
+            custom_vocab=custom_vocab,
+        )
+        full = poll_transcript(tid, headers=headers)
+    out_full.write_text(json.dumps(full, indent=2, ensure_ascii=False), encoding="utf-8")
     utterances = clean_utterances(full)
     out_utter.write_text(json.dumps(utterances, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"5) Saved:\n   {out_full}\n   {out_utter}")
+    else:
+        # Local backend: Whisper transcription + pyannote diarization (preferred)
+        from transcribe_assemblyai import (
+            transcribe_with_whisper,
+            diarize_with_pyannote,
+            align_transcript_and_diarization,
+        )
+        transcript = transcribe_with_whisper(meeting_wav, custom_vocab=custom_vocab)
+        diar_segments = diarize_with_pyannote(meeting_wav, speakers_expected=args.speakers)
+        utterances = align_transcript_and_diarization(transcript, diar_segments)
+
+        full = {
+            "backend": "whisper+pyannote",
+            "input": str(input_path),
+            "wav": str(meeting_wav),
+            "transcript": transcript,
+            "diarization": diar_segments,
+            "utterances": utterances,
+        }
+        out_full.write_text(json.dumps(full, indent=2, ensure_ascii=False), encoding="utf-8")
+        out_utter.write_text(json.dumps(utterances, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"5) Saved:\n   {out_full}\n   {out_utter}")
 
     # Load speaker embedding model
     print("6) Loading speaker embedding model (SpeechBrain ECAPA)...")

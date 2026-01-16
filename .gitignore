@@ -45,6 +45,17 @@ input/emails.csv
 organizations.json
 reset_tokens.json
 
+# Input Audio/Video Files (user uploads)
+input/*.wav
+input/*.mp3
+input/*.m4a
+input/*.webm
+input/*.mp4
+input/*.mov
+input/*.aac
+input/*.flac
+input/*.ogg
+
 # Audio Files (user data)
 enroll/*.wav
 enroll/*.mp3

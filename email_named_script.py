@@ -205,7 +205,12 @@ def create_pdf(script_json_path: Path, people: dict, output_pdf_path: Path) -> b
                 else:
                     speaker_name = speaker_name_clean.capitalize()
             else:
-                speaker_name = speaker_name_clean.capitalize()
+                # Preserve multi-word capitalization for custom speaker labels.
+                # If the string is all-lowercase, title-case it; otherwise keep as provided.
+                if speaker_name_clean and speaker_name_clean == speaker_name_clean.lower():
+                    speaker_name = speaker_name_clean.title()
+                else:
+                    speaker_name = speaker_name_clean
             
             # Format: "First Name Last Name: what they said"
             speaker_para = Paragraph(f"<b>{speaker_name}:</b>", speaker_style)

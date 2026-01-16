@@ -14,17 +14,27 @@ try:
 except ImportError:
     pass
 
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_BASE_URL = (
+    os.environ.get("OLLAMA_BASE_URL", "").strip()
+    or os.environ.get("OLLAMA_URL", "").strip()
+    or "http://localhost:11434"
+)
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 
+_OLLAMA_STATUS_CACHE = {
+    "ts": 0.0,
+    "ready": False,
+    "error": None,
+}
 
-def check_ollama_health():
+
+def check_ollama_health(timeout: float = 5.0):
     """
     Check if Ollama is running and accessible.
     Returns (is_healthy, error_message) tuple
     """
     try:
-        response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
+        response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=timeout)
         if response.status_code == 200:
             return True, None
         else:
@@ -37,13 +47,13 @@ def check_ollama_health():
         return False, f"Error checking Ollama: {str(e)}"
 
 
-def check_model_available():
+def check_model_available(timeout: float = 5.0):
     """
     Check if the configured model is available.
     Returns (is_available, error_message) tuple
     """
     try:
-        response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
+        response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=timeout)
         if response.status_code != 200:
             return False, "Cannot connect to Ollama."
         
@@ -57,6 +67,25 @@ def check_model_available():
     except Exception as e:
         return False, f"Error checking model: {str(e)}"
 
+
+def get_ollama_status_cached(ttl_seconds: float = 5.0, timeout: float = 1.0):
+    """
+    Cached combined readiness check for templates.
+    Returns (ready: bool, error: Optional[str])
+    """
+    import time
+    now = time.time()
+    if _OLLAMA_STATUS_CACHE["ts"] and (now - _OLLAMA_STATUS_CACHE["ts"] < ttl_seconds):
+        return _OLLAMA_STATUS_CACHE["ready"], _OLLAMA_STATUS_CACHE["error"]
+
+    is_healthy, health_error = check_ollama_health(timeout=timeout)
+    model_available, model_error = check_model_available(timeout=timeout) if is_healthy else (False, None)
+    ready = bool(is_healthy and model_available)
+    err = health_error or model_error
+    _OLLAMA_STATUS_CACHE["ts"] = now
+    _OLLAMA_STATUS_CACHE["ready"] = ready
+    _OLLAMA_STATUS_CACHE["error"] = err
+    return ready, err
 
 def generate_response(
     prompt: str,

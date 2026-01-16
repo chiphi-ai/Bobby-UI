@@ -95,12 +95,14 @@ This may take several minutes as it installs PyTorch and other large packages.
 Create a file named `.env` in the project root directory (same folder as `web_app.py`).
 
 **Get API Keys:**
-- Contact your team lead for the AssemblyAI API key
+- For the default local pipeline (Whisper + pyannote), create a HuggingFace token (used to download pyannote diarization models)
+- If you choose to use the legacy AssemblyAI backend, contact your team lead for the AssemblyAI API key
 - For cloud storage (optional), see `OAUTH_SETUP_GUIDE.md`
 
 **Example `.env` file:**
 ```env
-ASSEMBLYAI_API_KEY=your_key_here
+HF_TOKEN=your_huggingface_token_here
+TRANSCRIPTION_BACKEND=whisper
 ```
 
 **Important:** 
