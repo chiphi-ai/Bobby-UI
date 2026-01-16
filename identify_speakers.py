@@ -379,6 +379,17 @@ def main():
                         username_to_name[username] = f"{first} {last}"
         except Exception as e:
             print(f"Warning: Could not load username mapping: {e}")
+
+    # Load global speaker profiles (enrollment_key -> display_name) if available
+    speaker_profiles = {}
+    try:
+        profiles_path = Path("output") / "speaker_profiles.json"
+        if profiles_path.exists():
+            data = json.loads(profiles_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                speaker_profiles = data
+    except Exception as e:
+        print(f"Warning: Could not load speaker profiles: {e}")
     
     # Write script with proper name formatting
     out_txt.parent.mkdir(parents=True, exist_ok=True)
@@ -395,8 +406,12 @@ def main():
             # Convert username to "First Last" format using mapping
             # Remove any (2), (3) etc. patterns first
             speaker_name_clean = re.sub(r"\(\d+\)", "", speaker_name).strip()
+            # Global speaker profile display name mapping (for non-user profiles)
+            prof = speaker_profiles.get(speaker_name_clean.lower()) if isinstance(speaker_profiles, dict) else None
+            if isinstance(prof, dict) and prof.get("display_name"):
+                formatted_name = str(prof.get("display_name"))
             # Look up in username mapping
-            if speaker_name_clean in username_to_name:
+            elif speaker_name_clean in username_to_name:
                 formatted_name = username_to_name[speaker_name_clean]
             elif "," in speaker_name_clean:
                 # Fallback: old format "first,last"

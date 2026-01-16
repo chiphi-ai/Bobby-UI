@@ -66,15 +66,26 @@
     <!-- Main Content -->
     <main class="main-content main-content-narrow enter">
       <!-- Flash Messages -->
-      {% with messages = get_flashed_messages() %}
-        {% if messages %}
-          <div class="alert alert-error enter">
-            {% for m in messages %}
-              <strong>Error:</strong> {{ m }}
+      {% if errors and errors|length %}
+        <div class="alert alert-error enter">
+          <strong>Please fix the following:</strong>
+          <ul style="margin-top: 8px; padding-left: 18px;">
+            {% for _, msg in errors.items() %}
+              <li>{{ msg }}</li>
             {% endfor %}
-          </div>
-        {% endif %}
-      {% endwith %}
+          </ul>
+        </div>
+      {% else %}
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="alert alert-error enter">
+              {% for m in messages %}
+                <strong>Error:</strong> {{ m }}
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+      {% endif %}
 
       <!-- Signup Form -->
       <form method="post" class="card holo-border enter enter-delay-1">
@@ -89,30 +100,35 @@
 
           <div class="form-group">
             <label for="first" class="form-label required">First name</label>
-            <input id="first" name="first" type="text" class="form-input" required placeholder="John">
+            <input id="first" name="first" type="text" class="form-input" required placeholder="John" value="{{ form_data.first|default('') }}">
+            {% if errors and errors.get('first') %}<div class="form-helper" style="color: var(--error);">{{ errors.get('first') }}</div>{% endif %}
           </div>
 
           <div class="form-group">
             <label for="last" class="form-label required">Last name</label>
-            <input id="last" name="last" type="text" class="form-input" required placeholder="Doe">
+            <input id="last" name="last" type="text" class="form-input" required placeholder="Doe" value="{{ form_data.last|default('') }}">
+            {% if errors and errors.get('last') %}<div class="form-helper" style="color: var(--error);">{{ errors.get('last') }}</div>{% endif %}
           </div>
 
           <div class="form-group">
             <label for="email" class="form-label required">Email</label>
-            <input id="email" name="email" type="email" class="form-input" required placeholder="john.doe@example.com" autocomplete="email">
+            <input id="email" name="email" type="email" class="form-input" required placeholder="john.doe@example.com" autocomplete="email" value="{{ form_data.email|default('') }}">
+            {% if errors and errors.get('email') %}<div class="form-helper" style="color: var(--error);">{{ errors.get('email') }}</div>{% endif %}
           </div>
 
           <div class="form-group">
             <label for="email2" class="form-label required">Confirm email</label>
-            <input id="email2" name="email2" type="email" class="form-input" required placeholder="john.doe@example.com" autocomplete="email">
+            <input id="email2" name="email2" type="email" class="form-input" required placeholder="john.doe@example.com" autocomplete="email" value="{{ form_data.email2|default('') }}">
+            {% if errors and errors.get('email2') %}<div class="form-helper" style="color: var(--error);">{{ errors.get('email2') }}</div>{% endif %}
           </div>
 
           <div class="form-group">
             <label for="username" class="form-label required">Username</label>
-            <input id="username" name="username" type="text" class="form-input" required placeholder="johndoe" pattern="[a-zA-Z0-9_-]+" minlength="3" maxlength="30" title="Username can only contain letters, numbers, underscores, and hyphens. No spaces or special characters.">
+            <input id="username" name="username" type="text" class="form-input" required placeholder="johndoe" pattern="[a-zA-Z0-9_-]+" minlength="3" maxlength="30" title="Username can only contain letters, numbers, underscores, and hyphens. No spaces or special characters." value="{{ form_data.username|default('') }}">
             <div class="form-helper">
               Choose a unique username (3-30 characters, letters, numbers, underscores, and hyphens only). This will be used to identify your voice recordings.
             </div>
+            {% if errors and errors.get('username') %}<div class="form-helper" style="color: var(--error);">{{ errors.get('username') }}</div>{% endif %}
           </div>
 
           <hr style="margin: var(--space-xl) 0; border: none; border-top: 1px solid var(--border-light);">
@@ -125,7 +141,8 @@
           </div>
 
           <div id="organizationsContainer"></div>
-          <input type="hidden" id="orgCount" name="org_count" value="0">
+          <input type="hidden" id="orgCount" name="org_count" value="{{ form_data.org_count|default(0) }}">
+          {% if errors and errors.get('organizations') %}<div class="form-helper" style="color: var(--error);">{{ errors.get('organizations') }}</div>{% endif %}
           
           <button type="button" id="addOrgBtn" class="btn btn-secondary" onclick="addOrganization()" style="margin-top: var(--space-md);">
             + Add Organization
@@ -139,11 +156,13 @@
           <div class="form-group">
             <label for="password" class="form-label required">Password (8+ characters)</label>
             <input id="password" name="password" type="password" class="form-input" required minlength="8" placeholder="Enter password" autocomplete="new-password">
+            {% if errors and errors.get('password') %}<div class="form-helper" style="color: var(--error);">{{ errors.get('password') }}</div>{% endif %}
           </div>
 
           <div class="form-group">
             <label for="password2" class="form-label required">Confirm password</label>
             <input id="password2" name="password2" type="password" class="form-input" required minlength="8" placeholder="Confirm password" autocomplete="new-password">
+            {% if errors and errors.get('password2') %}<div class="form-helper" style="color: var(--error);">{{ errors.get('password2') }}</div>{% endif %}
           </div>
 
           <button type="submit" class="btn btn-primary" onclick="return validateForm()" style="width: 100%; margin-top: var(--space-lg);">
@@ -168,11 +187,13 @@
 
 <script type="application/json" id="org-types-data">{{ org_types | tojson | safe }}</script>
 <script type="application/json" id="org-directory-data">{{ organizations_directory | tojson | safe }}</script>
+<script type="application/json" id="org-entries-data">{{ (org_entries or []) | tojson | safe }}</script>
 <script>
 let orgCount = 0;
 // Load organization types and directory from template
 const orgTypes = JSON.parse(document.getElementById('org-types-data').textContent);
 const orgDirectory = JSON.parse(document.getElementById('org-directory-data').textContent);
+const orgEntriesFromServer = JSON.parse(document.getElementById('org-entries-data').textContent || "[]");
 
 function addOrganization() {
   if (orgCount >= 10) {
@@ -671,6 +692,55 @@ async function saveNewOrganization() {
 
 // Handle return from add organization page
 window.addEventListener('DOMContentLoaded', function() {
+  // Restore organizations from server (preserve user input after validation errors)
+  try {
+    if (Array.isArray(orgEntriesFromServer) && orgEntriesFromServer.length > 0) {
+      // Reset any existing
+      document.getElementById("organizationsContainer").innerHTML = "";
+      orgCount = 0;
+      document.getElementById("orgCount").value = "0";
+
+      orgEntriesFromServer.forEach((entry, idx) => {
+        addOrganization(); // creates org_{idx}
+        const nameInput = document.getElementById(`org_name_${idx}`);
+        const addressInput = document.getElementById(`org_address_${idx}`);
+        const dropbtnText = document.getElementById(`org_dropbtn_text_${idx}`);
+        const typeSelect = document.querySelector(`select[name="org_type_${idx}"]`);
+
+        if (nameInput && dropbtnText && entry && entry.name) {
+          dropbtnText.textContent = entry.name;
+          nameInput.value = entry.name;
+        }
+        if (addressInput && entry && entry.address) {
+          addressInput.value = entry.address;
+        }
+        if (typeSelect && entry && entry.type) {
+          typeSelect.value = entry.type;
+          updateRoleOptions(idx);
+        }
+
+        const roles = (entry && Array.isArray(entry.roles)) ? entry.roles : [];
+        if (roles.length > 0) {
+          setTimeout(() => {
+            // Ensure enough role selects exist
+            roles.forEach((role, rIdx) => {
+              let roleSelects = document.querySelectorAll(`#roles_list_${idx} .role-select`);
+              if (rIdx >= roleSelects.length) {
+                addRole(idx);
+                roleSelects = document.querySelectorAll(`#roles_list_${idx} .role-select`);
+              }
+              if (roleSelects[rIdx]) {
+                roleSelects[rIdx].value = role;
+              }
+            });
+          }, 100);
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Failed to restore organizations:", e);
+  }
+
   const urlParams = new URLSearchParams(window.location.search);
   const addedOrg = urlParams.get('added_org');
   const orgIndex = urlParams.get('org_index');

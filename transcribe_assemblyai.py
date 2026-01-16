@@ -27,6 +27,7 @@ import sys
 import time
 import subprocess
 from pathlib import Path
+import tempfile
 
 import requests
 
@@ -159,6 +160,38 @@ def to_wav_16k_mono(input_path: Path, enhance_audio: bool = False, **kwargs) -> 
     print(f"   wrote: {out_wav}")
     return out_wav
 
+
+def ffprobe_duration_seconds(path: Path) -> float:
+    """Get duration in seconds via ffprobe (best-effort)."""
+    try:
+        p = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if p.returncode == 0 and p.stdout.strip():
+            return float(p.stdout.strip())
+    except Exception:
+        pass
+    return 0.0
+
+
+def _fmt_hms(seconds: float) -> str:
+    s = int(round(max(0.0, float(seconds))))
+    h = s // 3600
+    m = (s % 3600) // 60
+    ss = s % 60
+    if h > 0:
+        return f"{h:d}:{m:02d}:{ss:02d}"
+    return f"{m:d}:{ss:02d}"
+
 def _pick_token() -> str | None:
     # pyannote uses HuggingFace auth tokens for model downloads (speaker-diarization-3.1 is gated)
     return (
@@ -210,6 +243,12 @@ def transcribe_with_whisper(wav_path: Path, custom_vocab: list[str] | None = Non
     if device == "mps":
         os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
+    chunk_seconds_env = os.getenv("WHISPER_CHUNK_SECONDS", "").strip()
+    try:
+        chunk_seconds = int(chunk_seconds_env) if chunk_seconds_env else 0
+    except Exception:
+        chunk_seconds = 0
+
     print(f"2) Transcribing (Whisper: model={model_name}, device={device})...")
     try:
         model = whisper.load_model(model_name, device=device)
@@ -228,6 +267,96 @@ def transcribe_with_whisper(wav_path: Path, custom_vocab: list[str] | None = Non
         prompt_words = ", ".join(custom_vocab[:80])
         initial_prompt = f"Important terms: {prompt_words}."
 
+    total_seconds = ffprobe_duration_seconds(wav_path)
+
+    # If chunking is enabled (WHISPER_CHUNK_SECONDS>0), transcribe sequential chunks
+    # so we can print accurate "percent transcribed" progress.
+    if chunk_seconds and total_seconds and total_seconds > max(30.0, float(chunk_seconds) * 1.25):
+        segments_all: list[dict] = []
+        with tempfile.TemporaryDirectory(prefix=f"whisper_chunks_{wav_path.stem}_") as td:
+            tmp_dir = Path(td)
+            chunk_pattern = tmp_dir / "chunk_%05d.wav"
+
+            # Segment the wav into fixed-size chunks (fast copy). If it fails, fall back to re-encode.
+            seg_cmd = [
+                "ffmpeg", "-y",
+                "-i", str(wav_path),
+                "-f", "segment",
+                "-segment_time", str(int(chunk_seconds)),
+                "-reset_timestamps", "1",
+                "-c", "copy",
+                str(chunk_pattern),
+            ]
+            p = subprocess.run(seg_cmd, capture_output=True, text=True)
+            if p.returncode != 0:
+                seg_cmd = [
+                    "ffmpeg", "-y",
+                    "-i", str(wav_path),
+                    "-f", "segment",
+                    "-segment_time", str(int(chunk_seconds)),
+                    "-reset_timestamps", "1",
+                    "-ac", "1",
+                    "-ar", "16000",
+                    "-c:a", "pcm_s16le",
+                    str(chunk_pattern),
+                ]
+                run(seg_cmd)
+
+            chunk_files = sorted(tmp_dir.glob("chunk_*.wav"))
+            if not chunk_files:
+                die("Failed to create transcription chunks.")
+
+            total_chunks = len(chunk_files)
+            prev_tail = ""
+            for idx, chunk_path in enumerate(chunk_files):
+                offset = float(idx) * float(chunk_seconds)
+                prompt = initial_prompt
+                if prev_tail:
+                    prompt = (prompt + " " if prompt else "") + f"Previous context: {prev_tail}"
+
+                chunk_result = model.transcribe(
+                    str(chunk_path),
+                    language=language,
+                    fp16=(device == "cuda"),
+                    initial_prompt=prompt,
+                    verbose=False,
+                )
+
+                chunk_segments = []
+                for s in (chunk_result.get("segments") or []):
+                    chunk_segments.append({
+                        "start": float(s.get("start", 0.0)) + offset,
+                        "end": float(s.get("end", 0.0)) + offset,
+                        "text": (s.get("text") or "").strip(),
+                    })
+                segments_all.extend([s for s in chunk_segments if s.get("text")])
+
+                # Update a small rolling tail for better continuity between chunks
+                try:
+                    tail_words = " ".join([s["text"] for s in chunk_segments if s.get("text")]).split()[-30:]
+                    prev_tail = " ".join(tail_words)
+                except Exception:
+                    prev_tail = ""
+
+                done_seconds = min(float(total_seconds), float(idx + 1) * float(chunk_seconds))
+                pct = int(round((done_seconds / float(total_seconds)) * 100.0))
+                print(
+                    f"TRANSCRIBE_PROGRESS percent={pct} done={done_seconds:.1f} total={float(total_seconds):.1f} "
+                    f"human={_fmt_hms(done_seconds)}/{_fmt_hms(total_seconds)} chunks={idx+1}/{total_chunks}"
+                )
+                print(f"   Transcribed {_fmt_hms(done_seconds)} / {_fmt_hms(total_seconds)} ({pct}%)")
+
+        full_text = " ".join([s["text"] for s in segments_all if s.get("text")]).strip()
+        return {
+            "backend": "whisper",
+            "model": model_name,
+            "device": device,
+            "language": language,
+            "text": full_text,
+            "segments": segments_all,
+        }
+
+    # Default: single-shot transcription
     result = model.transcribe(
         str(wav_path),
         language=language,
@@ -439,14 +568,14 @@ def save_outputs(base_stem: str, full_json: dict):
         cleaned = full_json.get("utterances") or []
     else:
         # AssemblyAI includes "utterances" when speaker_labels is enabled (ms)
-    utterances = full_json.get("utterances") or []
-    for u in utterances:
-        cleaned.append({
-            "start": (u.get("start") or 0) / 1000.0,   # ms -> seconds
-            "end": (u.get("end") or 0) / 1000.0,
-            "speaker": u.get("speaker") or "Unknown",
-            "text": (u.get("text") or "").strip(),
-        })
+        utterances = full_json.get("utterances") or []
+        for u in utterances:
+            cleaned.append({
+                "start": (u.get("start") or 0) / 1000.0,   # ms -> seconds
+                "end": (u.get("end") or 0) / 1000.0,
+                "speaker": u.get("speaker") or "Unknown",
+                "text": (u.get("text") or "").strip(),
+            })
 
     out_utter.write_text(json.dumps(cleaned, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -524,7 +653,7 @@ def main():
         headers = {"authorization": api_key}
 
         print("Uploading and transcribing with AssemblyAI (speaker labels enabled)...")
-    upload_url = upload_audio(wav_path, headers=headers)
+        upload_url = upload_audio(wav_path, headers=headers)
         tid = submit_transcript(
             upload_url,
             headers=headers,
@@ -532,8 +661,8 @@ def main():
             speech_threshold=args.speech_threshold,
             custom_vocab=custom_vocab,
         )
-    result = poll_transcript(tid, headers=headers)
-    save_outputs(base_stem=input_path.stem, full_json=result)
+        result = poll_transcript(tid, headers=headers)
+        save_outputs(base_stem=input_path.stem, full_json=result)
         return
 
     # Default: local Whisper + pyannote, but keep the same output contract.

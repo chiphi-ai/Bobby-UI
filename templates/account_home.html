@@ -63,8 +63,8 @@
       <!-- Enrollment Warning -->
       {% if not has_enrollment %}
       <div class="alert alert-warning enter enter-delay-1">
-        <strong>⚠️ Voice Enrollment Required</strong><br>
-        You haven't recorded your voice enrollment yet. Please complete voice enrollment so the system can identify you in meeting transcripts.
+        <strong>⚠️ Voice Enrollment Recommended</strong><br>
+        You can use the app without this, but you’ll need voice enrollment before recording/uploading meetings so we can identify you in transcripts.
         <div style="margin-top: var(--space-md);">
           <a class="btn btn-primary" href="{{ url_for('enroll_get') }}">Record Voice Enrollment</a>
         </div>

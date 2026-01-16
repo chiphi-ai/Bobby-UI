@@ -414,6 +414,10 @@
         {% else %}
         <span style="font-size: 13px; color: var(--accent-red);">⚠️ Username not set. Please set your username to record enrollment audio.</span>
         {% endif %}
+        <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
+          <a class="btn btnSecondary" href="{{ url_for('account_home') }}">Skip for now</a>
+          <a class="btn btnSecondary" href="{{ url_for('record_meeting') }}">Go to Record Meeting</a>
+        </div>
       </div>
     </div>
 

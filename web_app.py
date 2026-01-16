@@ -54,6 +54,7 @@ ENROLL_DIR = ROOT / "enroll"
 STATIC_DIR = ROOT / "static"
 UPLOAD_JOBS_DIR = OUTPUT_DIR / "jobs"
 MEETING_JOBS_DIR = UPLOAD_JOBS_DIR / "meetings"
+SPEAKER_PROFILES_JSON = OUTPUT_DIR / "speaker_profiles.json"
 
 USERS_CSV = INPUT_DIR / "users.csv"     # first,last,email,password_hash,organizations_json,username,connected_apps_json
 EMAILS_CSV = INPUT_DIR / "emails.csv"   # first,last,email (used by pipeline)
@@ -159,6 +160,105 @@ def load_config() -> dict:
         return cfg
     except Exception:
         return DEFAULT_CONFIG.copy()
+
+
+def load_speaker_profiles() -> dict[str, dict]:
+    """
+    Global speaker profiles for cross-meeting speaker memory.
+    Stored at output/speaker_profiles.json as {enrollment_key: {display_name, ...}, ...}
+    """
+    try:
+        if not SPEAKER_PROFILES_JSON.exists():
+            return {}
+        data = json.loads(SPEAKER_PROFILES_JSON.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        return {}
+    return {}
+
+
+def save_speaker_profiles(profiles: dict[str, dict]) -> None:
+    try:
+        SPEAKER_PROFILES_JSON.parent.mkdir(parents=True, exist_ok=True)
+        SPEAKER_PROFILES_JSON.write_text(json.dumps(profiles, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _slugify_speaker_key(name: str) -> str:
+    s = (name or "").strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"[^a-z0-9 _,-]+", "", s)
+    s = s.replace(" ", "_")
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s or "speaker"
+
+
+def ensure_speaker_profile(label_name: str) -> str:
+    """
+    Ensure a global profile exists for this display name and return its enrollment_key.
+    If the label maps to a known user, prefer their username as the key (stable).
+    Otherwise generate a slug key and keep a mapping to the original display name.
+    """
+    display_name = (label_name or "").strip()
+    if not display_name:
+        return ""
+
+    # If this label matches a known user, prefer username so it works with participant filtering.
+    username = _resolve_username_for_label(display_name)
+    key = (username or "").strip().lower()
+    if not key:
+        key = _slugify_speaker_key(display_name)
+
+    profiles = load_speaker_profiles()
+    existing = profiles.get(key) if isinstance(profiles, dict) else None
+    now = datetime.now().isoformat()
+    if not isinstance(existing, dict):
+        profiles[key] = {
+            "display_name": display_name,
+            "linked_username": username,
+            "created_at": now,
+            "updated_at": now,
+            "evidence": [],
+        }
+        save_speaker_profiles(profiles)
+        return key
+
+    # Update display_name if it changed (keep latest)
+    if display_name and existing.get("display_name") != display_name:
+        existing["display_name"] = display_name
+    existing["linked_username"] = username or existing.get("linked_username")
+    existing["updated_at"] = now
+    profiles[key] = existing
+    save_speaker_profiles(profiles)
+    return key
+
+
+def _append_speaker_profile_evidence(enrollment_key: str, meeting_id: str, raw_speaker: str) -> None:
+    try:
+        key = (enrollment_key or "").strip().lower()
+        if not key:
+            return
+        profiles = load_speaker_profiles()
+        prof = profiles.get(key) if isinstance(profiles, dict) else None
+        if not isinstance(prof, dict):
+            return
+        ev = prof.get("evidence", [])
+        if not isinstance(ev, list):
+            ev = []
+        ev.append({
+            "meeting_id": str(meeting_id),
+            "raw_speaker": str(raw_speaker),
+            "updated_at": datetime.now().isoformat(),
+        })
+        # cap list size
+        prof["evidence"] = ev[-50:]
+        prof["updated_at"] = datetime.now().isoformat()
+        profiles[key] = prof
+        save_speaker_profiles(profiles)
+    except Exception:
+        return
 def valid_email(email: str) -> bool:
     email = (email or "").strip()
     return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email))
@@ -1304,12 +1404,13 @@ def _ensure_meeting_wav_16k(meeting_id: str, meeting: dict) -> Optional[Path]:
 
 def _try_learn_enrollment_from_meeting(meeting_id: str, meeting: dict, raw_speaker: str, label_name: str) -> bool:
     """
-    Best-effort "global learning": if label_name matches a known user (username or full name),
-    extract ~30s of audio for this diarization speaker and save it into enroll/ as an additional sample.
+    Best-effort "global learning": extract ~30s of audio for this diarization speaker and save it into enroll/
+    using a stable enrollment_key derived from the label (and/or linked username when available).
     """
-    username = _resolve_username_for_label(label_name)
-    if not username:
+    enrollment_key = ensure_speaker_profile(label_name)
+    if not enrollment_key:
         return False
+    _append_speaker_profile_evidence(enrollment_key, meeting_id, raw_speaker)
 
     utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
     if not utterances_path.exists():
@@ -1385,11 +1486,11 @@ def _try_learn_enrollment_from_meeting(meeting_id: str, meeting: dict, raw_speak
         if not concat_path.exists() or concat_path.stat().st_size == 0:
             return False
 
-        # Pick an available enrollment filename: username.wav, username(2).wav, ...
+        # Pick an available enrollment filename: key.wav, key(2).wav, ...
         ENROLL_DIR.mkdir(parents=True, exist_ok=True)
         n = 1
         while True:
-            name = f"{username}.wav" if n == 1 else f"{username}({n}).wav"
+            name = f"{enrollment_key}.wav" if n == 1 else f"{enrollment_key}({n}).wav"
             dest = ENROLL_DIR / name
             if not dest.exists():
                 shutil.copyfile(concat_path, dest)
@@ -2146,6 +2247,9 @@ def _upsert_meeting_job(
     status: str | None = None,
     stage: str | None = None,
     percent: int | None = None,
+    transcription_percent: int | None = None,
+    transcribed_seconds: float | None = None,
+    total_audio_seconds: float | None = None,
     error: str | None = None,
 ) -> dict:
     now = datetime.now().isoformat()
@@ -2158,6 +2262,9 @@ def _upsert_meeting_job(
         "status": status or existing.get("status") or "queued",  # queued|uploading|processing|done|failed
         "stage": stage or existing.get("stage") or "queued",
         "percent": int(percent) if percent is not None else int(existing.get("percent") or 0),
+        "transcription_percent": int(transcription_percent) if transcription_percent is not None else existing.get("transcription_percent"),
+        "transcribed_seconds": float(transcribed_seconds) if transcribed_seconds is not None else existing.get("transcribed_seconds"),
+        "total_audio_seconds": float(total_audio_seconds) if total_audio_seconds is not None else existing.get("total_audio_seconds"),
         "created_at": existing.get("created_at") or now,
         "updated_at": now,
         "error": error if error is not None else existing.get("error"),
@@ -2166,6 +2273,11 @@ def _upsert_meeting_job(
     }
     # Clamp
     job["percent"] = max(0, min(100, int(job.get("percent") or 0)))
+    try:
+        if job.get("transcription_percent") is not None:
+            job["transcription_percent"] = max(0, min(100, int(job.get("transcription_percent") or 0)))
+    except Exception:
+        pass
     _save_meeting_job(meeting_id, job)
     return job
 
@@ -3150,6 +3262,17 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
                 for line in proc.stdout:
                     line = (line or "").rstrip("\n")
                     if line:
+                        # Parse transcription progress lines emitted by transcribe_assemblyai.py
+                        if stage == "transcription" and line.startswith("TRANSCRIBE_PROGRESS "):
+                            try:
+                                m = re.search(r"percent=(\\d+).*done=([0-9.]+).*total=([0-9.]+)", line)
+                                if m:
+                                    pct = int(m.group(1))
+                                    done_s = float(m.group(2))
+                                    total_s = float(m.group(3))
+                                    _job_update(transcription_percent=pct, transcribed_seconds=done_s, total_audio_seconds=total_s)
+                            except Exception:
+                                pass
                         print(line)
                         _job_log(line)
                     now_ts = time.time()
@@ -3267,6 +3390,10 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
     if user_email:
         env["VOCABULARY_USER_EMAIL"] = user_email
         print(f"Using custom vocabulary for user: {user_email}")
+
+    # Enable chunked Whisper transcription so we can report "% of meeting transcribed" progress.
+    # (Keep this configurable: users can override via env var.)
+    env.setdefault("WHISPER_CHUNK_SECONDS", "20")
     
     # Run transcription (required)
     _job_update(status="processing", stage="transcription", percent=10)
@@ -3979,7 +4106,14 @@ def edit_positions_post():
 @app.get("/signup")
 def signup_get():
     organizations_directory = load_organizations_directory()
-    return render_template("signup.html", org_types=ORGANIZATION_TYPES, organizations_directory=organizations_directory)
+    return render_template(
+        "signup.html",
+        org_types=ORGANIZATION_TYPES,
+        organizations_directory=organizations_directory,
+        errors={},
+        form_data={},
+        org_entries=[],
+    )
 
 def validate_username(username: str) -> tuple[bool, str]:
     """Validate username: no spaces, no special chars, case-insensitive uniqueness."""
@@ -4006,42 +4140,77 @@ def signup_post():
     pw2 = request.form.get("password2") or ""
     username = (request.form.get("username") or "").strip()
 
-    if not first or not last:
-        flash("First and last name required.")
-        return redirect(url_for("signup_get"))
-    if email != email2 or not valid_email(email):
-        flash("Emails must match and be valid.")
-        return redirect(url_for("signup_get"))
-    if pw != pw2 or len(pw) < 8:
-        flash("Passwords must match and be at least 8 characters.")
-        return redirect(url_for("signup_get"))
+    organizations_directory = load_organizations_directory()
+
+    # Preserve entered values on errors (do not echo passwords back)
+    def _build_org_entries_from_request() -> tuple[int, list[dict]]:
+        try:
+            c = int(request.form.get("org_count", "0") or "0")
+        except Exception:
+            c = 0
+        c = max(0, min(10, c))
+        entries: list[dict] = []
+        for i in range(c):
+            org_name = (request.form.get(f"org_name_{i}") or "").strip()
+            org_address = (request.form.get(f"org_address_{i}") or "").strip()
+            org_type = (request.form.get(f"org_type_{i}") or "").strip()
+            org_roles = request.form.getlist(f"org_roles_{i}[]")
+            org_roles = [r.strip() for r in org_roles if r and r.strip()]
+            entries.append({
+                "name": org_name,
+                "address": org_address,
+                "type": org_type,
+                "roles": org_roles,
+            })
+        return c, entries
+
+    org_count, org_entries = _build_org_entries_from_request()
+    form_data = {
+        "first": first,
+        "last": last,
+        "email": email,
+        "email2": email2,
+        "username": username,
+        "org_count": org_count,
+    }
+    errors: dict[str, str] = {}
+
+    if not first:
+        errors["first"] = "First name is required."
+    if not last:
+        errors["last"] = "Last name is required."
+    if not valid_email(email):
+        errors["email"] = "Please enter a valid email."
+    if email != email2:
+        errors["email2"] = "Emails must match."
+    if pw != pw2:
+        errors["password2"] = "Passwords must match."
+    if len(pw) < 8:
+        errors["password"] = "Password must be at least 8 characters."
     
     # Validate username
     valid, username_result = validate_username(username)
     if not valid:
-        flash(username_result)
-        return redirect(url_for("signup_get"))
+        errors["username"] = username_result
     username = username_result
 
     users = read_users()
     if email in users:
-        flash("That email is already registered. Use Edit Account / Login.")
-        return redirect(url_for("login_get"))
+        errors["email"] = "That email is already registered. Please log in instead."
 
     # Check username uniqueness (case-insensitive)
     for existing_user in users.values():
         if existing_user.get("username", "").lower() == username.lower():
-            flash("That username is already taken. Please choose another.")
-            return redirect(url_for("signup_get"))
+            errors["username"] = "That username is already taken. Please choose another."
+            break
 
     # Parse organizations from form - NOW REQUIRED
     organizations = []
-    org_count = int(request.form.get("org_count", "0") or "0")
+    org_count = int(org_count or 0)
     
     # Require at least one organization
     if org_count == 0:
-        flash("You must add at least one organization.")
-        return redirect(url_for("signup_get"))
+        errors["organizations"] = "You must add at least one organization."
     
     for i in range(min(org_count, 10)):
         org_name = (request.form.get(f"org_name_{i}") or "").strip()
@@ -4065,8 +4234,20 @@ def signup_post():
                     "type": org_type,
                     "role": None  # No role specified
                 })
-            # Add to organizations.json (type is optional, default to "other")
-            add_user_to_organization(org_name, org_type or "other", email)
+    
+    if org_count > 0 and not organizations:
+        errors["organizations"] = "You must select at least one organization."
+
+    if errors:
+        # Render in-place so the user’s entries are preserved (no redirect wipe)
+        return render_template(
+            "signup.html",
+            org_types=ORGANIZATION_TYPES,
+            organizations_directory=organizations_directory,
+            errors=errors,
+            form_data=form_data,
+            org_entries=org_entries,
+        ), 400
 
     users[email] = {
         "first": first,
@@ -4079,10 +4260,20 @@ def signup_post():
     write_users(users)
     sync_emails_csv(users)
 
+    # Now that the user is created, add them to organizations.json
+    try:
+        for org in organizations:
+            org_name = (org.get("name") or "").strip()
+            org_type = (org.get("type") or "").strip() or "other"
+            if org_name:
+                add_user_to_organization(org_name, org_type, email)
+    except Exception:
+        pass
+
     session["user_email"] = email
     session.permanent = True
-    flash("Account created. Now record/upload your enrollment audio.")
-    return redirect(url_for("enroll_get"))
+    flash("Account created. Voice enrollment is recommended, but you can skip for now.")
+    return redirect(url_for("account_home"))
 
 @app.get("/add_organization")
 def add_organization_get():
