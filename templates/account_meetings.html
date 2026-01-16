@@ -210,6 +210,9 @@
                   {% if meeting.audio_path %}
                   <a href="{{ url_for('meeting_audio', meeting_id=meeting.id) }}" class="btn btn-sm btn-secondary">🎵 Download Audio</a>
                   {% endif %}
+                  {% if meeting.editor_recording_id %}
+                  <a href="/editor/recording/{{ meeting.editor_recording_id }}" class="btn btn-sm btn-secondary">✏️ Edit Transcript</a>
+                  {% endif %}
                   <a href="#" onclick="deleteMeeting('{{ meeting.id }}', '{{ meeting.name or meeting.id }}'); return false;" class="btn btn-sm btn-danger">🗑️ Delete</a>
                 </div>
               </div>

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Recording {{ recording.filename }} — Phi AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='editor/style.css') }}">
+</head>
+<body>
+  <!-- Animated Wave Background -->
+  <div class="bg-waves{% if waves_debug %} debug-mode{% endif %}" aria-hidden="true"></div>
+  {% if waves_debug %}
+  <div class="waves-debug-badge">🌊 WAVES ON</div>
+  {% endif %}
+
+  <div class="app-container" id="recording-page" data-recording-id="{{ recording.id }}" data-version-id="{{ version_id }}">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <a href="{{ url_for('account_home') }}" class="header-brand">
+          <img src="{{ url_for('static', filename='images/logo.png.png') }}" alt="Phi AI" class="header-logo">
+        </a>
+        <nav class="header-nav">
+          <a href="{{ url_for('account_home') }}" class="header-link">Dashboard</a>
+          <a href="{{ url_for('account_meetings') }}" class="header-link">Meetings</a>
+          <a href="/editor/" class="header-link active">Transcript Editor</a>
+          <a href="{{ url_for('ask_get') }}" class="header-link">Ask Phi</a>
+          <a href="{{ url_for('connect_apps_get') }}" class="header-link">Connect Apps</a>
+          <a href="{{ url_for('account_get') }}" class="header-link">Settings</a>
+          <a href="{{ url_for('logout') }}" class="header-link">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content enter">
+      <div class="page-header enter">
+        <h1 class="page-title">Recording: {{ recording.filename }}</h1>
+        <p class="page-subtitle">Status: <strong>{{ recording.status }}</strong> • Created: {{ recording.created_at }}</p>
+        <div style="margin-top: var(--space-sm);">
+          <a class="btn btn-secondary btn-sm" href="/editor/">← Back to Editor</a>
+        </div>
+      </div>
+
+      {% if recording.status != "ready" %}
+      <section class="card holo-border enter enter-delay-1">
+        <div class="card-header">
+          <h2 class="card-title">Transcription</h2>
+        </div>
+        <div class="card-body">
+          <p class="muted">Status: {{ recording.status }}</p>
+          {% if recording.status in ["uploaded", "error"] %}
+            <button class="btn btn-primary" id="process-btn">Process</button>
+          {% elif recording.status == "processing" %}
+            <p class="muted">Processing... refresh in a bit.</p>
+          {% endif %}
+        </div>
+      </section>
+      {% endif %}
+
+      <section class="card holo-border enter enter-delay-1">
+        <div class="card-header">
+          <h2 class="card-title">Versions</h2>
+        </div>
+        <div class="card-body" style="display: flex; gap: var(--space-md); flex-wrap: wrap; align-items: center;">
+          <select id="version-select" class="form-select">
+            {% for v in versions %}
+              <option value="{{ v.id }}" {% if v.id == version_id %}selected{% endif %}>{{ v.created_at }} - {{ v.note or 'Version' }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-secondary btn-sm" id="restore-btn">Restore This Version</button>
+          <button class="btn btn-sm" id="recompute-btn">Recompute Labels</button>
+        </div>
+      </section>
+
+      {% set actions_disabled = (not version_id) or (utterances | length == 0) %}
+      <section class="card holo-border enter enter-delay-2">
+        <div class="card-header">
+          <h2 class="card-title">Speaker Actions</h2>
+        </div>
+        <div class="card-body">
+          <div style="display: flex; gap: var(--space-md); flex-wrap: wrap;">
+            <button class="btn btn-secondary btn-sm" id="rename-btn" {% if actions_disabled %}disabled{% endif %}>Rename Speaker</button>
+            <button class="btn btn-primary btn-sm" id="save-btn" {% if actions_disabled %}disabled{% endif %}>Save as New Version</button>
+          </div>
+          {% if actions_disabled %}
+          <p class="muted" style="margin-top: var(--space-sm);">Process recording to generate utterances before editing speakers.</p>
+          {% endif %}
+          <p class="muted" style="margin-top: var(--space-sm);">Use the New Speaker buttons to split speakers, then Save.</p>
+          <div class="status" id="action-status"></div>
+        </div>
+      </section>
+
+      <section class="card holo-border enter enter-delay-3">
+        <div class="card-header">
+          <h2 class="card-title">Audio</h2>
+        </div>
+        <div class="card-body">
+          <audio id="audio-player" controls preload="metadata" src="/editor/recording/{{ recording.id }}/audio"></audio>
+          <p class="muted" style="margin-top: var(--space-sm);">Use Play to jump to each utterance.</p>
+        </div>
+      </section>
+
+      <section class="card holo-border enter enter-delay-4">
+        <div class="card-header">
+          <h2 class="card-title">Utterances</h2>
+        </div>
+        <div class="card-body">
+          <table class="table editor-table" id="utterance-table">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>Play</th>
+                <th>Split</th>
+                <th>Speaker</th>
+                <th>Confidence</th>
+                <th>Start (ms)</th>
+                <th>End (ms)</th>
+                <th>Text</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% if utterances %}
+            {% for u in utterances %}
+              <tr data-utterance-id="{{ u.id }}" data-start-ms="{{ u.start_ms }}" data-end-ms="{{ u.end_ms }}" data-original-speaker="{{ u.speaker }}" data-original-text="{{ u.text | e }}">
+                <td><input type="checkbox" class="split-checkbox"></td>
+                <td><button type="button" class="btn btn-sm play-btn">Play</button></td>
+                <td><button type="button" class="btn btn-sm split-row-btn">New Speaker</button></td>
+                <td>
+                  <select class="form-select speaker-select">
+                    {% for s in speakers %}
+                      <option value="{{ s }}" {% if s == u.speaker %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                  </select>
+                </td>
+                <td>{{ (u.confidence * 100) | round(0) }}%</td>
+                <td>{{ u.start_ms }}</td>
+                <td>{{ u.end_ms }}</td>
+                <td><input class="form-input text-input" value="{{ u.text | e }}"></td>
+              </tr>
+            {% endfor %}
+            {% else %}
+              <tr><td colspan="8">No utterances yet.</td></tr>
+            {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-inner">
+        <p>&copy; 2026 Phi AI. All rights reserved.</p>
+        <p style="margin-top: var(--space-sm); font-size: var(--font-size-sm); color: var(--text-secondary);">189 Vassar St, Cambridge, MA 02139</p>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/static/editor/app.js?v=1"></script>
+</body>
+</html>

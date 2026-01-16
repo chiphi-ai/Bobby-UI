@@ -24,6 +24,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, PatternMatchingEventHandler
 
+from transcript_editor import editor_bp, init_editor
+
 # Load .env file if python-dotenv is available
 # override=True ensures .env file values take precedence over existing env vars
 try:
@@ -685,7 +687,16 @@ def load_meetings() -> list:
 def save_meeting(meeting_data: dict):
     """Save meeting metadata to meetings.json."""
     meetings = load_meetings()
-    meetings.append(meeting_data)
+    meeting_id = meeting_data.get("id")
+    replaced = False
+    if meeting_id:
+        for idx, existing in enumerate(meetings):
+            if existing.get("id") == meeting_id:
+                meetings[idx] = meeting_data
+                replaced = True
+                break
+    if not replaced:
+        meetings.append(meeting_data)
     # Sort by date (newest first)
     meetings.sort(key=lambda x: x.get("processed_at", ""), reverse=True)
     MEETINGS_JSON.write_text(json.dumps(meetings, indent=2), encoding="utf-8")
@@ -2063,8 +2074,7 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
         env["VOCABULARY_USER_EMAIL"] = user_email
         print(f"Using custom vocabulary for user: {user_email}")
     
-    # Run transcription and speaker identification
-    for cmd in (cmd1, cmd2):
+    def run_cmd(cmd: list[str]) -> int:
         try:
             result = subprocess.run(
                 cmd,
@@ -2079,14 +2089,37 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
                 print(f"Command failed: {' '.join(cmd)}")
                 print(f"STDOUT: {result.stdout}")
                 print(f"STDERR: {result.stderr}")
-            rc = result.returncode
+            return result.returncode
         except Exception as e:
             print(f"Error running command {' '.join(cmd)}: {e}")
-            rc = 1
-        
-        if rc != 0:
-            print(f"\n❌ Pipeline stopped (exit {rc})")
-            return
+            return 1
+
+    editor_recording_id = None
+
+    rc = run_cmd(cmd1)
+    if rc != 0:
+        print(f"\n❌ Pipeline stopped (exit {rc})")
+        return
+
+    try:
+        from transcript_editor import integration as editor_integration
+        utterances_path = OUTPUT_DIR / f"{stem}_utterances.json"
+        if utterances_path.exists():
+            editor_recording_id = editor_integration.import_assemblyai_utterances(audio_path, utterances_path)
+            try:
+                update_meeting(stem, {"editor_recording_id": editor_recording_id})
+            except Exception as update_err:
+                print(f"[Editor] Warning: could not update meeting metadata: {update_err}")
+            print("[Editor] Imported AssemblyAI utterances into transcript editor")
+        else:
+            print(f"[Editor] Missing utterances file at {utterances_path}, skipping import")
+    except Exception as e:
+        print(f"[Editor] Warning: could not import utterances: {e}")
+
+    rc = run_cmd(cmd2)
+    if rc != 0:
+        print(f"\n❌ Pipeline stopped (exit {rc})")
+        return
 
     # Create comprehensive meeting report PDF using meeting_pdf_summarizer
     # This uses Ollama AI to generate structured summaries from the named transcript
@@ -2304,6 +2337,7 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
             "speakers": sorted(list(speakers)),  # For labeling in transcript
             "speaker_count": len(speakers),
             "participants": participant_emails,  # For email/account access
+            "editor_recording_id": editor_recording_id,
         }
         save_meeting(meeting_data)
         print(f"\n📝 Meeting metadata saved: {meeting_name}")
@@ -2423,6 +2457,8 @@ Phi AI Team"""
 # Initialize
 ensure_dirs()
 init_users_csv()
+init_editor()
+app.register_blueprint(editor_bp)
 
 # Startup validation for cloud storage credentials
 def validate_cloud_storage_credentials():
@@ -3353,6 +3389,7 @@ def upload_meeting():
     if user_email not in participant_emails:
         # Add user as participant
         participants.append({"email": user_email, "name": f"{user['first']} {user['last']}"})
+        participant_emails.append(user_email)
     
     # Save to input directory with timestamp
     INPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -3371,6 +3408,27 @@ def upload_meeting():
     
     # Store upload timestamp for date logic
     upload_timestamp = datetime.now().isoformat()
+
+    # Create a placeholder meeting entry so it shows up immediately in Past Meetings
+    try:
+        audio_size = meeting_path.stat().st_size if meeting_path.exists() else 0
+        meeting_stub = {
+            "id": filename_base,
+            "name": meeting_name or filename_base,
+            "original_filename": meeting_path.name,
+            "processed_at": upload_timestamp,
+            "audio_path": str(meeting_path.relative_to(ROOT)) if meeting_path.exists() else None,
+            "transcript_path": None,
+            "pdf_path": None,
+            "audio_size_bytes": audio_size,
+            "speakers": [],
+            "speaker_count": 0,
+            "participants": participant_emails,
+            "status": "processing",
+        }
+        save_meeting(meeting_stub)
+    except Exception as e:
+        print(f"Warning: could not create meeting placeholder: {e}")
     
     # Trigger pipeline in background thread with participants
     cfg = load_config()

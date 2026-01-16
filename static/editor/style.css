@@ -1,0 +1,16 @@
+.status {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.status.success { color: var(--success); }
+.status.error { color: var(--error); }
+.status.info { color: var(--accent); }
+
+.editor-table td {
+  vertical-align: top;
+}
+
+.text-input {
+  min-width: 240px;
+}
