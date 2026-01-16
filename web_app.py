@@ -2567,25 +2567,25 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
         print(f"Using custom vocabulary for user: {user_email}")
     
     # Run transcription (required)
-        try:
-            result = subprocess.run(
+    try:
+        result = subprocess.run(
             cmd1,
-                cwd=ROOT,
-                env=env,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace"
-            )
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
     except Exception as e:
         print(f"Error running command {' '.join(cmd1)}: {e}")
-        print(f"\n❌ Pipeline stopped (exit 1)")
+        print("\n❌ Pipeline stopped (exit 1)")
         return
 
-            if result.returncode != 0:
+    if result.returncode != 0:
         print(f"Command failed: {' '.join(cmd1)}")
-                print(f"STDOUT: {result.stdout}")
-                print(f"STDERR: {result.stderr}")
+        print(f"STDOUT: {result.stdout}")
+        print(f"STDERR: {result.stderr}")
         print(f"\n❌ Pipeline stopped (exit {result.returncode})")
         return
 
@@ -2601,7 +2601,7 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
             encoding="utf-8",
             errors="replace"
         )
-        except Exception as e:
+    except Exception as e:
         speaker_id_ok = False
         print(f"Error running command {' '.join(cmd2)}: {e}")
     else:
