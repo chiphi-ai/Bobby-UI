@@ -68,6 +68,66 @@
       font-size: var(--font-size-sm);
     }
     .speaker-chip code { font-size: 11px; color: var(--text-secondary); background: transparent; }
+    .conf-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border-light);
+      background: rgba(52, 199, 89, 0.10);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .utterance-actions {
+      display: inline-flex;
+      gap: var(--space-xs);
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      padding: 24px;
+    }
+    .modal {
+      width: min(560px, 100%);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.98);
+      border: 1px solid rgba(0,0,0,0.08);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 16px 18px;
+      border-bottom: 1px solid rgba(0,0,0,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .modal-title { margin: 0; font-weight: 800; }
+    .modal-body { padding: 18px; }
+    .modal-footer { padding: 16px 18px; border-top: 1px solid rgba(0,0,0,0.08); display: flex; justify-content: flex-end; gap: 10px; }
+    .modal input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,0,0,0.12);
+      background: white;
+      color: var(--text-primary);
+      font-size: 14px;
+    }
     .timestamp {
       color: var(--text-secondary);
       font-size: var(--font-size-xs);
@@ -178,13 +238,29 @@
 
             <section>
               {% for u in utterances %}
-              <div class="utterance" data-start="{{ u.start }}" data-speaker-raw="{{ u.speaker_raw }}">
+              <div class="utterance"
+                   data-start="{{ u.start }}"
+                   data-end="{{ u.end }}"
+                   data-speaker-raw="{{ u.speaker_raw }}"
+                   data-utterance-id="{{ u.utterance_id }}"
+                   data-source-utterance-id="{{ u.source_utterance_id }}">
                 <div class="utterance-header">
-                  <div class="speaker-chip" data-speaker-chip="{{ u.speaker_raw }}">
-                    <span class="speaker-display">{{ u.speaker_display }}</span>
-                    <code>{{ u.speaker_raw }}</code>
+                  <div style="display:flex; align-items:center; gap: var(--space-sm); flex-wrap: wrap;">
+                    <div class="speaker-chip" data-speaker-chip="{{ u.speaker_raw }}">
+                      <span class="speaker-display">{{ u.speaker_display }}</span>
+                      <code>{{ u.speaker_raw }}</code>
+                    </div>
+                    <div class="conf-badge" title="Approximate diarization confidence">
+                      Conf: <span class="conf-val">{{ u.speaker_confidence_percent }}%</span>
+                    </div>
                   </div>
-                  <div class="timestamp">{{ '%.1f'|format(u.start) }}s</div>
+                  <div class="utterance-actions">
+                    <div class="timestamp">{{ '%.1f'|format(u.start) }}s</div>
+                    <button type="button" class="btn btn-sm btn-secondary utterance-override-btn">New Speaker</button>
+                    {% if u.utterance_id == u.source_utterance_id %}
+                    <button type="button" class="btn btn-sm btn-secondary utterance-split-btn">Split</button>
+                    {% endif %}
+                  </div>
                 </div>
                 <div style="white-space: pre-wrap;">{{ u.text }}</div>
               </div>
@@ -197,6 +273,56 @@
   </div>
 
   <div id="toast" class="toast"></div>
+
+  <!-- New Speaker (per-utterance override) modal -->
+  <div id="overrideModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">New Speaker (this line only)</h3>
+        <button type="button" class="btn btn-sm btn-secondary" id="overrideCloseBtn">Close</button>
+      </div>
+      <div class="modal-body">
+        <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 10px;">
+          This changes the name for just this utterance (it won’t rename the whole speaker).
+        </div>
+        <input id="overrideInput" type="text" placeholder="Enter speaker name (e.g., Mike)" maxlength="100" list="speakerSuggestions" />
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="overrideCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="overrideSaveBtn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Split utterance modal -->
+  <div id="splitModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Split utterance at timestamp</h3>
+        <button type="button" class="btn btn-sm btn-secondary" id="splitCloseBtn">Close</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
+          <div style="min-width: 120px; color: var(--text-secondary); font-size: 13px;">Split time (seconds)</div>
+          <input id="splitTimeInput" type="number" step="0.1" />
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr; gap: 10px;">
+          <div>
+            <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 6px;">Speaker name for first part (optional)</div>
+            <input id="splitSpeakerA" type="text" placeholder="e.g., Carter" maxlength="100" list="speakerSuggestions" />
+          </div>
+          <div>
+            <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 6px;">Speaker name for second part (optional)</div>
+            <input id="splitSpeakerB" type="text" placeholder="e.g., Mike" maxlength="100" list="speakerSuggestions" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="splitCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="splitSaveBtn">Save split</button>
+      </div>
+    </div>
+  </div>
 
   <datalist id="speakerSuggestions">
     {% for opt in speaker_suggestions %}
@@ -241,30 +367,93 @@
       });
     }
 
-    // Click utterance to jump audio
-    document.querySelectorAll('.utterance').forEach((el) => {
-      el.addEventListener('click', (e) => {
-        const start = parseFloat(el.getAttribute('data-start') || '0');
-        const audio = document.getElementById('meetingAudio');
-        if (!audio) return;
-        try {
-          audio.currentTime = Math.max(0, start);
-          audio.play();
-        } catch (err) {
-          // ignore autoplay restrictions
-        }
-      });
-    });
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = String(text ?? '');
+      return div.innerHTML;
+    }
 
-    // Click a speaker chip to focus the corresponding input
-    document.querySelectorAll('[data-speaker-chip]').forEach((chip) => {
-      chip.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const raw = chip.getAttribute('data-speaker-chip');
-        const input = document.querySelector(`[data-speaker-input="${raw}"]`);
-        if (input) input.focus();
+    function jumpAudioTo(startSeconds) {
+      const audio = document.getElementById('meetingAudio');
+      if (!audio) return;
+      try {
+        audio.currentTime = Math.max(0, startSeconds);
+        audio.play();
+      } catch (err) {
+        // ignore autoplay restrictions
+      }
+    }
+
+    function attachUtteranceHandlers(el) {
+      el.addEventListener('click', () => {
+        const start = parseFloat(el.getAttribute('data-start') || '0');
+        jumpAudioTo(start);
       });
-    });
+
+      const chip = el.querySelector('[data-speaker-chip]');
+      if (chip) {
+        chip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const raw = chip.getAttribute('data-speaker-chip');
+          const input = document.querySelector(`[data-speaker-input="${raw}"]`);
+          if (input) input.focus();
+        });
+      }
+
+      const overrideBtn = el.querySelector('.utterance-override-btn');
+      if (overrideBtn) {
+        overrideBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openOverrideModal(el);
+        });
+      }
+
+      const splitBtn = el.querySelector('.utterance-split-btn');
+      if (splitBtn) {
+        splitBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openSplitModal(el);
+        });
+      }
+    }
+
+    function buildUtteranceElement(u) {
+      const el = document.createElement('div');
+      el.className = 'utterance';
+      el.setAttribute('data-start', String(u.start ?? 0));
+      el.setAttribute('data-end', String(u.end ?? 0));
+      el.setAttribute('data-speaker-raw', String(u.speaker_raw ?? ''));
+      el.setAttribute('data-utterance-id', String(u.utterance_id ?? ''));
+      el.setAttribute('data-source-utterance-id', String(u.source_utterance_id ?? ''));
+      const canSplit = String(u.utterance_id ?? '') === String(u.source_utterance_id ?? '');
+
+      el.innerHTML = `
+        <div class="utterance-header">
+          <div style="display:flex; align-items:center; gap: var(--space-sm); flex-wrap: wrap;">
+            <div class="speaker-chip" data-speaker-chip="${escapeHtml(String(u.speaker_raw ?? ''))}">
+              <span class="speaker-display">${escapeHtml(String(u.speaker_display ?? ''))}</span>
+              <code>${escapeHtml(String(u.speaker_raw ?? ''))}</code>
+            </div>
+            <div class="conf-badge" title="Approximate diarization confidence">
+              Conf: <span class="conf-val">${escapeHtml(String(u.speaker_confidence_percent ?? 0))}%</span>
+            </div>
+          </div>
+          <div class="utterance-actions">
+            <div class="timestamp">${Number(u.start ?? 0).toFixed(1)}s</div>
+            <button type="button" class="btn btn-sm btn-secondary utterance-override-btn">New Speaker</button>
+            ${canSplit ? `<button type="button" class="btn btn-sm btn-secondary utterance-split-btn">Split</button>` : ``}
+          </div>
+        </div>
+        <div style="white-space: pre-wrap;">${escapeHtml(String(u.text ?? ''))}</div>
+      `;
+      attachUtteranceHandlers(el);
+      return el;
+    }
+
+    // Attach handlers to initial utterances
+    document.querySelectorAll('.utterance').forEach(attachUtteranceHandlers);
+
+    // (speaker chip focus is handled per-utterance in attachUtteranceHandlers so it works for newly inserted splits)
 
     // Live update labels across transcript as user types
     document.querySelectorAll('[data-speaker-input]').forEach((input) => {
@@ -304,6 +493,130 @@
       } finally {
         btn.disabled = false;
         btn.textContent = 'Save speaker names';
+      }
+    });
+
+    // -------- Per-utterance "New Speaker" override --------
+    const overrideModal = document.getElementById('overrideModal');
+    const overrideInput = document.getElementById('overrideInput');
+    let activeOverrideEl = null;
+
+    function openOverrideModal(utteranceEl) {
+      activeOverrideEl = utteranceEl;
+      const currentName = utteranceEl.querySelector('.speaker-display')?.textContent || '';
+      overrideInput.value = currentName.trim();
+      overrideModal.style.display = 'flex';
+      setTimeout(() => overrideInput.focus(), 50);
+    }
+
+    function closeOverrideModal() {
+      overrideModal.style.display = 'none';
+      activeOverrideEl = null;
+    }
+
+    document.getElementById('overrideCloseBtn').addEventListener('click', closeOverrideModal);
+    document.getElementById('overrideCancelBtn').addEventListener('click', closeOverrideModal);
+    overrideModal.addEventListener('click', (e) => { if (e.target === overrideModal) closeOverrideModal(); });
+
+    document.getElementById('overrideSaveBtn').addEventListener('click', async () => {
+      if (!activeOverrideEl) return;
+      const utteranceId = activeOverrideEl.getAttribute('data-utterance-id');
+      const speakerDisplay = (overrideInput.value || '').trim();
+      const btn = document.getElementById('overrideSaveBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/utterance_overrides`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ utterance_id: utteranceId, speaker_display: speakerDisplay })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data && (data.message || data.error) || 'Save failed');
+        const updated = data.updated_utterance;
+        const display = updated?.speaker_display ?? speakerDisplay;
+        activeOverrideEl.querySelector('.speaker-display').textContent = display;
+        toast('Saved. Transcript/PDFs regenerated.');
+        closeOverrideModal();
+      } catch (e) {
+        toast(String(e.message || e));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save';
+      }
+    });
+
+    // -------- Split utterance at timestamp --------
+    const splitModal = document.getElementById('splitModal');
+    const splitTimeInput = document.getElementById('splitTimeInput');
+    const splitSpeakerA = document.getElementById('splitSpeakerA');
+    const splitSpeakerB = document.getElementById('splitSpeakerB');
+    let activeSplitEl = null;
+
+    function openSplitModal(utteranceEl) {
+      const utteranceId = utteranceEl.getAttribute('data-utterance-id');
+      const sourceId = utteranceEl.getAttribute('data-source-utterance-id');
+      if (utteranceId !== sourceId) {
+        toast('This utterance is already split.');
+        return;
+      }
+      activeSplitEl = utteranceEl;
+      const start = parseFloat(utteranceEl.getAttribute('data-start') || '0');
+      const end = parseFloat(utteranceEl.getAttribute('data-end') || '0');
+      const mid = (start + end) / 2.0;
+      splitTimeInput.min = String(start + 0.1);
+      splitTimeInput.max = String(end - 0.1);
+      splitTimeInput.value = String(Number(mid.toFixed(1)));
+      splitSpeakerA.value = '';
+      splitSpeakerB.value = '';
+      splitModal.style.display = 'flex';
+      setTimeout(() => splitTimeInput.focus(), 50);
+    }
+
+    function closeSplitModal() {
+      splitModal.style.display = 'none';
+      activeSplitEl = null;
+    }
+
+    document.getElementById('splitCloseBtn').addEventListener('click', closeSplitModal);
+    document.getElementById('splitCancelBtn').addEventListener('click', closeSplitModal);
+    splitModal.addEventListener('click', (e) => { if (e.target === splitModal) closeSplitModal(); });
+
+    document.getElementById('splitSaveBtn').addEventListener('click', async () => {
+      if (!activeSplitEl) return;
+      const sourceId = activeSplitEl.getAttribute('data-source-utterance-id');
+      const splitTime = parseFloat(splitTimeInput.value || '0');
+      const aName = (splitSpeakerA.value || '').trim();
+      const bName = (splitSpeakerB.value || '').trim();
+      const btn = document.getElementById('splitSaveBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/utterance_split`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ utterance_id: sourceId, split_time: splitTime, speaker_display_a: aName, speaker_display_b: bName })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data && (data.message || data.error) || 'Split failed');
+        const newUtts = data.new_utterances || [];
+        if (newUtts.length >= 2) {
+          const parent = activeSplitEl.parentNode;
+          const before = activeSplitEl;
+          newUtts.forEach((u) => {
+            parent.insertBefore(buildUtteranceElement(u), before);
+          });
+          parent.removeChild(activeSplitEl);
+        } else {
+          window.location.reload();
+        }
+        toast('Split saved. Transcript/PDFs regenerated.');
+        closeSplitModal();
+      } catch (e) {
+        toast(String(e.message || e));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save split';
       }
     });
   </script>

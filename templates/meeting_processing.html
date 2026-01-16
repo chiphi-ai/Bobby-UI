@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Processing Meeting — Phi AI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <style>
+    .progress-wrap { margin-top: var(--space-lg); }
+    .progress-bar {
+      width: 100%;
+      height: 12px;
+      background: rgba(0,0,0,0.06);
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid rgba(0,0,0,0.08);
+    }
+    .progress-bar > div {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(135deg, #007AFF 0%, #34C759 100%);
+      transition: width 0.3s ease;
+    }
+    .log-panel {
+      margin-top: var(--space-lg);
+      background: rgba(0,0,0,0.04);
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: var(--border-radius);
+      padding: var(--space-md);
+      height: 320px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .meta-row { display: flex; gap: var(--space-md); flex-wrap: wrap; margin-top: var(--space-sm); color: var(--text-secondary); }
+    .meta-pill { padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.08); background: rgba(255,255,255,0.6); }
+    .actions { display: flex; gap: var(--space-sm); margin-top: var(--space-lg); flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <!-- Animated Wave Background -->
+  <div class="bg-waves{% if waves_debug %} debug-mode{% endif %}" aria-hidden="true"></div>
+  {% if waves_debug %}
+  <div class="waves-debug-badge">🌊 WAVES ON</div>
+  {% endif %}
+
+  <div class="app-container">
+    <header class="header">
+      <div class="header-inner">
+        <a href="{{ url_for('account_home') }}" class="header-brand">
+          <img src="{{ url_for('static', filename='images/logo.png.png') }}" alt="Phi AI" class="header-logo">
+        </a>
+        <nav class="header-nav">
+          <a href="{{ url_for('account_home') }}" class="header-link">Dashboard</a>
+          <a href="{{ url_for('account_meetings') }}" class="header-link active">Meetings</a>
+          {% if phi_available %}
+          <a href="{{ url_for('ask_get') }}" class="header-link">Ask Phi</a>
+          {% else %}
+          <a href="#" class="header-link" aria-disabled="true" title="Phi is starting up" onclick="return false;" style="opacity: 0.5; cursor: not-allowed;">Ask Phi</a>
+          {% endif %}
+          <a href="{{ url_for('connect_apps_get') }}" class="header-link">Connect Apps</a>
+          <a href="{{ url_for('account_get') }}" class="header-link">Settings</a>
+          <a href="{{ url_for('logout') }}" class="header-link">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main-content enter">
+      <div class="nav-tabs">
+        <a href="{{ url_for('account_home') }}">Dashboard</a>
+        <a href="{{ url_for('account_meetings') }}" class="active">Past Meetings</a>
+        <a href="{{ url_for('connect_apps_get') }}">Connect Apps</a>
+        <a href="{{ url_for('account_get') }}">Settings</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+      </div>
+
+      <div class="card holo-border enter enter-delay-1">
+        <div class="card-header">
+          <h2 class="card-title">Processing meeting…</h2>
+        </div>
+        <div class="card-body">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap: var(--space-lg); flex-wrap:wrap;">
+            <div style="min-width: 240px;">
+              <div style="font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: var(--text-primary);" id="meetingName">
+                {{ job.meeting_name or job.meeting_id }}
+              </div>
+              <div class="meta-row">
+                <div class="meta-pill">ID: <span id="meetingId">{{ job.meeting_id }}</span></div>
+                <div class="meta-pill">Stage: <span id="stage">{{ job.stage }}</span></div>
+                <div class="meta-pill">Status: <span id="status">{{ job.status }}</span></div>
+              </div>
+            </div>
+            <div style="text-align:right; min-width: 220px;">
+              <div style="font-size: 28px; font-weight: 800; color: var(--text-primary);" id="percentText">{{ job.percent or 0 }}%</div>
+              <div style="color: var(--text-secondary); font-size: var(--font-size-sm);">Transcription progress</div>
+            </div>
+          </div>
+
+          <div class="progress-wrap">
+            <div class="progress-bar" aria-label="Progress bar">
+              <div id="progressFill" style="width: {{ job.percent or 0 }}%;"></div>
+            </div>
+          </div>
+
+          <div class="actions">
+            <a class="btn btn-secondary" href="{{ meetings_url }}">Back to meetings</a>
+            <a class="btn btn-primary" href="{{ url_for('record_meeting') }}">Record / Upload another</a>
+          </div>
+
+          <div class="log-panel" id="logPanel" aria-label="Processing log"></div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <p>&copy; 2026 Phi AI. All rights reserved.</p>
+        <p style="margin-top: var(--space-sm); font-size: var(--font-size-sm); color: var(--text-secondary);">189 Vassar St, Cambridge, MA 02139</p>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    const meetingId = "{{ job.meeting_id }}";
+    const meetingsUrl = "{{ meetings_url }}";
+    const logPanel = document.getElementById("logPanel");
+    const progressFill = document.getElementById("progressFill");
+    const percentText = document.getElementById("percentText");
+    const stageEl = document.getElementById("stage");
+    const statusEl = document.getElementById("status");
+
+    function renderLog(lines) {
+      logPanel.textContent = (lines || []).join("\n");
+      logPanel.scrollTop = logPanel.scrollHeight;
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch(`/api/jobs/${encodeURIComponent(meetingId)}?tail=250`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        const job = data.job || {};
+        const percent = Math.max(0, Math.min(100, parseInt(job.percent || 0)));
+        progressFill.style.width = percent + "%";
+        percentText.textContent = percent + "%";
+        stageEl.textContent = job.stage || "";
+        statusEl.textContent = job.status || "";
+        renderLog(data.log_lines || []);
+
+        if (job.status === "done") {
+          window.location.href = meetingsUrl;
+        }
+      } catch (e) {
+        // ignore transient errors
+      }
+    }
+
+    // Initial paint
+    poll();
+    setInterval(poll, 1000);
+  </script>
+</body>
+</html>

@@ -6,6 +6,8 @@ import secrets
 import shutil
 import smtplib
 import ssl
+import hashlib
+import math
 import subprocess
 import sys
 import threading
@@ -51,6 +53,7 @@ OUTPUT_DIR = ROOT / "output"
 ENROLL_DIR = ROOT / "enroll"
 STATIC_DIR = ROOT / "static"
 UPLOAD_JOBS_DIR = OUTPUT_DIR / "jobs"
+MEETING_JOBS_DIR = UPLOAD_JOBS_DIR / "meetings"
 
 USERS_CSV = INPUT_DIR / "users.csv"     # first,last,email,password_hash,organizations_json,username,connected_apps_json
 EMAILS_CSV = INPUT_DIR / "emails.csv"   # first,last,email (used by pipeline)
@@ -141,6 +144,7 @@ def ensure_dirs():
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     ENROLL_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    MEETING_JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
 def load_config() -> dict:
     if not CONFIG_PATH.exists():
@@ -846,6 +850,209 @@ def _unknown_map_from_utterances(utterances: list[dict]) -> tuple[dict[str, str]
     return unknown_by_raw, raw_by_unknown, speakers_in_order
 
 
+def _clamp(x: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, x))
+
+
+def _utterance_id_from_fields(start: float, end: float, speaker: str, text: str) -> str:
+    payload = f"{float(start):.3f}|{float(end):.3f}|{(speaker or '').strip()}|{(text or '').strip()}"
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
+def _utterance_id_for_item(u: dict) -> str:
+    return _utterance_id_from_fields(
+        float(u.get("start", 0.0) or 0.0),
+        float(u.get("end", 0.0) or 0.0),
+        (u.get("speaker") or "").strip(),
+        (u.get("text") or "").strip(),
+    )
+
+
+def _derived_utterance_id(base_id: str, part: str, split_time: float, text: str) -> str:
+    payload = f"{base_id}|{part}|{float(split_time):.3f}|{(text or '').strip()}"
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
+def _utterance_overrides_map(meeting: dict) -> dict[str, str]:
+    """Return utterance_id -> speaker_display override."""
+    out: dict[str, str] = {}
+    items = meeting.get("utterance_overrides", [])
+    if not isinstance(items, list):
+        return out
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        uid = (it.get("utterance_id") or "").strip()
+        if not uid:
+            continue
+        if (it.get("type") or "").strip() != "speaker_display_override":
+            continue
+        name = it.get("speaker_display")
+        if not isinstance(name, str):
+            continue
+        name = name.strip()
+        if not name:
+            continue
+        out[uid] = name
+    return out
+
+
+def _utterance_splits_map(meeting: dict) -> dict[str, dict]:
+    """Return source utterance_id -> split object."""
+    out: dict[str, dict] = {}
+    items = meeting.get("utterance_splits", [])
+    if not isinstance(items, list):
+        return out
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        uid = (it.get("utterance_id") or "").strip()
+        if not uid:
+            continue
+        out[uid] = it
+    return out
+
+
+def _split_text_by_word_index(text: str, idx: int) -> tuple[str, str]:
+    words = (text or "").strip().split()
+    if len(words) < 2:
+        return (text or "").strip(), ""
+    i = int(idx)
+    i = max(1, min(len(words) - 1, i))
+    return " ".join(words[:i]).strip(), " ".join(words[i:]).strip()
+
+
+def _choose_split_word_index(text: str, start: float, end: float, split_time: float) -> int:
+    words = (text or "").strip().split()
+    if len(words) < 2:
+        return 1
+    dur = max(0.001, float(end) - float(start))
+    p = _clamp((float(split_time) - float(start)) / dur, 0.0, 1.0)
+    idx = int(math.floor(p * len(words)))
+    idx = max(1, min(len(words) - 1, idx))
+    return idx
+
+
+def _confidence_percent_for_utterance(duration: float, prev_same: bool, next_same: bool) -> int:
+    """
+    Approximate diarization confidence using duration + local speaker consistency.
+    Returns integer percent 0-100.
+    """
+    d = max(0.0, float(duration))
+    base = 0.55
+    dur_bonus = _clamp(math.log1p(d) / 4.0, 0.0, 0.25)
+    context_bonus = (0.10 if prev_same else 0.0) + (0.10 if next_same else 0.0)
+    short_penalty = 0.15 if d < 1.2 else 0.0
+    conf = _clamp(base + dur_bonus + context_bonus - short_penalty, 0.25, 0.95)
+    return int(round(conf * 100))
+
+
+def _effective_utterances_for_meeting(meeting_id: str, meeting: dict) -> list[dict]:
+    """
+    Read output/<meeting_id>_utterances.json and apply meeting.utterance_splits and
+    meeting.utterance_overrides to produce an "effective" utterance list.
+
+    Each returned item includes:
+      - start/end/speaker/text (speaker is raw diarization label)
+      - utterance_id (stable id used for overrides)
+      - source_utterance_id (original utterance id from the source utterances.json)
+      - speaker_display_override (optional, from overrides or split parts)
+    """
+    utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
+    if not utterances_path.exists():
+        return []
+    try:
+        src = json.loads(utterances_path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(src, list):
+        return []
+
+    overrides = _utterance_overrides_map(meeting)
+    splits = _utterance_splits_map(meeting)
+
+    out: list[dict] = []
+    for u in src:
+        if not isinstance(u, dict):
+            continue
+        raw = (u.get("speaker") or "").strip()
+        start = float(u.get("start", 0.0) or 0.0)
+        end = float(u.get("end", 0.0) or 0.0)
+        txt = (u.get("text") or "").strip()
+        if not txt:
+            continue
+
+        uid = _utterance_id_from_fields(start, end, raw, txt)
+        split_obj = splits.get(uid)
+        if split_obj:
+            try:
+                split_time = float(split_obj.get("split_time"))
+            except Exception:
+                split_time = None
+            if split_time is not None and start < split_time < end:
+                # Use stored split_word_index when available to keep text split stable
+                try:
+                    word_idx = split_obj.get("split_word_index")
+                    if word_idx is None:
+                        word_idx = _choose_split_word_index(txt, start, end, split_time)
+                    a_txt, b_txt = _split_text_by_word_index(txt, int(word_idx))
+                except Exception:
+                    a_txt, b_txt = txt, ""
+
+                if a_txt and b_txt:
+                    part_a_id = _derived_utterance_id(uid, "A", split_time, a_txt)
+                    part_b_id = _derived_utterance_id(uid, "B", split_time, b_txt)
+
+                    part_a_display = None
+                    part_b_display = None
+                    if isinstance(split_obj.get("part_a"), dict):
+                        part_a_display = split_obj["part_a"].get("speaker_display")
+                    if isinstance(split_obj.get("part_b"), dict):
+                        part_b_display = split_obj["part_b"].get("speaker_display")
+
+                    out.append({
+                        "start": start,
+                        "end": split_time,
+                        "speaker": raw,
+                        "text": a_txt,
+                        "utterance_id": part_a_id,
+                        "source_utterance_id": uid,
+                        "speaker_display_override": (overrides.get(part_a_id) or (part_a_display or None)),
+                    })
+                    out.append({
+                        "start": split_time,
+                        "end": end,
+                        "speaker": raw,
+                        "text": b_txt,
+                        "utterance_id": part_b_id,
+                        "source_utterance_id": uid,
+                        "speaker_display_override": (overrides.get(part_b_id) or (part_b_display or None)),
+                    })
+                    continue  # do not add original
+
+        out.append({
+            "start": start,
+            "end": end,
+            "speaker": raw,
+            "text": txt,
+            "utterance_id": uid,
+            "source_utterance_id": uid,
+            "speaker_display_override": overrides.get(uid),
+        })
+
+    out.sort(key=lambda x: (float(x.get("start", 0.0) or 0.0), float(x.get("end", 0.0) or 0.0)))
+
+    # Add approximate confidence after ordering
+    for i, u in enumerate(out):
+        raw = (u.get("speaker") or "").strip()
+        prev_same = i > 0 and ((out[i - 1].get("speaker") or "").strip() == raw)
+        next_same = i + 1 < len(out) and ((out[i + 1].get("speaker") or "").strip() == raw)
+        dur = float(u.get("end", 0.0) or 0.0) - float(u.get("start", 0.0) or 0.0)
+        u["speaker_confidence_percent"] = _confidence_percent_for_utterance(dur, prev_same, next_same)
+
+    return out
+
+
 def _build_labeled_script_from_utterances(meeting_id: str, meeting: dict, raw_label_overrides: dict[str, str]) -> dict[str, Any]:
     """
     Build labeled script assets from utterances.json + existing labels.
@@ -881,15 +1088,23 @@ def _build_labeled_script_from_utterances(meeting_id: str, meeting: dict, raw_la
     effective.update(stored_map_raw)
     effective.update(raw_label_overrides)
 
+    effective_utterances = _effective_utterances_for_meeting(meeting_id, meeting)
+
     rows: list[dict] = []
-    for u in utterances:
+    for u in effective_utterances:
         raw = (u.get("speaker") or "").strip()
         start = float(u.get("start", 0.0) or 0.0)
         end = float(u.get("end", 0.0) or 0.0)
         txt = (u.get("text") or "").strip()
         if not txt:
             continue
-        speaker_name = (effective.get(raw) or raw or "Unknown").strip()
+        display_override = (u.get("speaker_display_override") or "")
+        if isinstance(display_override, str):
+            display_override = display_override.strip()
+        else:
+            display_override = ""
+
+        speaker_name = (display_override or (effective.get(raw) or raw or "Unknown")).strip()
         if speaker_name == "Unknown":
             # Normalize legacy Unknown to Unknown Speaker 1
             speaker_name = "Unknown Speaker 1"
@@ -912,6 +1127,43 @@ def _build_labeled_script_from_utterances(meeting_id: str, meeting: dict, raw_la
         "rows": rows,
         "speakers_in_order": speakers_in_order,
         "unknown_by_raw": unknown_by_raw,
+    }
+
+
+def _effective_raw_display_map(meeting_id: str, meeting: dict, utterances: list[dict]) -> dict[str, str]:
+    """Compute effective raw diarization label -> display name map for UI rendering."""
+    unknown_by_raw, raw_by_unknown, _ = _unknown_map_from_utterances(utterances)
+    seeded = _seed_label_map_from_named_json(meeting_id)
+    stored_map: dict[str, str] = meeting.get("speaker_label_map", {}) if isinstance(meeting.get("speaker_label_map"), dict) else {}
+    stored_map_raw: dict[str, str] = {}
+    for k, v in stored_map.items():
+        if not isinstance(k, str) or not isinstance(v, str):
+            continue
+        key = k.strip()
+        val = v.strip()
+        if not val:
+            continue
+        if key in unknown_by_raw:
+            stored_map_raw[key] = val
+        elif key in raw_by_unknown:
+            stored_map_raw[raw_by_unknown[key]] = val
+
+    effective_map: dict[str, str] = dict(unknown_by_raw)
+    effective_map.update(seeded)
+    effective_map.update(stored_map_raw)
+    return effective_map
+
+
+def _regenerate_meeting_assets(meeting_id: str, meeting: dict) -> dict[str, Any]:
+    """Regenerate named transcript + transcript PDF + meeting report PDF from the current meeting state."""
+    assets = _build_labeled_script_from_utterances(meeting_id, meeting, {})
+    _write_named_script_assets(assets["named_txt_path"], assets["named_json_path"], assets["rows"])
+    transcript_pdf = _regenerate_transcript_pdf_from_named_json(meeting_id, assets["named_json_path"])
+    meeting_report_pdf = _regenerate_meeting_report_pdf_from_transcript(meeting_id, meeting, assets["named_txt_path"])
+    return {
+        "assets": assets,
+        "transcript_pdf": transcript_pdf,
+        "meeting_report_pdf": meeting_report_pdf,
     }
 
 
@@ -1273,6 +1525,292 @@ def api_save_speaker_labels(meeting_id: str):
         }
     }), 200
 
+
+@app.post("/api/meetings/<meeting_id>/utterance_overrides")
+def api_save_utterance_override(meeting_id: str):
+    """Save a per-utterance speaker display override (single instance) and regenerate assets."""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+
+    user = current_user()
+    editor_email = (user.get("email") if user else None) or session.get("user_email") or "unknown"
+
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        return jsonify({"error": "Meeting not found"}), 404
+
+    data = request.get_json() or {}
+    utterance_id = (data.get("utterance_id") or "").strip()
+    speaker_display = data.get("speaker_display")
+    if not utterance_id:
+        return jsonify({"error": "utterance_id required"}), 400
+    if speaker_display is None or not isinstance(speaker_display, str):
+        return jsonify({"error": "speaker_display must be a string (can be empty to clear)"}), 400
+    speaker_display = speaker_display.strip()
+
+    overrides = meeting.get("utterance_overrides", [])
+    if not isinstance(overrides, list):
+        overrides = []
+
+    existing_created_at = None
+    for it in overrides:
+        if isinstance(it, dict) and (it.get("type") or "").strip() == "speaker_display_override" and (it.get("utterance_id") or "").strip() == utterance_id:
+            existing_created_at = it.get("created_at")
+            break
+
+    # Remove existing override for this utterance
+    overrides = [
+        it for it in overrides
+        if not (isinstance(it, dict) and (it.get("type") or "").strip() == "speaker_display_override" and (it.get("utterance_id") or "").strip() == utterance_id)
+    ]
+
+    now = datetime.now().isoformat()
+    if speaker_display:
+        overrides.append({
+            "utterance_id": utterance_id,
+            "type": "speaker_display_override",
+            "speaker_display": speaker_display,
+            "created_at": existing_created_at or now,
+            "updated_at": now,
+            "updated_by": str(editor_email),
+        })
+
+    version = int(meeting.get("utterance_overrides_version", 0) or 0) + 1
+    history = meeting.get("utterance_overrides_history", [])
+    if not isinstance(history, list):
+        history = []
+    history.append({
+        "version": version,
+        "updated_at": now,
+        "updated_by": str(editor_email),
+        "override": {"utterance_id": utterance_id, "speaker_display": speaker_display},
+    })
+
+    update_meeting(meeting_id, {
+        "utterance_overrides": overrides,
+        "utterance_overrides_version": version,
+        "utterance_overrides_updated_at": now,
+        "utterance_overrides_history": history,
+    })
+
+    meeting = get_meeting(meeting_id) or meeting
+
+    # Regenerate assets
+    try:
+        regen = _regenerate_meeting_assets(meeting_id, meeting)
+        assets = regen["assets"]
+        transcript_pdf = regen["transcript_pdf"]
+        meeting_report_pdf = regen["meeting_report_pdf"]
+    except Exception as e:
+        return jsonify({"error": "Regeneration failed", "message": str(e)}), 500
+
+    update_meeting(meeting_id, {
+        "transcript_path": str((OUTPUT_DIR / f"{meeting_id}_named_script.txt").relative_to(ROOT)),
+        "transcript_updated_at": datetime.now().isoformat(),
+        "transcript_pdf_path": str((OUTPUT_DIR / f"{meeting_id}_transcript.pdf").relative_to(ROOT)) if transcript_pdf else meeting.get("transcript_pdf_path"),
+        "pdf_path": str((OUTPUT_DIR / f"{meeting_id}_meeting_report.pdf").relative_to(ROOT)) if meeting_report_pdf else meeting.get("pdf_path"),
+        "pdf_updated_at": datetime.now().isoformat() if meeting_report_pdf else meeting.get("pdf_updated_at"),
+    })
+
+    meeting = get_meeting(meeting_id) or meeting
+
+    # Return updated utterance payload for fast UI update
+    utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
+    try:
+        base_utterances = json.loads(utterances_path.read_text(encoding="utf-8")) if utterances_path.exists() else []
+    except Exception:
+        base_utterances = []
+    effective_map = _effective_raw_display_map(meeting_id, meeting, base_utterances if isinstance(base_utterances, list) else [])
+    effective_utterances = _effective_utterances_for_meeting(meeting_id, meeting)
+    updated = None
+    for u in effective_utterances:
+        if (u.get("utterance_id") or "") == utterance_id:
+            raw = (u.get("speaker") or "").strip()
+            display_override = u.get("speaker_display_override")
+            if isinstance(display_override, str):
+                display_override = display_override.strip()
+            else:
+                display_override = ""
+            updated = {
+                "utterance_id": utterance_id,
+                "source_utterance_id": (u.get("source_utterance_id") or ""),
+                "start": float(u.get("start", 0.0) or 0.0),
+                "end": float(u.get("end", 0.0) or 0.0),
+                "speaker_raw": raw,
+                "speaker_display": (display_override or effective_map.get(raw, raw)),
+                "speaker_confidence_percent": int(u.get("speaker_confidence_percent") or 0),
+                "text": (u.get("text") or ""),
+            }
+            break
+
+    return jsonify({
+        "status": "success",
+        "updated_utterance": updated,
+        "regenerated": {
+            "named_script_txt": str(assets["named_txt_path"]),
+            "named_script_json": str(assets["named_json_path"]),
+            "transcript_pdf": bool(transcript_pdf),
+            "meeting_report_pdf": bool(meeting_report_pdf),
+        },
+        "utterance_overrides_version": version,
+    }), 200
+
+
+@app.post("/api/meetings/<meeting_id>/utterance_split")
+def api_split_utterance(meeting_id: str):
+    """Split an utterance at a timestamp and optionally set per-part speaker display, then regenerate assets."""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+
+    user = current_user()
+    editor_email = (user.get("email") if user else None) or session.get("user_email") or "unknown"
+
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        return jsonify({"error": "Meeting not found"}), 404
+
+    data = request.get_json() or {}
+    source_utterance_id = (data.get("utterance_id") or "").strip()
+    if not source_utterance_id:
+        return jsonify({"error": "utterance_id required"}), 400
+
+    try:
+        split_time = float(data.get("split_time"))
+    except Exception:
+        return jsonify({"error": "split_time must be a number"}), 400
+
+    speaker_a = data.get("speaker_display_a")
+    speaker_b = data.get("speaker_display_b")
+    if speaker_a is not None and not isinstance(speaker_a, str):
+        return jsonify({"error": "speaker_display_a must be a string"}), 400
+    if speaker_b is not None and not isinstance(speaker_b, str):
+        return jsonify({"error": "speaker_display_b must be a string"}), 400
+    speaker_a = (speaker_a or "").strip() if isinstance(speaker_a, str) else ""
+    speaker_b = (speaker_b or "").strip() if isinstance(speaker_b, str) else ""
+
+    # Load base utterances to validate and compute stable split_word_index
+    utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
+    if not utterances_path.exists():
+        return jsonify({"error": "Utterances not found"}), 404
+    try:
+        base_utterances = json.loads(utterances_path.read_text(encoding="utf-8"))
+    except Exception:
+        return jsonify({"error": "Invalid utterances.json"}), 500
+    if not isinstance(base_utterances, list):
+        return jsonify({"error": "utterances.json must be a list"}), 500
+
+    matched = None
+    for u in base_utterances:
+        if not isinstance(u, dict):
+            continue
+        if _utterance_id_for_item(u) == source_utterance_id:
+            matched = u
+            break
+    if not matched:
+        return jsonify({"error": "Utterance not found"}), 404
+
+    start = float(matched.get("start", 0.0) or 0.0)
+    end = float(matched.get("end", 0.0) or 0.0)
+    txt = (matched.get("text") or "").strip()
+    if not (start < split_time < end):
+        return jsonify({"error": "split_time must be within (start, end)"}), 400
+
+    split_word_index = _choose_split_word_index(txt, start, end, split_time)
+
+    splits = meeting.get("utterance_splits", [])
+    if not isinstance(splits, list):
+        splits = []
+    # Remove existing split for this utterance
+    splits = [
+        it for it in splits
+        if not (isinstance(it, dict) and (it.get("utterance_id") or "").strip() == source_utterance_id)
+    ]
+
+    now = datetime.now().isoformat()
+    splits.append({
+        "utterance_id": source_utterance_id,
+        "split_time": float(split_time),
+        "split_word_index": int(split_word_index),
+        "part_a": {"speaker_display": speaker_a or None},
+        "part_b": {"speaker_display": speaker_b or None},
+        "created_at": now,
+        "updated_at": now,
+        "updated_by": str(editor_email),
+    })
+
+    version = int(meeting.get("utterance_splits_version", 0) or 0) + 1
+    history = meeting.get("utterance_splits_history", [])
+    if not isinstance(history, list):
+        history = []
+    history.append({
+        "version": version,
+        "updated_at": now,
+        "updated_by": str(editor_email),
+        "split": {"utterance_id": source_utterance_id, "split_time": float(split_time)},
+    })
+
+    update_meeting(meeting_id, {
+        "utterance_splits": splits,
+        "utterance_splits_version": version,
+        "utterance_splits_updated_at": now,
+        "utterance_splits_history": history,
+    })
+
+    meeting = get_meeting(meeting_id) or meeting
+
+    # Regenerate assets
+    try:
+        regen = _regenerate_meeting_assets(meeting_id, meeting)
+        assets = regen["assets"]
+        transcript_pdf = regen["transcript_pdf"]
+        meeting_report_pdf = regen["meeting_report_pdf"]
+    except Exception as e:
+        return jsonify({"error": "Regeneration failed", "message": str(e)}), 500
+
+    update_meeting(meeting_id, {
+        "transcript_path": str((OUTPUT_DIR / f"{meeting_id}_named_script.txt").relative_to(ROOT)),
+        "transcript_updated_at": datetime.now().isoformat(),
+        "transcript_pdf_path": str((OUTPUT_DIR / f"{meeting_id}_transcript.pdf").relative_to(ROOT)) if transcript_pdf else meeting.get("transcript_pdf_path"),
+        "pdf_path": str((OUTPUT_DIR / f"{meeting_id}_meeting_report.pdf").relative_to(ROOT)) if meeting_report_pdf else meeting.get("pdf_path"),
+        "pdf_updated_at": datetime.now().isoformat() if meeting_report_pdf else meeting.get("pdf_updated_at"),
+    })
+
+    meeting = get_meeting(meeting_id) or meeting
+
+    effective_map = _effective_raw_display_map(meeting_id, meeting, base_utterances)
+    effective_utterances = _effective_utterances_for_meeting(meeting_id, meeting)
+    new_utterances = []
+    for u in effective_utterances:
+        if (u.get("source_utterance_id") or "") == source_utterance_id:
+            raw = (u.get("speaker") or "").strip()
+            display_override = u.get("speaker_display_override")
+            if isinstance(display_override, str):
+                display_override = display_override.strip()
+            else:
+                display_override = ""
+            new_utterances.append({
+                "utterance_id": (u.get("utterance_id") or ""),
+                "source_utterance_id": source_utterance_id,
+                "start": float(u.get("start", 0.0) or 0.0),
+                "end": float(u.get("end", 0.0) or 0.0),
+                "speaker_raw": raw,
+                "speaker_display": (display_override or effective_map.get(raw, raw)),
+                "speaker_confidence_percent": int(u.get("speaker_confidence_percent") or 0),
+                "text": (u.get("text") or ""),
+            })
+
+    return jsonify({
+        "status": "success",
+        "new_utterances": new_utterances,
+        "regenerated": {
+            "named_script_txt": str(assets["named_txt_path"]),
+            "named_script_json": str(assets["named_json_path"]),
+            "transcript_pdf": bool(transcript_pdf),
+            "meeting_report_pdf": bool(meeting_report_pdf),
+        },
+        "utterance_splits_version": version,
+    }), 200
+
 def get_user_meetings(user_email: str) -> list:
     """Get all meetings where user is a participant."""
     meetings = load_meetings()
@@ -1566,6 +2104,95 @@ def upload_to_connected_apps(user_email: str, pdf_path: Path, transcript_path: P
 # Background upload jobs
 # ----------------------------
 UPLOAD_WORKER_STARTED = False
+
+# ----------------------------
+# Meeting processing jobs (upload/transcription progress)
+# Stored in output/jobs/meetings/<meeting_id>.json + .log
+# ----------------------------
+
+def _meeting_job_paths(meeting_id: str) -> tuple[Path, Path]:
+    ensure_dirs()
+    safe_id = re.sub(r"[^a-zA-Z0-9_.-]+", "_", (meeting_id or "unknown")).strip("_") or "unknown"
+    job_path = MEETING_JOBS_DIR / f"{safe_id}.json"
+    log_path = MEETING_JOBS_DIR / f"{safe_id}.log"
+    return job_path, log_path
+
+def _load_meeting_job(meeting_id: str) -> dict | None:
+    job_path, _ = _meeting_job_paths(meeting_id)
+    if not job_path.exists():
+        return None
+    try:
+        return json.loads(job_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+def _save_meeting_job(meeting_id: str, job: dict) -> None:
+    job_path, _ = _meeting_job_paths(meeting_id)
+    job_path.write_text(json.dumps(job, indent=2), encoding="utf-8")
+
+def _append_meeting_job_log(meeting_id: str, line: str) -> None:
+    _, log_path = _meeting_job_paths(meeting_id)
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write((line or "").rstrip("\n") + "\n")
+    except Exception:
+        pass
+
+def _upsert_meeting_job(
+    meeting_id: str,
+    *,
+    meeting_name: str | None = None,
+    status: str | None = None,
+    stage: str | None = None,
+    percent: int | None = None,
+    error: str | None = None,
+) -> dict:
+    now = datetime.now().isoformat()
+    existing = _load_meeting_job(meeting_id) or {}
+    job_path, log_path = _meeting_job_paths(meeting_id)
+    job = {
+        "kind": "meeting_processing",
+        "meeting_id": meeting_id,
+        "meeting_name": meeting_name or existing.get("meeting_name") or meeting_id,
+        "status": status or existing.get("status") or "queued",  # queued|uploading|processing|done|failed
+        "stage": stage or existing.get("stage") or "queued",
+        "percent": int(percent) if percent is not None else int(existing.get("percent") or 0),
+        "created_at": existing.get("created_at") or now,
+        "updated_at": now,
+        "error": error if error is not None else existing.get("error"),
+        "job_path": str(job_path),
+        "log_path": str(log_path),
+    }
+    # Clamp
+    job["percent"] = max(0, min(100, int(job.get("percent") or 0)))
+    _save_meeting_job(meeting_id, job)
+    return job
+
+def _list_active_meeting_jobs() -> list[dict]:
+    ensure_dirs()
+    jobs: list[dict] = []
+    for p in MEETING_JOBS_DIR.glob("*.json"):
+        try:
+            j = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if j.get("kind") != "meeting_processing":
+            continue
+        if j.get("status") in ("queued", "uploading", "processing"):
+            jobs.append(j)
+    # Most recently updated first
+    jobs.sort(key=lambda x: x.get("updated_at") or x.get("created_at") or "", reverse=True)
+    return jobs
+
+def _read_tail_lines(path: Path, max_lines: int = 200) -> list[str]:
+    try:
+        if not path.exists():
+            return []
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return lines[-max_lines:]
+    except Exception:
+        return []
 
 def _load_upload_job(job_path: Path) -> dict:
     return json.loads(job_path.read_text(encoding="utf-8"))
@@ -2469,6 +3096,81 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
     PY = sys.executable
     stem = audio_path.stem
     meeting_name = stem  # Default to stem
+
+    # Optional meeting-processing job tracking (for UI progress page)
+    track_job = bool(cfg.get("track_meeting_job"))
+    job_meeting_id = (cfg.get("meeting_id") or stem)
+    job_meeting_name = (cfg.get("meeting_name") or meeting_name)
+
+    def _job_update(**kwargs):
+        if not track_job:
+            return
+        try:
+            _upsert_meeting_job(job_meeting_id, meeting_name=job_meeting_name, **kwargs)
+        except Exception:
+            pass
+
+    def _job_log(msg: str):
+        if not track_job:
+            return
+        try:
+            _append_meeting_job_log(job_meeting_id, msg)
+        except Exception:
+            pass
+
+    def _run_and_stream(cmd: list[str], *, stage: str, p_start: int, p_end: int, env: dict, target_seconds: float = 600.0) -> int:
+        """
+        Run a subprocess while streaming stdout/stderr to both server logs and the meeting job log.
+        Progress is stage-based with a best-effort ramp during execution (capped at p_end-1 until complete).
+        """
+        _job_update(status="processing", stage=stage, percent=p_start)
+        _job_log(f"[{datetime.now().isoformat()}] ▶ {stage}: {' '.join(cmd)}")
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=ROOT,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+            )
+        except Exception as e:
+            _job_log(f"[{datetime.now().isoformat()}] ❌ Failed to start: {e}")
+            _job_update(status="failed", stage=stage, percent=p_start, error=str(e))
+            return 1
+
+        start_ts = time.time()
+        last_update = 0.0
+        current_percent = p_start
+        try:
+            if proc.stdout is not None:
+                for line in proc.stdout:
+                    line = (line or "").rstrip("\n")
+                    if line:
+                        print(line)
+                        _job_log(line)
+                    now_ts = time.time()
+                    if now_ts - last_update >= 1.0:
+                        elapsed = now_ts - start_ts
+                        span = max(1, int(p_end - p_start))
+                        ramp = int(min(span - 1, (elapsed / max(1.0, target_seconds)) * span))
+                        current_percent = max(current_percent, min(p_end - 1, p_start + ramp))
+                        _job_update(stage=stage, percent=current_percent)
+                        last_update = now_ts
+        finally:
+            rc = proc.wait()
+
+        if rc != 0:
+            _job_log(f"[{datetime.now().isoformat()}] ❌ {stage} failed (exit {rc})")
+            _job_update(status="failed", stage=stage, percent=current_percent, error=f"Command failed: {' '.join(cmd)}")
+            return rc
+
+        _job_update(stage=stage, percent=p_end)
+        _job_log(f"[{datetime.now().isoformat()}] ✅ {stage} complete")
+        return 0
     
     # Try to extract meeting name from filename (format: name_TIMESTAMP)
     if "_" in stem:
@@ -2567,49 +3269,27 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
         print(f"Using custom vocabulary for user: {user_email}")
     
     # Run transcription (required)
-    try:
-        result = subprocess.run(
-            cmd1,
-            cwd=ROOT,
-            env=env,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-    except Exception as e:
-        print(f"Error running command {' '.join(cmd1)}: {e}")
-        print("\n❌ Pipeline stopped (exit 1)")
-        return
-
-    if result.returncode != 0:
-        print(f"Command failed: {' '.join(cmd1)}")
-        print(f"STDOUT: {result.stdout}")
-        print(f"STDERR: {result.stderr}")
-        print(f"\n❌ Pipeline stopped (exit {result.returncode})")
+    _job_update(status="processing", stage="transcription", percent=10)
+    _job_log(f"[{datetime.now().isoformat()}] Starting transcription for {audio_path.name}")
+    rc1 = _run_and_stream(cmd1, stage="transcription", p_start=10, p_end=60, env=env, target_seconds=900.0)
+    if rc1 != 0:
+        print(f"\n❌ Pipeline stopped (exit {rc1})")
         return
 
     # Run speaker identification (optional – meeting should still show up even if this fails)
     speaker_id_ok = True
     try:
-        result2 = subprocess.run(
-            cmd2,
-            cwd=ROOT,
-            env=env,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace"
-        )
+        _job_update(status="processing", stage="speaker_identification", percent=75)
+        _job_log(f"[{datetime.now().isoformat()}] Starting speaker identification (optional)")
+        rc2 = _run_and_stream(cmd2, stage="speaker_identification", p_start=75, p_end=85, env=env, target_seconds=240.0)
+        if rc2 != 0:
+            speaker_id_ok = False
     except Exception as e:
         speaker_id_ok = False
         print(f"Error running command {' '.join(cmd2)}: {e}")
     else:
-        if result2.returncode != 0:
-            speaker_id_ok = False
-            print(f"Command failed: {' '.join(cmd2)}")
-            print(f"STDOUT: {result2.stdout}")
-            print(f"STDERR: {result2.stderr}")
+        # _run_and_stream handles logging and return code
+        pass
 
     if not speaker_id_ok:
         # Fallback: if we have the diarized transcript, copy it into the "named" transcript path
@@ -2634,6 +3314,8 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
     # Use meeting_pdf_summarizer to create AI-powered meeting report
     if transcript_path.exists():
         try:
+            _job_update(status="processing", stage="generating_pdfs", percent=85, error=None)
+            _job_log(f"[{datetime.now().isoformat()}] Generating PDFs…")
             # Run meeting_pdf_summarizer/main.py to create the comprehensive meeting report
             # It takes the named transcript and uses Ollama to generate structured summaries
             summarizer_main = ROOT / "meeting_pdf_summarizer" / "main.py"
@@ -2963,6 +3645,8 @@ Phi AI Team"""
     except Exception as e:
         print(f"\n⚠️  Warning: Could not save meeting metadata: {e}")
 
+    _job_update(status="done", stage="done", percent=100, error=None)
+    _job_log(f"[{datetime.now().isoformat()}] 🎉 Done")
     print(f"\n✅ Completed pipeline for: {audio_path.name}\n")
 
 # Initialize
@@ -3119,6 +3803,21 @@ def account_meetings():
     if not require_login():
         return redirect(url_for("login_get"))
     user = current_user()
+
+    # If a meeting is currently uploading/processing, show the processing page first
+    # unless the user explicitly bypasses it (?show_list=1).
+    show_list = request.args.get("show_list", "").strip() in ("1", "true", "yes")
+    if not show_list:
+        active_jobs = _list_active_meeting_jobs()
+        if active_jobs:
+            active_job = active_jobs[0]
+            return render_template(
+                "meeting_processing.html",
+                user=user,
+                job=active_job,
+                meetings_url=url_for("account_meetings", show_list="1"),
+            )
+
     meetings = get_user_meetings(user["email"])
     
     # Detect unknown speakers for each meeting
@@ -3899,6 +4598,17 @@ def upload_meeting():
     
     meeting_path = INPUT_DIR / f"{filename_base}{ext}"
     f.save(meeting_path)
+
+    # Create/update a meeting-processing job for UI progress tracking
+    meeting_id = meeting_path.stem
+    display_name = meeting_name or meeting_id
+    try:
+        _upsert_meeting_job(meeting_id, meeting_name=display_name, status="uploading", stage="uploading", percent=10, error=None)
+        _append_meeting_job_log(meeting_id, f"[{datetime.now().isoformat()}] Upload received: {meeting_path.name}")
+        _append_meeting_job_log(meeting_id, f"[{datetime.now().isoformat()}] Saved to: {meeting_path}")
+        _upsert_meeting_job(meeting_id, meeting_name=display_name, status="processing", stage="queued", percent=10, error=None)
+    except Exception:
+        pass
     
     # Store upload timestamp for date logic
     upload_timestamp = datetime.now().isoformat()
@@ -3909,6 +4619,9 @@ def upload_meeting():
     cfg["uploader_email"] = user_email
     cfg["upload_timestamp"] = upload_timestamp  # Store upload timestamp for PDF date
     cfg["source_organizations"] = source_organizations  # Store source organizations for PDF header
+    cfg["track_meeting_job"] = True
+    cfg["meeting_id"] = meeting_id
+    cfg["meeting_name"] = display_name
     threading.Thread(
         target=run_pipeline, 
         args=(meeting_path, cfg, participants),
@@ -3921,6 +4634,45 @@ def upload_meeting():
         "redirect": url_for("upload_success"),
         "message": "Meeting uploaded successfully. Processing will begin shortly. You and all participants will receive an email when transcription is complete."
     }), 202
+
+
+@app.get("/api/jobs/active")
+def api_jobs_active():
+    """Return active meeting-processing jobs (queued/uploading/processing)."""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    jobs = _list_active_meeting_jobs()
+    # Small payload by default
+    slim = [
+        {
+            "meeting_id": j.get("meeting_id"),
+            "meeting_name": j.get("meeting_name"),
+            "status": j.get("status"),
+            "stage": j.get("stage"),
+            "percent": j.get("percent"),
+            "updated_at": j.get("updated_at"),
+        }
+        for j in jobs
+    ]
+    return jsonify({"jobs": slim}), 200
+
+
+@app.get("/api/jobs/<meeting_id>")
+def api_job_detail(meeting_id: str):
+    """Return a meeting-processing job + log tail."""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    job = _load_meeting_job(meeting_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    try:
+        tail = int(request.args.get("tail", "200"))
+    except Exception:
+        tail = 200
+    tail = max(20, min(1000, tail))
+    log_path = Path(job.get("log_path", ""))
+    log_lines = _read_tail_lines(log_path, max_lines=tail)
+    return jsonify({"job": job, "log_lines": log_lines}), 200
 
 # API endpoints for organization/member search
 @app.get("/api/search_organizations")
@@ -4297,15 +5049,25 @@ def meeting_transcript(meeting_id: str):
     # Build a compact speaker list for the sidebar
     speakers = [{"raw": raw, "display": effective_map.get(raw, raw)} for raw in speakers_in_order]
 
-    # Add display field to utterances for template rendering
+    # Apply splits + per-utterance overrides, and compute approximate confidence
+    effective_utterances = _effective_utterances_for_meeting(meeting_id, meeting)
+
     rendered_utterances = []
-    for u in utterances:
+    for u in effective_utterances:
         raw = (u.get("speaker") or "").strip()
+        display_override = u.get("speaker_display_override")
+        if isinstance(display_override, str):
+            display_override = display_override.strip()
+        else:
+            display_override = ""
         rendered_utterances.append({
+            "utterance_id": (u.get("utterance_id") or ""),
+            "source_utterance_id": (u.get("source_utterance_id") or ""),
             "start": float(u.get("start", 0.0) or 0.0),
             "end": float(u.get("end", 0.0) or 0.0),
             "speaker_raw": raw,
-            "speaker_display": effective_map.get(raw, raw),
+            "speaker_display": (display_override or effective_map.get(raw, raw)),
+            "speaker_confidence_percent": int(u.get("speaker_confidence_percent") or 0),
             "text": (u.get("text") or ""),
         })
 
