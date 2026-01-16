@@ -473,7 +473,7 @@
           <a href="{{ url_for('account_home') }}" class="header-link">Dashboard</a>
           <a href="{{ url_for('account_meetings') }}" class="header-link">Meetings</a>
           {% if ollama_ready %}
-            <a href="{{ url_for('ask_get') }}" class="header-link active">Ask Phi</a>
+          <a href="{{ url_for('ask_get') }}" class="header-link active">Ask Phi</a>
           {% else %}
             <a href="#" class="header-link active" aria-disabled="true" title="Phi is starting up" onclick="return false;" style="opacity: 0.7; cursor: not-allowed;">Ask Phi</a>
           {% endif %}
@@ -572,13 +572,13 @@
       // Optional: auto-retry every 10s (keeps UX smooth while the server starts up).
       setTimeout(() => location.reload(), 10000);
     } else {
-      let currentSessionId = null;
-      const chatInput = document.getElementById('chatInput');
-      const chatSendBtn = document.getElementById('chatSendBtn');
-      const chatMessages = document.getElementById('chatMessages');
-      const emptyState = document.getElementById('emptyState');
-      const newChatBtn = document.getElementById('newChatBtn');
-      const chatSessionsList = document.getElementById('chatSessionsList');
+    let currentSessionId = null;
+    const chatInput = document.getElementById('chatInput');
+    const chatSendBtn = document.getElementById('chatSendBtn');
+    const chatMessages = document.getElementById('chatMessages');
+    const emptyState = document.getElementById('emptyState');
+    const newChatBtn = document.getElementById('newChatBtn');
+    const chatSessionsList = document.getElementById('chatSessionsList');
 
     // Auto-resize textarea
     if (chatInput) {

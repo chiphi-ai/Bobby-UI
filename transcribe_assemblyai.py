@@ -439,14 +439,14 @@ def save_outputs(base_stem: str, full_json: dict):
         cleaned = full_json.get("utterances") or []
     else:
         # AssemblyAI includes "utterances" when speaker_labels is enabled (ms)
-        utterances = full_json.get("utterances") or []
-        for u in utterances:
-            cleaned.append({
-                "start": (u.get("start") or 0) / 1000.0,   # ms -> seconds
-                "end": (u.get("end") or 0) / 1000.0,
-                "speaker": u.get("speaker") or "Unknown",
-                "text": (u.get("text") or "").strip(),
-            })
+    utterances = full_json.get("utterances") or []
+    for u in utterances:
+        cleaned.append({
+            "start": (u.get("start") or 0) / 1000.0,   # ms -> seconds
+            "end": (u.get("end") or 0) / 1000.0,
+            "speaker": u.get("speaker") or "Unknown",
+            "text": (u.get("text") or "").strip(),
+        })
 
     out_utter.write_text(json.dumps(cleaned, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -524,7 +524,7 @@ def main():
         headers = {"authorization": api_key}
 
         print("Uploading and transcribing with AssemblyAI (speaker labels enabled)...")
-        upload_url = upload_audio(wav_path, headers=headers)
+    upload_url = upload_audio(wav_path, headers=headers)
         tid = submit_transcript(
             upload_url,
             headers=headers,
@@ -532,8 +532,8 @@ def main():
             speech_threshold=args.speech_threshold,
             custom_vocab=custom_vocab,
         )
-        result = poll_transcript(tid, headers=headers)
-        save_outputs(base_stem=input_path.stem, full_json=result)
+    result = poll_transcript(tid, headers=headers)
+    save_outputs(base_stem=input_path.stem, full_json=result)
         return
 
     # Default: local Whisper + pyannote, but keep the same output contract.

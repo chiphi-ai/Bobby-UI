@@ -331,14 +331,14 @@ def main():
     backend = os.getenv("TRANSCRIPTION_BACKEND", "whisper").strip().lower()
     headers = None
     if backend in {"assemblyai", "aai"}:
-        api_key = os.environ.get("ASSEMBLYAI_API_KEY", "").strip()
-        if not api_key or api_key == "your-api-key-here":
+    api_key = os.environ.get("ASSEMBLYAI_API_KEY", "").strip()
+    if not api_key or api_key == "your-api-key-here":
             die(
                 "TRANSCRIPTION_BACKEND=assemblyai but ASSEMBLYAI_API_KEY is missing.\n"
                 "Set it in .env file (ASSEMBLYAI_API_KEY=your-key) or switch to local backend:\n"
                 "  TRANSCRIPTION_BACKEND=whisper"
             )
-        headers = {"authorization": api_key}
+    headers = {"authorization": api_key}
 
     input_path = Path(args.input_file)
     if not input_path.exists():
@@ -379,10 +379,10 @@ def main():
             custom_vocab=custom_vocab,
         )
         full = poll_transcript(tid, headers=headers)
-        out_full.write_text(json.dumps(full, indent=2, ensure_ascii=False), encoding="utf-8")
-        utterances = clean_utterances(full)
-        out_utter.write_text(json.dumps(utterances, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"5) Saved:\n   {out_full}\n   {out_utter}")
+    out_full.write_text(json.dumps(full, indent=2, ensure_ascii=False), encoding="utf-8")
+    utterances = clean_utterances(full)
+    out_utter.write_text(json.dumps(utterances, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"5) Saved:\n   {out_full}\n   {out_utter}")
     else:
         # Local backend: Whisper transcription + pyannote diarization (preferred)
         from transcribe_assemblyai import (

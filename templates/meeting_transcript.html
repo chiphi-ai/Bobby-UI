@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Transcript — Phi AI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <style>
+    .transcript-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: var(--space-xl);
+      align-items: start;
+    }
+    @media (max-width: 980px) {
+      .transcript-layout { grid-template-columns: 1fr; }
+    }
+    .speaker-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+    .speaker-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: var(--space-xs);
+      padding: var(--space-md);
+      border: 1px solid var(--border-light);
+      border-radius: var(--border-radius);
+      background: var(--bg-secondary);
+    }
+    .speaker-row small { color: var(--text-secondary); }
+    .speaker-row input {
+      width: 100%;
+      padding: var(--space-sm) var(--space-md);
+      border-radius: var(--border-radius-sm);
+      border: 1px solid var(--border-light);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+    }
+    .utterance {
+      padding: var(--space-md);
+      border: 1px solid var(--border-light);
+      border-radius: var(--border-radius);
+      background: var(--bg-secondary);
+      margin-bottom: var(--space-md);
+      transition: all var(--transition-fast);
+      cursor: pointer;
+    }
+    .utterance:hover { transform: translateY(-1px); box-shadow: var(--shadow); background: var(--bg-primary); }
+    .utterance-header {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-md);
+      align-items: baseline;
+      margin-bottom: var(--space-xs);
+    }
+    .speaker-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border-light);
+      background: rgba(0, 122, 255, 0.08);
+      color: var(--text-primary);
+      font-weight: var(--font-weight-semibold);
+      font-size: var(--font-size-sm);
+    }
+    .speaker-chip code { font-size: 11px; color: var(--text-secondary); background: transparent; }
+    .timestamp {
+      color: var(--text-secondary);
+      font-size: var(--font-size-xs);
+      font-variant-numeric: tabular-nums;
+    }
+    .top-actions {
+      display: flex;
+      gap: var(--space-sm);
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--space-lg);
+    }
+    .toast {
+      position: fixed;
+      bottom: 18px;
+      right: 18px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(29, 29, 31, 0.92);
+      color: white;
+      font-size: 14px;
+      display: none;
+      z-index: 9999;
+      max-width: min(420px, calc(100vw - 36px));
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-waves{% if waves_debug %} debug-mode{% endif %}" aria-hidden="true"></div>
+  {% if waves_debug %}
+  <div class="waves-debug-badge">🌊 WAVES ON</div>
+  {% endif %}
+
+  <div class="app-container">
+    <header class="header">
+      <div class="header-inner">
+        <a href="{{ url_for('account_home') }}" class="header-brand">
+          <img src="{{ url_for('static', filename='images/logo.png.png') }}" alt="Phi AI" class="header-logo">
+        </a>
+        <nav class="header-nav">
+          <a href="{{ url_for('account_home') }}" class="header-link">Dashboard</a>
+          <a href="{{ url_for('account_meetings') }}" class="header-link active">Meetings</a>
+          {% if phi_available %}
+          <a href="{{ url_for('ask_get') }}" class="header-link">Ask Phi</a>
+          {% else %}
+            <a href="#" class="header-link" aria-disabled="true" title="Phi is starting up" onclick="return false;" style="opacity: 0.5; cursor: not-allowed;">Ask Phi</a>
+          {% endif %}
+          <a href="{{ url_for('connect_apps_get') }}" class="header-link">Connect Apps</a>
+          <a href="{{ url_for('account_get') }}" class="header-link">Settings</a>
+          <a href="{{ url_for('logout') }}" class="header-link">Logout</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main-content enter">
+      <div class="card holo-border enter enter-delay-1">
+        <div class="card-header">
+          <h2 class="card-title">Transcript — {{ meeting.name or meeting_id }}</h2>
+        </div>
+        <div class="card-body">
+          <div class="top-actions">
+            <div style="display:flex; gap: var(--space-sm); flex-wrap: wrap;">
+              <a href="{{ url_for('account_meetings') }}" class="btn btn-sm btn-secondary">← Back</a>
+              <a href="{{ meeting_pdf_url }}" class="btn btn-sm btn-secondary" target="_blank">Meeting Summary PDF</a>
+              <a href="{{ transcript_pdf_url }}" class="btn btn-sm btn-secondary" target="_blank">Transcript PDF</a>
+              <a href="{{ transcript_txt_url }}" class="btn btn-sm btn-secondary" target="_blank">Transcript TXT</a>
+            </div>
+            <div style="display:flex; gap: var(--space-sm); flex-wrap: wrap; align-items: center;">
+              <button id="saveLabelsBtn" class="btn btn-sm btn-primary">Save speaker names</button>
+            </div>
+          </div>
+
+          <div style="margin-bottom: var(--space-lg);">
+            <audio id="meetingAudio" controls style="width: 100%;">
+              <source src="{{ audio_url }}" />
+            </audio>
+            <div style="margin-top: var(--space-xs); color: var(--text-secondary); font-size: var(--font-size-xs);">
+              Tip: click any utterance to jump audio to that timestamp.
+            </div>
+          </div>
+
+          <div class="transcript-layout">
+            <aside class="card" style="padding: var(--space-lg);">
+              <div style="display:flex; align-items:center; justify-content: space-between; gap: var(--space-sm); margin-bottom: var(--space-md);">
+                <div style="font-weight: var(--font-weight-semibold);">Speakers</div>
+                <button class="btn btn-sm btn-secondary" id="mergeHelpBtn" type="button">Merging?</button>
+              </div>
+              <div class="speaker-list" id="speakerList">
+                {% for s in speakers %}
+                <div class="speaker-row" data-speaker-raw="{{ s.raw }}">
+                  <small>Raw label: <code>{{ s.raw }}</code></small>
+                  <input
+                    type="text"
+                    value="{{ s.display }}"
+                    placeholder="Enter speaker name"
+                    data-speaker-input="{{ s.raw }}"
+                    data-default-display="{{ s.display }}"
+                    list="speakerSuggestions"
+                  />
+                </div>
+                {% endfor %}
+              </div>
+              <div style="margin-top: var(--space-md); color: var(--text-secondary); font-size: var(--font-size-xs); line-height: 1.4;">
+                Merging speakers: set multiple raw labels to the same name (e.g. two speakers both = “Carter Magnano”).
+              </div>
+            </aside>
+
+            <section>
+              {% for u in utterances %}
+              <div class="utterance" data-start="{{ u.start }}" data-speaker-raw="{{ u.speaker_raw }}">
+                <div class="utterance-header">
+                  <div class="speaker-chip" data-speaker-chip="{{ u.speaker_raw }}">
+                    <span class="speaker-display">{{ u.speaker_display }}</span>
+                    <code>{{ u.speaker_raw }}</code>
+                  </div>
+                  <div class="timestamp">{{ '%.1f'|format(u.start) }}s</div>
+                </div>
+                <div style="white-space: pre-wrap;">{{ u.text }}</div>
+              </div>
+              {% endfor %}
+            </section>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <datalist id="speakerSuggestions">
+    {% for opt in speaker_suggestions %}
+    <option value="{{ opt }}"></option>
+    {% endfor %}
+  </datalist>
+
+  <script>
+    const meetingId = {{ meeting_id|tojson }};
+    const defaultDisplayByRaw = {};
+    document.querySelectorAll('[data-speaker-input]').forEach((input) => {
+      const raw = input.getAttribute('data-speaker-input');
+      const def = input.getAttribute('data-default-display') || raw;
+      defaultDisplayByRaw[raw] = def;
+    });
+
+    function toast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 2800);
+    }
+
+    function currentLabelMap() {
+      const map = {};
+      document.querySelectorAll('[data-speaker-input]').forEach((input) => {
+        const raw = input.getAttribute('data-speaker-input');
+        const val = (input.value || '').trim();
+        // Empty = clear mapping (revert to default)
+        if (val) map[raw] = val;
+      });
+      return map;
+    }
+
+    function applyLabelMapToUI(map) {
+      // Update chips
+      document.querySelectorAll('[data-speaker-chip]').forEach((chip) => {
+        const raw = chip.getAttribute('data-speaker-chip');
+        const display = map[raw] || defaultDisplayByRaw[raw] || raw;
+        const span = chip.querySelector('.speaker-display');
+        if (span) span.textContent = display;
+      });
+    }
+
+    // Click utterance to jump audio
+    document.querySelectorAll('.utterance').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        const start = parseFloat(el.getAttribute('data-start') || '0');
+        const audio = document.getElementById('meetingAudio');
+        if (!audio) return;
+        try {
+          audio.currentTime = Math.max(0, start);
+          audio.play();
+        } catch (err) {
+          // ignore autoplay restrictions
+        }
+      });
+    });
+
+    // Click a speaker chip to focus the corresponding input
+    document.querySelectorAll('[data-speaker-chip]').forEach((chip) => {
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const raw = chip.getAttribute('data-speaker-chip');
+        const input = document.querySelector(`[data-speaker-input="${raw}"]`);
+        if (input) input.focus();
+      });
+    });
+
+    // Live update labels across transcript as user types
+    document.querySelectorAll('[data-speaker-input]').forEach((input) => {
+      input.addEventListener('input', () => {
+        applyLabelMapToUI(currentLabelMap());
+      });
+    });
+
+    document.getElementById('mergeHelpBtn').addEventListener('click', () => {
+      toast('To merge speakers, set multiple raw labels to the same name, then Save.');
+    });
+
+    // Save labels
+    document.getElementById('saveLabelsBtn').addEventListener('click', async () => {
+      const labels = currentLabelMap();
+      if (!Object.keys(labels).length) {
+        toast('Nothing to save yet (enter at least one name).');
+        return;
+      }
+
+      const btn = document.getElementById('saveLabelsBtn');
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      try {
+        const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/speaker_labels`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({labels})
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(data && (data.message || data.error) || 'Save failed');
+        }
+        toast('Saved. PDFs/transcript are regenerating.');
+      } catch (e) {
+        toast(String(e.message || e));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save speaker names';
+      }
+    });
+  </script>
+</body>
+</html>
+

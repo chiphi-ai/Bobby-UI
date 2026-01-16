@@ -70,7 +70,7 @@
           <a href="{{ url_for('account_home') }}" class="header-link">Dashboard</a>
           <a href="{{ url_for('account_meetings') }}" class="header-link">Meetings</a>
           {% if phi_available %}
-            <a href="{{ url_for('ask_get') }}" class="header-link">Ask Phi</a>
+          <a href="{{ url_for('ask_get') }}" class="header-link">Ask Phi</a>
           {% else %}
             <a href="#" class="header-link" aria-disabled="true" title="Phi is starting up" onclick="return false;" style="opacity: 0.5; cursor: not-allowed;">Ask Phi</a>
           {% endif %}

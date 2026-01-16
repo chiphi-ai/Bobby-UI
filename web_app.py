@@ -23,6 +23,7 @@ from urllib.parse import quote as url_encode
 from werkzeug.security import generate_password_hash, check_password_hash
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, PatternMatchingEventHandler
+from typing import Any, Optional
 
 # Load .env file if python-dotenv is available
 # override=True ensures .env file values take precedence over existing env vars
@@ -733,7 +734,7 @@ def detect_unknown_speakers(meeting: dict) -> dict:
     unknown_speakers = []
     has_unknown = False
     
-    # Check transcript file for "Unknown Speaker" labels
+    # Check transcript file for unknown / unlabeled speakers
     transcript_path = None
     if meeting.get("transcript_path"):
         transcript_path = ROOT / meeting["transcript_path"]
@@ -744,11 +745,23 @@ def detect_unknown_speakers(meeting: dict) -> dict:
     if transcript_path and transcript_path.exists():
         try:
             content = transcript_path.read_text(encoding="utf-8")
-            # Find all "Unknown Speaker N" patterns
-            import re
+            # Find all "Unknown Speaker N" patterns (preferred)
             unknown_pattern = r"Unknown Speaker \d+"
             matches = re.findall(unknown_pattern, content)
             unknown_speakers = sorted(list(set(matches)))  # Unique, sorted
+
+            # Fallback: if transcript is still diarization-labeled, surface those too
+            if not unknown_speakers:
+                diar_matches = re.findall(r"\bSPEAKER_\d+\b", content)
+                diar_matches = sorted(list(set(diar_matches)))
+                if diar_matches:
+                    unknown_speakers = diar_matches
+
+            # Legacy: plain "Unknown" label
+            if "Unknown:" in content and "Unknown Speaker" not in content:
+                if "Unknown" not in unknown_speakers:
+                    unknown_speakers.append("Unknown")
+
             has_unknown = len(unknown_speakers) > 0
         except Exception as e:
             print(f"Warning: Could not read transcript to detect unknown speakers: {e}")
@@ -783,6 +796,482 @@ def detect_unknown_speakers(meeting: dict) -> dict:
         "unknown_speakers": sorted(unknown_speakers),
         "unknown_speaker_count": len(unknown_speakers)
     }
+
+
+def _merge_consecutive_script_rows(rows: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    last: Optional[dict] = None
+    for r in rows:
+        txt = (r.get("text") or "").strip()
+        if not txt:
+            continue
+        if last and last.get("speaker_name") == r.get("speaker_name"):
+            last["text"] = (str(last.get("text") or "").strip() + " " + txt).strip()
+            last["end"] = r.get("end")
+        else:
+            last = dict(r)
+            out.append(last)
+    return out
+
+
+def _seed_label_map_from_named_json(meeting_id: str) -> dict[str, str]:
+    """Attempt to seed diarization speaker labels from output/<id>_named_script.json."""
+    seeded: dict[str, str] = {}
+    named_json_path = OUTPUT_DIR / f"{meeting_id}_named_script.json"
+    if not named_json_path.exists():
+        return seeded
+    try:
+        rows = json.loads(named_json_path.read_text(encoding="utf-8"))
+        for r in rows:
+            diar = (r.get("diarization_speaker") or "").strip()
+            spk = (r.get("speaker_name") or "").strip()
+            if diar and spk and spk != "Unknown":
+                seeded[diar] = spk
+    except Exception:
+        return {}
+    return seeded
+
+
+def _unknown_map_from_utterances(utterances: list[dict]) -> tuple[dict[str, str], dict[str, str], list[str]]:
+    """Return (unknown_by_raw, raw_by_unknown, speakers_in_order)."""
+    speakers_in_order: list[str] = []
+    for u in utterances:
+        s = (u.get("speaker") or "").strip()
+        if not s:
+            continue
+        if s not in speakers_in_order:
+            speakers_in_order.append(s)
+    unknown_by_raw: dict[str, str] = {raw: f"Unknown Speaker {i+1}" for i, raw in enumerate(speakers_in_order)}
+    raw_by_unknown: dict[str, str] = {v: k for k, v in unknown_by_raw.items()}
+    return unknown_by_raw, raw_by_unknown, speakers_in_order
+
+
+def _build_labeled_script_from_utterances(meeting_id: str, meeting: dict, raw_label_overrides: dict[str, str]) -> dict[str, Any]:
+    """
+    Build labeled script assets from utterances.json + existing labels.
+    Returns dict with paths + computed rows.
+    """
+    utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
+    if not utterances_path.exists():
+        raise FileNotFoundError(f"Utterances not found: {utterances_path}")
+    utterances = json.loads(utterances_path.read_text(encoding="utf-8"))
+    if not isinstance(utterances, list):
+        raise ValueError("utterances.json must be a list")
+
+    unknown_by_raw, raw_by_unknown, speakers_in_order = _unknown_map_from_utterances(utterances)
+    seeded = _seed_label_map_from_named_json(meeting_id)
+
+    stored_map: dict[str, str] = meeting.get("speaker_label_map", {}) if isinstance(meeting.get("speaker_label_map"), dict) else {}
+    stored_map_raw: dict[str, str] = {}
+    for k, v in stored_map.items():
+        if not isinstance(k, str) or not isinstance(v, str):
+            continue
+        key = k.strip()
+        val = v.strip()
+        if not val:
+            continue
+        if key in unknown_by_raw:
+            stored_map_raw[key] = val
+        elif key in raw_by_unknown:
+            stored_map_raw[raw_by_unknown[key]] = val
+
+    # Effective mapping: Unknown Speaker N defaults -> seeded names -> stored names -> API overrides
+    effective: dict[str, str] = dict(unknown_by_raw)
+    effective.update(seeded)
+    effective.update(stored_map_raw)
+    effective.update(raw_label_overrides)
+
+    rows: list[dict] = []
+    for u in utterances:
+        raw = (u.get("speaker") or "").strip()
+        start = float(u.get("start", 0.0) or 0.0)
+        end = float(u.get("end", 0.0) or 0.0)
+        txt = (u.get("text") or "").strip()
+        if not txt:
+            continue
+        speaker_name = (effective.get(raw) or raw or "Unknown").strip()
+        if speaker_name == "Unknown":
+            # Normalize legacy Unknown to Unknown Speaker 1
+            speaker_name = "Unknown Speaker 1"
+        rows.append({
+            "start": start,
+            "end": end,
+            "speaker_name": speaker_name,
+            "text": txt,
+            "diarization_speaker": raw or f"SPEAKER_{len(rows)}",
+            "is_unknown": speaker_name.startswith("Unknown Speaker"),
+        })
+
+    rows = _merge_consecutive_script_rows(rows)
+    return {
+        "utterances_path": utterances_path,
+        "named_txt_path": OUTPUT_DIR / f"{meeting_id}_named_script.txt",
+        "named_json_path": OUTPUT_DIR / f"{meeting_id}_named_script.json",
+        "transcript_pdf_path": OUTPUT_DIR / f"{meeting_id}_transcript.pdf",
+        "meeting_report_pdf_path": OUTPUT_DIR / f"{meeting_id}_meeting_report.pdf",
+        "rows": rows,
+        "speakers_in_order": speakers_in_order,
+        "unknown_by_raw": unknown_by_raw,
+    }
+
+
+def _write_named_script_assets(named_txt_path: Path, named_json_path: Path, rows: list[dict]) -> None:
+    named_txt_path.parent.mkdir(parents=True, exist_ok=True)
+    named_json_path.parent.mkdir(parents=True, exist_ok=True)
+    named_json_path.write_text(json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8")
+    lines = [f"{r.get('speaker_name', 'Unknown')}: {r.get('text', '')}".strip() for r in rows]
+    named_txt_path.write_text("\n\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _regenerate_transcript_pdf_from_named_json(meeting_id: str, named_json_path: Path) -> Optional[Path]:
+    try:
+        from email_named_script import create_pdf as _create_pdf, read_db as _read_db
+        people = {}
+        try:
+            # emails.csv may not exist in all deployments; PDF generation still works without it
+            people = _read_db(Path("input") / "emails.csv")
+        except Exception:
+            people = {}
+        out_pdf = OUTPUT_DIR / f"{meeting_id}_transcript.pdf"
+        ok = _create_pdf(named_json_path, people, out_pdf)
+        if ok and out_pdf.exists() and out_pdf.stat().st_size > 0:
+            return out_pdf
+    except Exception as e:
+        print(f"[TRANSCRIPT PDF] Could not generate transcript PDF: {e}")
+    return None
+
+
+def _regenerate_meeting_report_pdf_from_transcript(meeting_id: str, meeting: dict, transcript_path: Path) -> Optional[Path]:
+    """Regenerate the meeting report PDF (summary) using meeting_pdf_summarizer/main.py."""
+    summarizer_main = ROOT / "meeting_pdf_summarizer" / "main.py"
+    roles_json = ROOT / "meeting_pdf_summarizer" / "roles.json"
+    if not summarizer_main.exists():
+        return None
+    try:
+        upload_date = meeting.get("processed_at") or datetime.now().isoformat()
+        source_orgs = meeting.get("source_organizations", [])
+        source_orgs_str = ",".join(source_orgs) if source_orgs else ""
+
+        out_pdf = OUTPUT_DIR / f"{meeting_id}_meeting_report.pdf"
+        PY = sys.executable
+        cmd = [PY, str(summarizer_main),
+               "--input", str(transcript_path),
+               "--output", str(out_pdf),
+               "--roles", str(roles_json)]
+        if upload_date:
+            cmd.extend(["--upload-date", upload_date])
+        if source_orgs_str:
+            cmd.extend(["--source-organizations", source_orgs_str])
+
+        result = subprocess.run(
+            cmd,
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if result.returncode != 0:
+            print(f"[MEETING REPORT] PDF generation failed: {result.stderr}")
+            return None
+        if out_pdf.exists() and out_pdf.stat().st_size > 0:
+            return out_pdf
+    except Exception as e:
+        print(f"[MEETING REPORT] Could not regenerate meeting report PDF: {e}")
+    return None
+
+
+def _resolve_username_for_label(label_name: str) -> Optional[str]:
+    """Best-effort: map a display name/username string to a known username in users.csv."""
+    name = (label_name or "").strip()
+    if not name:
+        return None
+    try:
+        users = read_users()
+        # Direct username match
+        for _, u in users.items():
+            username = (u.get("username") or "").strip()
+            if username and username.lower() == name.lower():
+                return username
+        # Full name match
+        for _, u in users.items():
+            username = (u.get("username") or "").strip()
+            first = (u.get("first") or "").strip()
+            last = (u.get("last") or "").strip()
+            if username and first and last:
+                if f"{first} {last}".strip().lower() == name.lower():
+                    return username
+    except Exception:
+        return None
+    return None
+
+
+def _ensure_meeting_wav_16k(meeting_id: str, meeting: dict) -> Optional[Path]:
+    """Ensure output/<meeting_id>_16k.wav exists; attempt to create from meeting audio if missing."""
+    out_wav = OUTPUT_DIR / f"{meeting_id}_16k.wav"
+    if out_wav.exists() and out_wav.stat().st_size > 0:
+        return out_wav
+
+    # Resolve audio source
+    audio_src = None
+    if meeting.get("audio_path"):
+        candidate = ROOT / str(meeting["audio_path"])
+        if candidate.exists():
+            audio_src = candidate
+    if audio_src is None:
+        # Fallback to input directory common extensions
+        for ext in [".webm", ".m4a", ".mp4", ".wav", ".mp3", ".mov", ".aac", ".flac", ".ogg"]:
+            c = INPUT_DIR / f"{meeting_id}{ext}"
+            if c.exists():
+                audio_src = c
+                break
+    if audio_src is None:
+        return None
+
+    try:
+        out_wav.parent.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(audio_src),
+            "-vn",
+            "-ac", "1",
+            "-ar", "16000",
+            "-c:a", "pcm_s16le",
+            str(out_wav),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"[LEARN] ffmpeg convert failed: {result.stderr}")
+            return None
+        if out_wav.exists() and out_wav.stat().st_size > 0:
+            return out_wav
+    except Exception as e:
+        print(f"[LEARN] Could not create 16k wav: {e}")
+    return None
+
+
+def _try_learn_enrollment_from_meeting(meeting_id: str, meeting: dict, raw_speaker: str, label_name: str) -> bool:
+    """
+    Best-effort "global learning": if label_name matches a known user (username or full name),
+    extract ~30s of audio for this diarization speaker and save it into enroll/ as an additional sample.
+    """
+    username = _resolve_username_for_label(label_name)
+    if not username:
+        return False
+
+    utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
+    if not utterances_path.exists():
+        return False
+    try:
+        utterances = json.loads(utterances_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if not isinstance(utterances, list):
+        return False
+
+    wav16k = _ensure_meeting_wav_16k(meeting_id, meeting)
+    if not wav16k:
+        return False
+
+    # Collect segments for this speaker until >= 30s total
+    segments = []
+    total = 0.0
+    for u in utterances:
+        if (u.get("speaker") or "").strip() != raw_speaker:
+            continue
+        start = float(u.get("start", 0.0) or 0.0)
+        end = float(u.get("end", 0.0) or 0.0)
+        dur = max(0.0, end - start)
+        if dur < 0.6:
+            continue
+        segments.append((start, end))
+        total += dur
+        if total >= 32.0:
+            break
+
+    if total < 30.0:
+        # Enrollment requires >= 30s to be used by identify_speakers.py
+        return False
+
+    tmp_dir = OUTPUT_DIR / "_learn_segs" / meeting_id / raw_speaker
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    seg_files = []
+    try:
+        for i, (start, end) in enumerate(segments):
+            seg_path = tmp_dir / f"seg_{i:03d}.wav"
+            dur = max(0.01, end - start)
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", f"{start:.3f}",
+                "-t", f"{dur:.3f}",
+                "-i", str(wav16k),
+                "-ac", "1",
+                "-ar", "16000",
+                "-c:a", "pcm_s16le",
+                str(seg_path),
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                return False
+            seg_files.append(seg_path)
+
+        # Concat segments into one wav
+        list_file = tmp_dir / "concat.txt"
+        list_file.write_text("\n".join([f"file '{p.as_posix()}'" for p in seg_files]) + "\n", encoding="utf-8")
+        concat_path = tmp_dir / "concat.wav"
+        cmd_concat = [
+            "ffmpeg", "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(list_file),
+            "-c", "copy",
+            str(concat_path),
+        ]
+        result = subprocess.run(cmd_concat, capture_output=True, text=True)
+        if result.returncode != 0:
+            return False
+        if not concat_path.exists() or concat_path.stat().st_size == 0:
+            return False
+
+        # Pick an available enrollment filename: username.wav, username(2).wav, ...
+        ENROLL_DIR.mkdir(parents=True, exist_ok=True)
+        n = 1
+        while True:
+            name = f"{username}.wav" if n == 1 else f"{username}({n}).wav"
+            dest = ENROLL_DIR / name
+            if not dest.exists():
+                shutil.copyfile(concat_path, dest)
+                print(f"[LEARN] Added enrollment sample: {dest.name} (from {meeting_id} {raw_speaker})")
+                return True
+            n += 1
+            if n > 25:
+                return False
+    except Exception as e:
+        print(f"[LEARN] Failed to learn enrollment sample: {e}")
+        return False
+    finally:
+        # Clean up temp directory best-effort
+        try:
+            if tmp_dir.exists():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+
+@app.post("/api/meetings/<meeting_id>/speaker_labels")
+def api_save_speaker_labels(meeting_id: str):
+    """Save diarization-speaker label mapping (raw diarization label -> display name) and regenerate assets."""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+
+    user = current_user()
+    editor_email = (user.get("email") if user else None) or session.get("user_email") or "unknown"
+
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        return jsonify({"error": "Meeting not found"}), 404
+
+    data = request.get_json() or {}
+    labels = data.get("labels", {})
+    if not isinstance(labels, dict):
+        return jsonify({"error": "Labels must be a dictionary"}), 400
+
+    utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
+    if not utterances_path.exists():
+        return jsonify({"error": "Utterances not found"}), 404
+    try:
+        utterances = json.loads(utterances_path.read_text(encoding="utf-8"))
+    except Exception:
+        return jsonify({"error": "Invalid utterances.json"}), 500
+    if not isinstance(utterances, list):
+        return jsonify({"error": "utterances.json must be a list"}), 500
+
+    unknown_by_raw, raw_by_unknown, speakers_in_order = _unknown_map_from_utterances(utterances)
+    known_raw = set(speakers_in_order)
+
+    raw_overrides: dict[str, str] = {}
+    for k, v in labels.items():
+        if not isinstance(k, str):
+            continue
+        name = (v or "")
+        if not isinstance(name, str):
+            continue
+        name = name.strip()
+        if not name:
+            continue  # empty means "clear" (handled client-side by omitting)
+        key = k.strip()
+        # Accept raw diarization labels and Unknown Speaker N keys
+        if key in known_raw:
+            raw_overrides[key] = name
+        elif key in raw_by_unknown:
+            raw_overrides[raw_by_unknown[key]] = name
+
+    if not raw_overrides:
+        return jsonify({"error": "No valid labels provided"}), 400
+
+    # Persist mapping (raw diarization label -> display name) + history
+    existing_map = meeting.get("speaker_label_map", {}) if isinstance(meeting.get("speaker_label_map"), dict) else {}
+    # Normalize: keep only string->string
+    normalized_existing: dict[str, str] = {}
+    for kk, vv in existing_map.items():
+        if isinstance(kk, str) and isinstance(vv, str) and vv.strip():
+            normalized_existing[kk.strip()] = vv.strip()
+
+    normalized_existing.update(raw_overrides)
+
+    labels_version = int(meeting.get("labels_version", 0) or 0) + 1
+    history = meeting.get("speaker_label_map_history", [])
+    if not isinstance(history, list):
+        history = []
+    history.append({
+        "version": labels_version,
+        "updated_at": datetime.now().isoformat(),
+        "updated_by": str(editor_email),
+        "labels": dict(raw_overrides),
+    })
+
+    # Regenerate assets (named_script txt/json + transcript pdf + meeting report pdf)
+    try:
+        assets = _build_labeled_script_from_utterances(meeting_id, meeting, normalized_existing)
+        _write_named_script_assets(assets["named_txt_path"], assets["named_json_path"], assets["rows"])
+        transcript_pdf = _regenerate_transcript_pdf_from_named_json(meeting_id, assets["named_json_path"])
+        meeting_report_pdf = _regenerate_meeting_report_pdf_from_transcript(meeting_id, meeting, assets["named_txt_path"])
+    except Exception as e:
+        return jsonify({"error": "Regeneration failed", "message": str(e)}), 500
+
+    # Best-effort: "global learning" by adding enrollment samples when the label matches an existing user
+    learned = {}
+    for raw, name in raw_overrides.items():
+        try:
+            learned[raw] = bool(_try_learn_enrollment_from_meeting(meeting_id, meeting, raw, name))
+        except Exception:
+            learned[raw] = False
+
+    update_meeting(meeting_id, {
+        "speaker_label_map": normalized_existing,
+        "speaker_label_map_history": history,
+        "labels_updated_at": datetime.now().isoformat(),
+        "labels_version": labels_version,
+        "transcript_path": str((OUTPUT_DIR / f"{meeting_id}_named_script.txt").relative_to(ROOT)),
+        "transcript_updated_at": datetime.now().isoformat(),
+        "transcript_pdf_path": str((OUTPUT_DIR / f"{meeting_id}_transcript.pdf").relative_to(ROOT)) if transcript_pdf else meeting.get("transcript_pdf_path"),
+        "pdf_path": str((OUTPUT_DIR / f"{meeting_id}_meeting_report.pdf").relative_to(ROOT)) if meeting_report_pdf else meeting.get("pdf_path"),
+        "pdf_updated_at": datetime.now().isoformat() if meeting_report_pdf else meeting.get("pdf_updated_at"),
+    })
+
+    meeting = get_meeting(meeting_id) or meeting
+    return jsonify({
+        "status": "success",
+        "meeting": meeting,
+        "labels_version": labels_version,
+        "regenerated": {
+            "named_script_txt": str(OUTPUT_DIR / f"{meeting_id}_named_script.txt"),
+            "named_script_json": str(OUTPUT_DIR / f"{meeting_id}_named_script.json"),
+            "transcript_pdf": bool(transcript_pdf),
+            "meeting_report_pdf": bool(meeting_report_pdf),
+            "learned_enrollment": learned,
+        }
+    }), 200
 
 def get_user_meetings(user_email: str) -> list:
     """Get all meetings where user is a participant."""
@@ -2078,24 +2567,25 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
         print(f"Using custom vocabulary for user: {user_email}")
     
     # Run transcription (required)
-    try:
-        result = subprocess.run(
+        try:
+            result = subprocess.run(
             cmd1,
-            cwd=ROOT,
-            env=env,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace"
-        )
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace"
+            )
     except Exception as e:
         print(f"Error running command {' '.join(cmd1)}: {e}")
         print(f"\n❌ Pipeline stopped (exit 1)")
         return
-    if result.returncode != 0:
+
+            if result.returncode != 0:
         print(f"Command failed: {' '.join(cmd1)}")
-        print(f"STDOUT: {result.stdout}")
-        print(f"STDERR: {result.stderr}")
+                print(f"STDOUT: {result.stdout}")
+                print(f"STDERR: {result.stderr}")
         print(f"\n❌ Pipeline stopped (exit {result.returncode})")
         return
 
@@ -2111,7 +2601,7 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
             encoding="utf-8",
             errors="replace"
         )
-    except Exception as e:
+        except Exception as e:
         speaker_id_ok = False
         print(f"Error running command {' '.join(cmd2)}: {e}")
     else:
@@ -3744,13 +4234,131 @@ def account_post():
 
 @app.get("/meeting/<meeting_id>/transcript")
 def meeting_transcript(meeting_id: str):
-    """Serve meeting transcript file"""
+    """Interactive transcript view (HTML) built from utterances + speaker label map."""
+    if not require_login():
+        return ("Not logged in", 401)
+
+    meeting = get_meeting(meeting_id) or {}
+
+    utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
+    if not utterances_path.exists():
+        return ("Utterances not found", 404)
+
+    try:
+        utterances = json.loads(utterances_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ("Invalid utterances.json", 500)
+
+    # Attempt to seed labels from identify_speakers output if present
+    seeded_label_map: dict[str, str] = {}
+    named_json_path = OUTPUT_DIR / f"{meeting_id}_named_script.json"
+    if named_json_path.exists():
+        try:
+            labeled_rows = json.loads(named_json_path.read_text(encoding="utf-8"))
+            for r in labeled_rows:
+                diar = (r.get("diarization_speaker") or "").strip()
+                spk = (r.get("speaker_name") or "").strip()
+                if diar and spk and spk != "Unknown":
+                    seeded_label_map[diar] = spk
+        except Exception:
+            seeded_label_map = {}
+
+    # Build stable Unknown Speaker numbering based on first appearance order of diarization labels
+    speakers_in_order: list[str] = []
+    for u in utterances:
+        s = (u.get("speaker") or "").strip()
+        if not s:
+            continue
+        if s not in speakers_in_order:
+            speakers_in_order.append(s)
+
+    unknown_by_raw: dict[str, str] = {raw: f"Unknown Speaker {i+1}" for i, raw in enumerate(speakers_in_order)}
+    raw_by_unknown: dict[str, str] = {v: k for k, v in unknown_by_raw.items()}
+
+    stored_map: dict[str, str] = meeting.get("speaker_label_map", {}) if isinstance(meeting.get("speaker_label_map"), dict) else {}
+    # Back-compat: older flows store Unknown Speaker N -> Name. Convert to raw-keyed mapping for display.
+    stored_map_raw: dict[str, str] = {}
+    for k, v in stored_map.items():
+        if not isinstance(k, str) or not isinstance(v, str):
+            continue
+        key = k.strip()
+        val = v.strip()
+        if not val:
+            continue
+        if key in unknown_by_raw:
+            stored_map_raw[key] = val
+        elif key in raw_by_unknown:
+            stored_map_raw[raw_by_unknown[key]] = val
+
+    effective_map: dict[str, str] = dict(unknown_by_raw)
+    effective_map.update(seeded_label_map)
+    effective_map.update(stored_map_raw)
+
+    # Build a compact speaker list for the sidebar
+    speakers = [{"raw": raw, "display": effective_map.get(raw, raw)} for raw in speakers_in_order]
+
+    # Add display field to utterances for template rendering
+    rendered_utterances = []
+    for u in utterances:
+        raw = (u.get("speaker") or "").strip()
+        rendered_utterances.append({
+            "start": float(u.get("start", 0.0) or 0.0),
+            "end": float(u.get("end", 0.0) or 0.0),
+            "speaker_raw": raw,
+            "speaker_display": effective_map.get(raw, raw),
+            "text": (u.get("text") or ""),
+        })
+
+    # Suggestions for autocomplete (usernames + full names)
+    suggestions = []
+    try:
+        users = read_users()
+        for email, u in users.items():
+            username = (u.get("username") or "").strip()
+            first = (u.get("first") or "").strip()
+            last = (u.get("last") or "").strip()
+            if username:
+                suggestions.append(username)
+            if first and last:
+                suggestions.append(f"{first} {last}")
+    except Exception:
+        suggestions = []
+
+    return render_template(
+        "meeting_transcript.html",
+        meeting_id=meeting_id,
+        meeting=meeting,
+        speakers=speakers,
+        utterances=rendered_utterances,
+        audio_url=url_for("meeting_audio", meeting_id=meeting_id),
+        meeting_pdf_url=url_for("meeting_pdf", meeting_id=meeting_id),
+        transcript_txt_url=url_for("meeting_transcript_txt", meeting_id=meeting_id),
+        transcript_pdf_url=url_for("meeting_transcript_pdf", meeting_id=meeting_id),
+        seeded_label_map=seeded_label_map,
+        speaker_suggestions=sorted(list(set(suggestions)), key=lambda x: x.lower()),
+    )
+
+
+@app.get("/meeting/<meeting_id>/transcript.txt")
+def meeting_transcript_txt(meeting_id: str):
+    """Download labeled transcript text."""
     if not require_login():
         return ("Not logged in", 401)
     transcript_path = OUTPUT_DIR / f"{meeting_id}_named_script.txt"
     if transcript_path.exists():
-        return send_from_directory(OUTPUT_DIR, f"{meeting_id}_named_script.txt")
+        return send_from_directory(OUTPUT_DIR, transcript_path.name)
     return ("Transcript not found", 404)
+
+
+@app.get("/meeting/<meeting_id>/transcript.pdf")
+def meeting_transcript_pdf(meeting_id: str):
+    """Download transcript-only PDF (not the meeting summary report)."""
+    if not require_login():
+        return ("Not logged in", 401)
+    pdf_path = OUTPUT_DIR / f"{meeting_id}_transcript.pdf"
+    if pdf_path.exists():
+        return send_from_directory(OUTPUT_DIR, pdf_path.name)
+    return ("Transcript PDF not found", 404)
 
 @app.get("/meeting/<meeting_id>/audio")
 def meeting_audio(meeting_id: str):
