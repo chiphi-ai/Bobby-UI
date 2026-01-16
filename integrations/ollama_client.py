@@ -116,6 +116,8 @@ def generate_response(
         "options": {
             "temperature": 0.7,
             "top_p": 0.9,
+            # Keep responses snappy by default
+            "num_predict": 512,
         }
     }
     
@@ -127,7 +129,7 @@ def generate_response(
             f"{OLLAMA_BASE_URL}/api/generate",
             json=payload,
             stream=stream,
-            timeout=300
+            timeout=60
         )
         
         if response.status_code != 200:
@@ -209,7 +211,8 @@ def generate_conversational_response(
             "top_p": 0.95,  # Higher for more diverse responses
             "top_k": 40,  # Better token selection
             "repeat_penalty": 1.1,  # Reduce repetition
-            "num_predict": 2048,  # Allow longer responses
+            # Keep responses snappy by default (can be increased later if needed)
+            "num_predict": 512,
         }
     }
     
@@ -221,7 +224,7 @@ def generate_conversational_response(
             f"{OLLAMA_BASE_URL}/api/generate",
             json=payload,
             stream=stream,
-            timeout=300
+            timeout=60
         )
         
         if response.status_code != 200:

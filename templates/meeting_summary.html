@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Meeting Summary — Phi AI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <style>
+    .summary-wrap { max-width: 980px; margin: 0 auto; }
+    .summary-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--shadow-sm);
+      padding: var(--space-xl);
+    }
+    .summary-meta { color: var(--text-secondary); font-size: var(--font-size-sm); margin-top: 6px; }
+    .summary-output {
+      margin-top: var(--space-lg);
+      white-space: pre-wrap;
+      line-height: 1.6;
+      font-size: var(--font-size-base);
+      background: var(--bg-primary);
+      border: 1px solid var(--border-light);
+      border-radius: var(--border-radius);
+      padding: var(--space-lg);
+      min-height: 240px;
+    }
+    .pill {
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border-light);
+      background: rgba(0, 122, 255, 0.08);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .error-pill { background: rgba(255, 59, 48, 0.10); color: var(--error); }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <img src="{{ url_for('static', filename='images/logo.png.png') }}" alt="Phi AI" />
+        </div>
+        <nav class="nav-links">
+          <a href="{{ url_for('account_home') }}" class="header-link">Home</a>
+          <a href="{{ url_for('account_meetings') }}" class="header-link">All Meetings</a>
+          <a href="{{ url_for('ask_get') }}" class="header-link">Ask Phi</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <div class="summary-wrap">
+        <div style="display:flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: var(--space-lg);">
+          <div>
+            <h2 style="margin: 0;">Meeting Summary (AI)</h2>
+            <div class="summary-meta">
+              {{ meeting.name or meeting_id }}
+              {% if meeting.processed_at %} • {{ meeting.processed_at[:10] }}{% endif %}
+              • ID: {{ meeting_id }}
+            </div>
+            {% if cached_generated_at %}
+              <div class="summary-meta">Last generated: {{ cached_generated_at[:19].replace('T',' ') }}</div>
+            {% endif %}
+          </div>
+
+          <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
+            {% if ollama_ready %}
+              <span class="pill">Φ Ready</span>
+            {% else %}
+              <span class="pill error-pill" title="{{ ollama_error or '' }}">Φ Unavailable</span>
+            {% endif %}
+            <button type="button" id="regenBtn" class="btn btn-primary">Generate / Regenerate</button>
+          </div>
+        </div>
+
+        <div class="summary-card">
+          <div id="status" class="summary-meta"></div>
+          <div id="summary" class="summary-output">{% if cached_summary %}{{ cached_summary }}{% else %}No summary generated yet. Click “Generate / Regenerate”.{% endif %}</div>
+        </div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        <p>&copy; 2026 Phi AI. All rights reserved.</p>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    const meetingId = {{ meeting_id|tojson }};
+    const OLLAMA_READY = {{ (ollama_ready | tojson) if ollama_ready is not none else "false" }};
+
+    const statusEl = document.getElementById('status');
+    const summaryEl = document.getElementById('summary');
+    const regenBtn = document.getElementById('regenBtn');
+
+    async function generateSummary(force=false) {
+      if (!OLLAMA_READY) {
+        statusEl.textContent = 'Phi is unavailable. Start Ollama and refresh.';
+        return;
+      }
+      regenBtn.disabled = true;
+      regenBtn.textContent = 'Generating...';
+      statusEl.textContent = 'Generating summary...';
+      try {
+        const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/summary`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ force: !!force })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error((data && (data.message || data.error)) || 'Failed to generate summary');
+        }
+        summaryEl.textContent = data.summary || '';
+        statusEl.textContent = (data.status === 'cached') ? 'Loaded cached summary.' : 'Summary generated.';
+      } catch (e) {
+        statusEl.textContent = `Error: ${e.message || e}`;
+        // Keep whatever is already displayed in the summary box (cached or placeholder)
+      } finally {
+        regenBtn.disabled = false;
+        regenBtn.textContent = 'Generate / Regenerate';
+      }
+    }
+
+    regenBtn.addEventListener('click', () => generateSummary(true));
+
+    // Auto-generate if empty
+    if (!summaryEl.textContent.trim() || summaryEl.textContent.trim().toLowerCase().startsWith('no summary generated yet')) {
+      generateSummary(false);
+    } else {
+      statusEl.textContent = 'Loaded cached summary.';
+    }
+  </script>
+</body>
+</html>
+

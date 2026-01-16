@@ -255,8 +255,8 @@ def retrieve_meeting_context_smart(
     user_email: str,
     query: str,
     conversation_history: Optional[List[Dict[str, Any]]] = None,
-    max_meetings: int = 15,
-    max_chars_per_meeting: int = 2500
+    max_meetings: int = 3,
+    max_chars_per_meeting: int = 800
 ) -> str:
     """
     Intelligently retrieve meeting context based on query and conversation history.
@@ -281,7 +281,10 @@ def retrieve_meeting_context_smart(
         user_meetings = filter_meetings_by_time(user_meetings, time_filter)
     
     # Search by keywords (more intelligent search)
+    # Performance guard: keyword search reads transcripts, so cap the candidate set.
     if len(query.split()) > 0:
+        if not time_filter and len(user_meetings) > 30:
+            user_meetings = user_meetings[:30]
         user_meetings = search_meetings_by_keywords(user_meetings, all_text)
     
     # Prioritize recent meetings if no specific time filter

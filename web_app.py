@@ -5347,6 +5347,191 @@ def meeting_pdf(meeting_id: str):
         return send_from_directory(OUTPUT_DIR, f"{meeting_id}_transcript.pdf")
     return ("PDF not found", 404)
 
+
+@app.get("/meeting/<meeting_id>/summary")
+def meeting_summary(meeting_id: str):
+    """AI meeting summarization page (HTML)."""
+    if not require_login():
+        return redirect(url_for("login_get"))
+
+    user = current_user()
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        return ("Meeting not found", 404)
+
+    # Basic authorization: participant only
+    user_email = (user.get("email") if user else "").lower()
+    participants = [
+        (p.lower() if isinstance(p, str) else (p.get("email", "").lower() if isinstance(p, dict) else ""))
+        for p in meeting.get("participants", [])
+    ]
+    if user_email and participants and user_email not in participants:
+        return ("Unauthorized", 403)
+
+    # Cached summary (if available)
+    cached = meeting.get("ai_summary")
+    cached_text = ""
+    cached_at = ""
+    if isinstance(cached, dict):
+        cached_text = str(cached.get("text") or "")
+        cached_at = str(cached.get("generated_at") or "")
+
+    # Ollama readiness for UI
+    try:
+        from integrations.ollama_client import get_ollama_status_cached
+        ollama_ready, ollama_error = get_ollama_status_cached()
+    except Exception as e:
+        ollama_ready, ollama_error = False, f"Error checking Ollama: {str(e)}"
+
+    return render_template(
+        "meeting_summary.html",
+        user=user,
+        meeting_id=meeting_id,
+        meeting=meeting,
+        cached_summary=cached_text,
+        cached_generated_at=cached_at,
+        ollama_ready=ollama_ready,
+        ollama_error=ollama_error,
+    )
+
+
+def _get_meeting_transcript_text_for_summary(meeting_id: str, meeting: dict) -> str:
+    """
+    Fetch a transcript-like text for summarization.
+    Prefers labeled transcript (named_script), falls back to utterances.json.
+    """
+    # Prefer meeting's transcript_path if present
+    path = None
+    try:
+        if isinstance(meeting.get("transcript_path"), str) and meeting.get("transcript_path"):
+            path = ROOT / str(meeting.get("transcript_path"))
+        else:
+            path = OUTPUT_DIR / f"{meeting_id}_named_script.txt"
+        if path and path.exists():
+            return path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+    # Fallback: utterances
+    try:
+        utter_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
+        if utter_path.exists():
+            utterances = json.loads(utter_path.read_text(encoding="utf-8"))
+            if isinstance(utterances, list):
+                lines = []
+                for u in utterances:
+                    if not isinstance(u, dict):
+                        continue
+                    spk = str(u.get("speaker") or "").strip() or "Speaker"
+                    txt = str(u.get("text") or "").strip()
+                    if not txt:
+                        continue
+                    lines.append(f"{spk}: {txt}")
+                return "\n".join(lines)
+    except Exception:
+        pass
+
+    return ""
+
+
+@app.post("/api/meetings/<meeting_id>/summary")
+def api_meeting_summary(meeting_id: str):
+    """Generate and cache an AI summary for a meeting."""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+
+    user = current_user()
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        return jsonify({"error": "Meeting not found"}), 404
+
+    # Basic authorization: participant only
+    user_email = (user.get("email") if user else "").lower()
+    participants = [
+        (p.lower() if isinstance(p, str) else (p.get("email", "").lower() if isinstance(p, dict) else ""))
+        for p in meeting.get("participants", [])
+    ]
+    if user_email and participants and user_email not in participants:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(silent=True) or {}
+    force = bool(data.get("force"))
+
+    # Return cached unless forced
+    cached = meeting.get("ai_summary")
+    if not force and isinstance(cached, dict) and cached.get("text"):
+        return jsonify({
+            "status": "cached",
+            "summary": str(cached.get("text") or ""),
+            "generated_at": str(cached.get("generated_at") or ""),
+        }), 200
+
+    # Ensure Ollama is up
+    try:
+        from integrations.ollama_client import check_ollama_health, check_model_available, generate_response_non_streaming
+        is_healthy, health_error = check_ollama_health(timeout=1.5)
+        model_ok, model_error = check_model_available(timeout=1.5) if is_healthy else (False, None)
+        if not (is_healthy and model_ok):
+            return jsonify({"error": "Phi unavailable", "message": health_error or model_error or "Ollama is not ready"}), 503
+    except Exception as e:
+        return jsonify({"error": "Phi unavailable", "message": str(e)}), 503
+
+    meeting_name = str(meeting.get("name") or meeting_id)
+    transcript_text = _get_meeting_transcript_text_for_summary(meeting_id, meeting)
+    transcript_text = (transcript_text or "").strip()
+    if not transcript_text:
+        return jsonify({"error": "Transcript not found", "message": "No transcript available to summarize yet."}), 404
+
+    # Keep prompt bounded for speed (smaller = faster + less likely to time out)
+    max_chars = 6000
+    excerpt = transcript_text[:max_chars]
+    if len(transcript_text) > max_chars:
+        excerpt += "\n\n[... truncated ...]"
+
+    system_prompt = (
+        "You are Phi, an assistant that writes concise, accurate meeting summaries.\n"
+        "Rules:\n"
+        "- Do NOT invent facts.\n"
+        "- Only use information present in the transcript excerpt.\n"
+        "- Be concise and structured.\n"
+        "- If something is unclear, say so.\n"
+        "Output format:\n"
+        "Summary:\n"
+        "- ...\n\n"
+        "Decisions:\n"
+        "- ...\n\n"
+        "Action Items:\n"
+        "- [Owner] ... (Due: ... if mentioned)\n\n"
+        "Risks / Open Questions:\n"
+        "- ...\n"
+    )
+    prompt = (
+        f"Meeting title: {meeting_name}\n\n"
+        f"Transcript excerpt:\n{excerpt}\n\n"
+        "Write the meeting summary now."
+    )
+
+    try:
+        summary_text = generate_response_non_streaming(prompt=prompt, system_prompt=system_prompt, context=None).strip()
+    except Exception as e:
+        return jsonify({"error": "Generation failed", "message": str(e)}), 500
+
+    # Treat common Ollama errors/timeouts as failures (do NOT cache them as "summaries")
+    lowered = summary_text.lower()
+    if summary_text.startswith("Error:") or "timed out" in lowered or "timeout" in lowered:
+        return jsonify({
+            "error": "Phi timed out",
+            "message": summary_text.strip() or "Phi timed out while generating the summary. Please try again.",
+        }), 504
+
+    now = datetime.now().isoformat()
+    update_meeting(meeting_id, {
+        "ai_summary": {"text": summary_text, "generated_at": now},
+        "ai_summary_updated_at": now,
+    })
+
+    return jsonify({"status": "success", "summary": summary_text, "generated_at": now}), 200
+
 @app.post("/meeting/<meeting_id>/delete")
 def delete_meeting(meeting_id: str):
     """Delete a meeting"""
@@ -6877,11 +7062,11 @@ def ask_post():
     # Save user message
     add_chat_message(session_id, "user", message)
     
-    # Get conversation history (last 10 messages for context)
+    # Get conversation history (keep it short for performance)
     conversation_history = get_chat_messages(session_id)
     # Exclude the message we just added (it's already in history)
-    # Get last 10 messages before this one for context
-    recent_messages = conversation_history[:-1][-10:] if len(conversation_history) > 1 else []
+    # Get last 4 messages before this one for context
+    recent_messages = conversation_history[:-1][-4:] if len(conversation_history) > 1 else []
     
     # Build conversation context from history
     conversation_context = ""
@@ -6897,8 +7082,8 @@ def ask_post():
         # Combine current message with conversation context for better retrieval
         query_context = message
         if recent_messages:
-            # Include recent conversation to understand context better
-            recent_user_messages = [m["content"] for m in recent_messages if m["role"] == "user"][-3:]
+            # Include a small amount of recent conversation to understand context better
+            recent_user_messages = [m["content"] for m in recent_messages if m["role"] == "user"][-2:]
             query_context = " ".join(recent_user_messages) + " " + message
         
         meeting_context = retrieve_meeting_context_smart(user["email"], query_context, conversation_history=recent_messages)

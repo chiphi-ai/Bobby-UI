@@ -199,20 +199,25 @@
                         {{ meeting.unknown_speaker_count }} unknown speaker{% if meeting.unknown_speaker_count > 1 %}s{% endif %} need{% if meeting.unknown_speaker_count == 1 %}s{% endif %} labeling to improve transcript accuracy
                       </p>
                     </div>
-                    <button onclick="openLabelSpeakersModal('{{ meeting.id }}', {{ meeting.unknown_speakers|tojson }})" 
-                            class="btn btn-primary label-speakers-btn" style="white-space: nowrap; padding: 12px 24px; font-weight: var(--font-weight-semibold); box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); transition: all var(--transition-base); position: relative; overflow: hidden;">
+                    <button type="button"
+                            class="btn btn-primary label-speakers-btn"
+                            data-meeting-id="{{ meeting.id }}"
+                            data-unknown-speakers="{{ meeting.unknown_speakers|tojson|e }}"
+                            style="white-space: nowrap; padding: 12px 24px; font-weight: var(--font-weight-semibold); box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3); transition: all var(--transition-base); position: relative; overflow: hidden; z-index: 3; pointer-events: auto;">
                       <span style="position: relative; z-index: 1;">🏷️ Label Speakers</span>
                     </button>
                   </div>
                 </div>
                 {% endif %}
                 <div class="actions">
+                  {# Requested order: Interactive Transcript, Meeting Summary (AI), Transcript PDF, Download Audio, Delete #}
                   {% if meeting.transcript_path %}
                   <a href="{{ url_for('meeting_transcript', meeting_id=meeting.id) }}" target="_blank" class="btn btn-sm btn-secondary">📝 Interactive Transcript</a>
-                  <a href="{{ url_for('meeting_transcript_pdf', meeting_id=meeting.id) }}" target="_blank" class="btn btn-sm btn-secondary">📄 Transcript PDF</a>
-                  <a href="{{ url_for('meeting_transcript_txt', meeting_id=meeting.id) }}" target="_blank" class="btn btn-sm btn-secondary">📄 Transcript TXT</a>
                   {% endif %}
-                  <a href="{{ url_for('meeting_pdf', meeting_id=meeting.id) }}" target="_blank" class="btn btn-sm btn-secondary">📑 View PDF</a>
+                  <a href="{{ url_for('meeting_summary', meeting_id=meeting.id) }}" target="_blank" class="btn btn-sm btn-secondary">📑 Meeting Summary (AI)</a>
+                  {% if meeting.transcript_path %}
+                  <a href="{{ url_for('meeting_transcript_pdf', meeting_id=meeting.id) }}" target="_blank" class="btn btn-sm btn-secondary">📄 Transcript PDF</a>
+                  {% endif %}
                   {% if meeting.audio_path %}
                   <a href="{{ url_for('meeting_audio', meeting_id=meeting.id) }}" class="btn btn-sm btn-secondary">🎵 Download Audio</a>
                   {% endif %}
@@ -258,7 +263,7 @@
         </div>
         <button type="button" class="modal-close" onclick="closeLabelSpeakersModal()" style="background: rgba(0, 0, 0, 0.05); border: none; width: 36px; height: 36px; border-radius: 8px; font-size: 20px; cursor: pointer; color: var(--text-secondary); transition: all var(--transition-fast); display: flex; align-items: center; justify-content: center; margin-left: auto;">&times;</button>
       </div>
-      <div class="modal-body" style="padding: var(--space-xl);">
+      <div class="modal-body" style="padding: var(--space-xl); max-height: 75vh; overflow: auto;">
         <div style="padding: var(--space-md); background: linear-gradient(135deg, rgba(0, 122, 255, 0.05) 0%, rgba(0, 122, 255, 0.02) 100%); border-radius: var(--border-radius); border-left: 3px solid var(--accent); margin-bottom: var(--space-xl);">
           <p style="margin: 0; color: var(--text-primary); font-size: var(--font-size-sm); line-height: 1.6;">
             <strong style="color: var(--accent);">💡 Tip:</strong> These labels will update the transcript and regenerate your report. Leave blank to keep as "Unknown Speaker".
@@ -346,39 +351,88 @@
     let currentLabels = {};
 
     function openLabelSpeakersModal(meetingId, unknownSpeakers) {
-      currentMeetingId = meetingId;
-      currentLabels = {};
-      
-      const inputsContainer = document.getElementById('speakerInputs');
-      inputsContainer.innerHTML = '';
-      
-      unknownSpeakers.forEach((speaker, index) => {
-        const div = document.createElement('div');
-        div.className = 'speaker-input-group';
-        div.style.cssText = 'animation: fadeInUp 0.3s ease-out; animation-delay: ' + (index * 0.1) + 's; animation-fill-mode: both;';
-        div.innerHTML = `
-          <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-xs);">
-            <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, rgba(0, 122, 255, 0.1) 0%, rgba(0, 122, 255, 0.05) 100%); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: var(--font-weight-semibold); color: var(--accent); flex-shrink: 0;">
-              ${index + 1}
+      // Always show the modal first so failures don't look like a dead button.
+      const modal = document.getElementById('labelSpeakersModal');
+      if (modal) modal.style.display = 'flex';
+
+      try {
+        currentMeetingId = meetingId;
+        currentLabels = {};
+
+        // Normalize unknownSpeakers into an array to avoid "forEach is not a function"
+        let speakers = [];
+        if (Array.isArray(unknownSpeakers)) speakers = unknownSpeakers;
+        else if (typeof unknownSpeakers === 'string' && unknownSpeakers.trim()) speakers = [unknownSpeakers.trim()];
+        else if (unknownSpeakers && typeof unknownSpeakers === 'object') speakers = Object.values(unknownSpeakers);
+
+        // Ensure string labels only
+        speakers = (speakers || []).map(s => String(s ?? '').trim()).filter(Boolean);
+
+        const inputsContainer = document.getElementById('speakerInputs');
+        inputsContainer.innerHTML = '';
+
+        if (!speakers.length) {
+          inputsContainer.innerHTML = `
+            <div style="padding: 14px 16px; border: 1px solid rgba(0,0,0,0.08); border-radius: 12px; background: rgba(0, 122, 255, 0.04); color: var(--text-secondary); font-size: 14px;">
+              No unknown speakers to label for this meeting.
             </div>
-            <label class="form-label" style="font-weight: var(--font-weight-semibold); color: var(--text-primary); font-size: var(--font-size-sm); margin: 0;">${escapeHtml(speaker)}</label>
-          </div>
-          <input type="text" 
-                 data-speaker="${escapeHtml(speaker)}" 
-                 class="speaker-name-input" 
-                 placeholder="Enter name (e.g., John Smith)" 
-                 maxlength="100"
-                 oninput="updateLabelPreview(); checkDuplicateNames(this)"
-                 onblur="trimInput(this)"
-                 onfocus="this.style.borderColor='var(--accent)'; this.style.boxShadow='0 0 0 3px rgba(0, 122, 255, 0.1)';"
-                 style="width: 100%; padding: 14px 18px; border: 2px solid var(--border); border-radius: var(--border-radius); font-size: var(--font-size-base); transition: all var(--transition-base); background: var(--bg-primary); font-weight: var(--font-weight-regular);">
-        `;
-        inputsContainer.appendChild(div);
-      });
-      
-      // Initialize preview
-      updateLabelPreview();
+          `;
+          updateLabelPreview();
+          return;
+        }
+
+        speakers.forEach((speaker, index) => {
+          const div = document.createElement('div');
+          div.className = 'speaker-input-group';
+          div.style.cssText = 'animation: fadeInUp 0.3s ease-out; animation-delay: ' + (index * 0.1) + 's; animation-fill-mode: both;';
+          div.innerHTML = `
+            <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-xs);">
+              <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, rgba(0, 122, 255, 0.1) 0%, rgba(0, 122, 255, 0.05) 100%); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: var(--font-weight-semibold); color: var(--accent); flex-shrink: 0;">
+                ${index + 1}
+              </div>
+              <label class="form-label" style="font-weight: var(--font-weight-semibold); color: var(--text-primary); font-size: var(--font-size-sm); margin: 0;">${escapeHtml(speaker)}</label>
+            </div>
+            <input type="text"
+                   data-speaker="${escapeHtml(speaker)}"
+                   class="speaker-name-input"
+                   placeholder="Enter name (e.g., John Smith)"
+                   maxlength="100"
+                   oninput="updateLabelPreview(); checkDuplicateNames(this)"
+                   onblur="trimInput(this)"
+                   onfocus="this.style.borderColor='var(--accent)'; this.style.boxShadow='0 0 0 3px rgba(0, 122, 255, 0.1)';"
+                   style="width: 100%; padding: 14px 18px; border: 2px solid var(--border); border-radius: var(--border-radius); font-size: var(--font-size-base); transition: all var(--transition-base); background: var(--bg-primary); font-weight: var(--font-weight-regular);">
+          `;
+          inputsContainer.appendChild(div);
+        });
+
+        // Initialize preview
+        updateLabelPreview();
+
+        // Focus first input
+        setTimeout(() => {
+          const first = document.querySelector('#speakerInputs input[data-speaker]');
+          if (first) first.focus();
+        }, 50);
+      } catch (e) {
+        console.error('[Label Speakers] Failed to open modal:', e);
+        alert('Label Speakers failed to open. Please refresh and try again.');
+      }
     }
+
+    // Bind click handlers (avoid relying on inline onclick)
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.label-speakers-btn[data-meeting-id]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const meetingId = btn.getAttribute('data-meeting-id');
+          let unknown = btn.getAttribute('data-unknown-speakers') || '[]';
+          let parsed = [];
+          try { parsed = JSON.parse(unknown); } catch (err) { parsed = unknown; }
+          openLabelSpeakersModal(meetingId, parsed);
+        });
+      });
+    });
 
     function closeLabelSpeakersModal() {
       document.getElementById('labelSpeakersModal').style.display = 'none';
@@ -461,16 +515,29 @@
       btn.textContent = 'Processing...';
       
       try {
-        const response = await fetch(`/api/meetings/${currentMeetingId}/label_speakers`, {
+        // Prefer the newer endpoint (regenerates assets + triggers global speaker learning).
+        // Fall back to the legacy endpoint if utterances.json isn't available for this meeting.
+        let response = await fetch(`/api/meetings/${currentMeetingId}/speaker_labels`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ labels: currentLabels })
         });
-        
-        const result = await response.json();
-        
+
+        let result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          const errText = String(result?.message || result?.error || '');
+          const canFallback = response.status === 404 || /Utterances not found/i.test(errText);
+          if (canFallback) {
+            response = await fetch(`/api/meetings/${currentMeetingId}/label_speakers`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ labels: currentLabels })
+            });
+            result = await response.json().catch(() => ({}));
+          }
+        }
+
         if (response.ok) {
           closeFinalConfirmModal();
           await showConfirmModal("Success", 

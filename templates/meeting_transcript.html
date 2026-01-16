@@ -119,6 +119,30 @@
     .modal-title { margin: 0; font-weight: 800; }
     .modal-body { padding: 18px; }
     .modal-footer { padding: 16px 18px; border-top: 1px solid rgba(0,0,0,0.08); display: flex; justify-content: flex-end; gap: 10px; }
+
+    /* Split-by-words picker */
+    .split-words {
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      background: var(--bg-secondary);
+      padding: 12px;
+      max-height: 220px;
+      overflow: auto;
+      line-height: 1.9;
+      user-select: none;
+    }
+    .split-word {
+      display: inline-block;
+      padding: 2px 6px;
+      margin: 2px 2px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 120ms ease, color 120ms ease, transform 80ms ease;
+    }
+    .split-word:hover { background: rgba(0, 122, 255, 0.10); transform: translateY(-1px); }
+    .split-word.a { background: rgba(0, 122, 255, 0.16); }
+    .split-word.b { background: rgba(255, 149, 0, 0.14); }
+    .split-help { color: var(--text-secondary); font-size: 13px; margin: 10px 0 12px; }
     .modal input {
       width: 100%;
       padding: 12px 14px;
@@ -298,10 +322,14 @@
   <div id="splitModal" class="modal-overlay" role="dialog" aria-modal="true">
     <div class="modal">
       <div class="modal-header">
-        <h3 class="modal-title">Split utterance at timestamp</h3>
+        <h3 class="modal-title">Split utterance</h3>
         <button type="button" class="btn btn-sm btn-secondary" id="splitCloseBtn">Close</button>
       </div>
       <div class="modal-body">
+        <div class="split-help">
+          Click a word to choose the split point (we’ll auto-pick the time). You can still fine-tune the seconds if needed.
+        </div>
+        <div id="splitWords" class="split-words" aria-label="Split by words"></div>
         <div style="display:flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
           <div style="min-width: 120px; color: var(--text-secondary); font-size: 13px;">Split time (seconds)</div>
           <input id="splitTimeInput" type="number" step="0.1" />
@@ -551,7 +579,53 @@
     const splitTimeInput = document.getElementById('splitTimeInput');
     const splitSpeakerA = document.getElementById('splitSpeakerA');
     const splitSpeakerB = document.getElementById('splitSpeakerB');
+    const splitWordsEl = document.getElementById('splitWords');
     let activeSplitEl = null;
+    let activeSplitWords = [];
+    let activeSplitWordIndex = null; // number of words in part A
+
+    function _tokenizeWords(text) {
+      // Simple whitespace tokenization; preserves punctuation on each token.
+      const raw = String(text || '').trim();
+      if (!raw) return [];
+      return raw.split(/\s+/g).filter(Boolean);
+    }
+
+    function _setSplitByWordIndex(wordIndex) {
+      if (!activeSplitEl) return;
+      const start = parseFloat(activeSplitEl.getAttribute('data-start') || '0');
+      const end = parseFloat(activeSplitEl.getAttribute('data-end') || '0');
+      const words = activeSplitWords || [];
+      if (words.length < 2) return;
+
+      const idx = Math.max(1, Math.min(words.length - 1, parseInt(wordIndex, 10) || 1));
+      activeSplitWordIndex = idx;
+
+      const p = idx / words.length;
+      const splitTime = start + (end - start) * p;
+      splitTimeInput.value = String(Number(splitTime.toFixed(1)));
+
+      // Paint tokens: part A vs part B
+      const spans = splitWordsEl ? splitWordsEl.querySelectorAll('[data-word-idx]') : [];
+      spans.forEach((sp) => {
+        const i = parseInt(sp.getAttribute('data-word-idx') || '0', 10);
+        sp.classList.remove('a', 'b');
+        if (i < idx) sp.classList.add('a');
+        else sp.classList.add('b');
+      });
+    }
+
+    function _setSplitByTime(seconds) {
+      if (!activeSplitEl) return;
+      const start = parseFloat(activeSplitEl.getAttribute('data-start') || '0');
+      const end = parseFloat(activeSplitEl.getAttribute('data-end') || '0');
+      const words = activeSplitWords || [];
+      if (words.length < 2) return;
+      const t = Math.max(start, Math.min(end, Number(seconds || 0)));
+      const p = (t - start) / Math.max(0.0001, (end - start));
+      const idx = Math.max(1, Math.min(words.length - 1, Math.round(p * words.length)));
+      _setSplitByWordIndex(idx);
+    }
 
     function openSplitModal(utteranceEl) {
       const utteranceId = utteranceEl.getAttribute('data-utterance-id');
@@ -569,6 +643,31 @@
       splitTimeInput.value = String(Number(mid.toFixed(1)));
       splitSpeakerA.value = '';
       splitSpeakerB.value = '';
+
+      // Render word picker
+      const textEl = utteranceEl.querySelector('div[style*="white-space"]');
+      const txt = textEl ? textEl.textContent : '';
+      activeSplitWords = _tokenizeWords(txt);
+      activeSplitWordIndex = null;
+      if (splitWordsEl) {
+        if (activeSplitWords.length < 2) {
+          splitWordsEl.innerHTML = `<span style="color: var(--text-secondary); font-size: 13px;">Not enough words to split automatically — use seconds below.</span>`;
+        } else {
+          splitWordsEl.innerHTML = activeSplitWords.map((w, i) => (
+            `<span class="split-word" data-word-idx="${i}" title="Click to split after this word">${escapeHtml(w)}</span>`
+          )).join(' ');
+          // Default split near the middle word (more usable than mid-seconds)
+          _setSplitByWordIndex(Math.floor(activeSplitWords.length / 2));
+          splitWordsEl.querySelectorAll('.split-word').forEach((sp) => {
+            sp.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const i = parseInt(sp.getAttribute('data-word-idx') || '0', 10);
+              _setSplitByWordIndex(i + 1); // split AFTER clicked word
+            });
+          });
+        }
+      }
+
       splitModal.style.display = 'flex';
       setTimeout(() => splitTimeInput.focus(), 50);
     }
@@ -581,6 +680,13 @@
     document.getElementById('splitCloseBtn').addEventListener('click', closeSplitModal);
     document.getElementById('splitCancelBtn').addEventListener('click', closeSplitModal);
     splitModal.addEventListener('click', (e) => { if (e.target === splitModal) closeSplitModal(); });
+
+    // If user adjusts seconds manually, keep word highlighting roughly in sync.
+    splitTimeInput.addEventListener('input', () => {
+      const t = parseFloat(splitTimeInput.value || '0');
+      if (!Number.isFinite(t)) return;
+      _setSplitByTime(t);
+    });
 
     document.getElementById('splitSaveBtn').addEventListener('click', async () => {
       if (!activeSplitEl) return;
