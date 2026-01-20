@@ -12,14 +12,82 @@
       gap: var(--space-xl);
       align-items: start;
     }
+    
+    /* Make speakers sidebar sticky on the left - always visible */
+    .transcript-layout > aside {
+      position: sticky !important;
+      top: 80px; /* Will be adjusted by JavaScript to account for header */
+      align-self: start;
+      max-height: calc(100vh - 100px); /* Will be adjusted by JavaScript */
+      height: auto;
+      overflow-y: auto !important;
+      overflow-x: visible;
+      z-index: 100 !important;
+      /* Ensure it stays visible with solid background */
+      background: var(--bg-primary) !important;
+      /* Smooth scrolling for internal content */
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-light) transparent;
+    }
+    
+    /* Ensure parent containers don't break sticky */
+    .transcript-layout {
+      overflow: visible !important;
+    }
+    
+    /* Ensure card-body doesn't break sticky positioning */
+    .card-body {
+      overflow: visible !important;
+    }
+    
+    /* Ensure the card itself doesn't break sticky */
+    .card.holo-border {
+      /* backdrop-filter can break sticky, but we'll work with it */
+      overflow: visible;
+    }
+    
     @media (max-width: 980px) {
-      .transcript-layout { grid-template-columns: 1fr; }
+      .transcript-layout { 
+        grid-template-columns: 1fr; 
+      }
+      .transcript-layout > aside {
+        position: relative;
+        top: 0;
+        max-height: none;
+        overflow-y: visible;
+      }
       #audioPlayerSection {
         padding: var(--space-sm) !important;
       }
       #audioPlayerSection audio {
         min-width: 0;
       }
+    }
+    
+    /* Fixed Bottom Audio Player - Always Visible */
+    .audio-player-bottom {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: var(--bg-primary);
+      padding: var(--space-md);
+      box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+      border-top: 1px solid var(--border-light);
+      border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
+    }
+    
+    /* Restore backdrop-filter for card (no longer needed for sticky) */
+    main.main-content .card.holo-border {
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      background: rgba(255, 255, 255, 0.82);
+    }
+    
+    /* Restore card-body overflow */
+    .card-body {
+      overflow: auto;
     }
     .speaker-list {
       display: flex;
@@ -225,30 +293,8 @@
             </div>
           </div>
 
-          <!-- Spacer to prevent content from being hidden behind fixed audio player -->
-          <div id="audioPlayerSpacer"></div>
-          
-          <div id="audioPlayerSection" style="position: relative; z-index: 100; background: var(--bg-primary); padding: var(--space-md); margin: 0 0 var(--space-lg) 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); border-bottom: 1px solid var(--border-light); border-radius: var(--border-radius);">
-            <div style="display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-sm);">
-              <audio id="meetingAudio" controls style="flex: 1;">
-                <source src="{{ audio_url }}" />
-              </audio>
-              <button id="wordModeToggle" class="btn btn-sm btn-secondary" type="button" title="Toggle word-by-word mode">
-                📝 Word Mode
-              </button>
-            </div>
-            <div style="display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-xs);">
-              <div id="wordNavigation" style="display: none; gap: var(--space-xs); align-items: center;">
-                <button id="prevWordBtn" class="btn btn-sm btn-secondary" type="button" title="Previous word (Left Arrow)">◀ Prev</button>
-                <span id="wordCounter" style="color: var(--text-secondary); font-size: var(--font-size-sm); min-width: 100px; text-align: center;">Word 0 of 0</span>
-                <button id="nextWordBtn" class="btn btn-sm btn-secondary" type="button" title="Next word (Right Arrow)">Next ▶</button>
-              </div>
-            </div>
-            <div style="margin-top: var(--space-xs); color: var(--text-secondary); font-size: var(--font-size-xs);">
-              <span id="normalModeTip">Tip: click any utterance to jump audio to that timestamp.</span>
-              <span id="wordModeTip" style="display: none;">Word mode: click any word to jump to that moment. Use arrow keys to navigate.</span>
-            </div>
-          </div>
+          <!-- Spacer for audio player (prevents content from being hidden behind fixed player) -->
+          <div id="audioPlayerSpacer" style="height: 140px; margin-bottom: var(--space-lg);"></div>
 
           <div class="transcript-layout">
             <aside class="card" style="padding: var(--space-lg);">
@@ -420,6 +466,29 @@
     {% endfor %}
   </datalist>
 
+  <!-- Fixed Bottom Audio Player -->
+  <div id="audioPlayerSection" class="audio-player-bottom">
+    <div style="display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-sm);">
+      <audio id="meetingAudio" controls style="flex: 1;">
+        <source src="{{ audio_url }}" />
+      </audio>
+      <button id="wordModeToggle" class="btn btn-sm btn-secondary" type="button" title="Toggle word-by-word mode">
+        📝 Word Mode
+      </button>
+    </div>
+    <div style="display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-xs);">
+      <div id="wordNavigation" style="display: none; gap: var(--space-xs); align-items: center;">
+        <button id="prevWordBtn" class="btn btn-sm btn-secondary" type="button" title="Previous word (Left Arrow)">◀ Prev</button>
+        <span id="wordCounter" style="color: var(--text-secondary); font-size: var(--font-size-sm); min-width: 100px; text-align: center;">Word 0 of 0</span>
+        <button id="nextWordBtn" class="btn btn-sm btn-secondary" type="button" title="Next word (Right Arrow)">Next ▶</button>
+      </div>
+    </div>
+    <div style="margin-top: var(--space-xs); color: var(--text-secondary); font-size: var(--font-size-xs);">
+      <span id="normalModeTip">Tip: click any utterance to jump audio to that timestamp.</span>
+      <span id="wordModeTip" style="display: none;">Word mode: click any word to jump to that moment. Use arrow keys to navigate.</span>
+    </div>
+  </div>
+
   <script>
     const meetingId = {{ meeting_id|tojson }};
     const defaultDisplayByRaw = {};
@@ -429,75 +498,6 @@
       defaultDisplayByRaw[raw] = def;
     });
 
-    // ============================================
-    // Fixed Audio Player on Scroll
-    // ============================================
-    (function() {
-      const audioPlayerSection = document.getElementById('audioPlayerSection');
-      const audioPlayerSpacer = document.getElementById('audioPlayerSpacer');
-      const header = document.querySelector('.header');
-      
-      if (!audioPlayerSection || !audioPlayerSpacer) return;
-      
-      function makeFixed() {
-        const headerHeight = header ? header.offsetHeight : 0;
-        const audioPlayerHeight = audioPlayerSection.offsetHeight;
-        const cardBody = audioPlayerSection.closest('.card-body');
-        
-        if (!cardBody) return;
-        
-        // Get initial position
-        const initialRect = audioPlayerSection.getBoundingClientRect();
-        const initialTop = initialRect.top + window.pageYOffset;
-        
-        function updatePosition() {
-          const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-          
-          // If scrolled past the original position, make it fixed
-          if (scrollTop >= initialTop - headerHeight) {
-            audioPlayerSection.style.position = 'fixed';
-            audioPlayerSection.style.top = headerHeight + 'px';
-            audioPlayerSection.style.left = '0';
-            audioPlayerSection.style.right = '0';
-            audioPlayerSection.style.width = '100%';
-            audioPlayerSection.style.margin = '0';
-            audioPlayerSection.style.borderRadius = '0';
-            audioPlayerSection.style.zIndex = '1000';
-            audioPlayerSpacer.style.height = audioPlayerHeight + 'px';
-          } else {
-            audioPlayerSection.style.position = 'relative';
-            audioPlayerSection.style.top = '';
-            audioPlayerSection.style.left = '';
-            audioPlayerSection.style.right = '';
-            audioPlayerSection.style.width = '';
-            audioPlayerSection.style.margin = '0 0 var(--space-lg) 0';
-            audioPlayerSection.style.borderRadius = 'var(--border-radius)';
-            audioPlayerSection.style.zIndex = '100';
-            audioPlayerSpacer.style.height = '0';
-          }
-        }
-        
-        // Update on scroll and resize
-        window.addEventListener('scroll', updatePosition, { passive: true });
-        window.addEventListener('resize', function() {
-          const newHeight = audioPlayerSection.offsetHeight;
-          if (audioPlayerSpacer.style.height && audioPlayerSpacer.style.height !== '0px') {
-            audioPlayerSpacer.style.height = newHeight + 'px';
-          }
-          updatePosition();
-        }, { passive: true });
-        
-        // Initial check
-        updatePosition();
-      }
-      
-      // Wait for layout to complete
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', makeFixed);
-      } else {
-        setTimeout(makeFixed, 100);
-      }
-    })();
 
     function toast(msg) {
       const el = document.getElementById('toast');
@@ -1407,6 +1407,23 @@
 
     // Initialize word counter
     updateWordCounter();
+
+    // ============================================
+    // Set Speakers Sidebar Sticky Top Position
+    // ============================================
+    (function() {
+      const speakersAside = document.querySelector('.transcript-layout > aside');
+      const header = document.querySelector('.header');
+      
+      if (speakersAside && header) {
+        // Calculate header height dynamically
+        const headerHeight = header.offsetHeight;
+        // Set top position to be just below header with some padding
+        speakersAside.style.top = (headerHeight + 16) + 'px';
+        // Adjust max-height to account for header and bottom padding
+        speakersAside.style.maxHeight = `calc(100vh - ${headerHeight + 32}px)`;
+      }
+    })();
   </script>
 </body>
 </html>
