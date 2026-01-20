@@ -393,7 +393,12 @@
       <button id="stop" disabled>Stop Recording</button>
       <div id="recordingControls" style="display: none; margin-top: 12px;">
         <audio id="playback" controls style="width: 100%; margin-bottom: 12px;"></audio>
-        <button id="deleteRecording" class="btn" style="background: #FF3B30; color: white; border: none; width: auto; padding: 8px 16px; display: inline-block;">Delete Recording</button>
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <button id="uploadRecording" class="btnPrimary" style="flex: 1; min-width: 160px;">
+            <span style="margin-right: 8px;">📤</span> Upload Recording
+          </button>
+          <button id="deleteRecording" class="btn" style="background: #FF3B30; color: white; border: none; width: auto; padding: 12px 20px;">Delete Recording</button>
+        </div>
       </div>
       <div id="status"></div>
     </div>
@@ -596,7 +601,7 @@ async function startRecording() {
       recordedBlob = new Blob(chunks, { type: "audio/webm" });
       playback.src = URL.createObjectURL(recordedBlob);
       document.getElementById("recordingControls").style.display = "block";
-      setStatus("Recording complete! Review your recording below, then click 'Upload & Process'.", "ok");
+      setStatus("Recording complete! Review your recording, then click 'Upload Recording' to process.", "ok");
       
       stream.getTracks().forEach(track => track.stop());
     };
@@ -1131,6 +1136,7 @@ document.getElementById("addMembersModal").addEventListener("click", (e) => {
 async function uploadMeeting(audioBlob) {
   const meetingName = meetingNameInput.value.trim();
   const participantsJson = document.getElementById("participantsJson").value;
+  const sourceOrgsJson = document.getElementById("sourceOrganizationsJson").value;
   
   const formData = new FormData();
   formData.append("audio", audioBlob, "meeting.webm");
@@ -1138,10 +1144,31 @@ async function uploadMeeting(audioBlob) {
     formData.append("meeting_name", meetingName);
   }
   formData.append("participants", participantsJson);
+  formData.append("source_organizations", sourceOrgsJson);
+  
+  // Disable upload buttons during upload
+  const uploadRecordingBtn = document.getElementById("uploadRecording");
+  const uploadFileBtn = document.getElementById("uploadFile");
+  if (uploadRecordingBtn) uploadRecordingBtn.disabled = true;
+  if (uploadFileBtn) uploadFileBtn.disabled = true;
   
   setStatus("Uploading meeting...", "processing");
   processingCard.style.display = "block";
-  processingStatus.innerHTML = "Uploading your meeting audio...";
+  processingStatus.innerHTML = `
+    <div style="text-align: center;">
+      <div style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">📤 Uploading your meeting...</div>
+      <div style="width: 100%; height: 8px; background: rgba(0,0,0,0.1); border-radius: 999px; overflow: hidden; margin: 16px 0;">
+        <div id="uploadProgressBar" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent-blue), var(--accent-green)); transition: width 0.3s ease; animation: uploadPulse 1.5s ease-in-out infinite;"></div>
+      </div>
+      <div style="font-size: 14px; color: var(--text-secondary);">Please wait while we upload your audio file...</div>
+    </div>
+    <style>
+      @keyframes uploadPulse {
+        0%, 100% { width: 30%; }
+        50% { width: 70%; }
+      }
+    </style>
+  `;
   
   try {
     const response = await fetch("/upload_meeting", {
@@ -1152,24 +1179,52 @@ async function uploadMeeting(audioBlob) {
     const result = await response.json();
     
     if (response.ok) {
-      // Redirect immediately to success page
-      if (result.redirect) {
-        window.location.href = result.redirect;
-      } else {
-        window.location.href = "/upload_success";
-      }
+      // Show success message briefly then redirect to processing page
+      processingStatus.innerHTML = `
+        <div style="text-align: center;">
+          <div style="font-size: 24px; margin-bottom: 12px;">✅</div>
+          <div style="font-size: 18px; font-weight: 600; color: var(--accent-green);">Upload Complete!</div>
+          <div style="font-size: 14px; color: var(--text-secondary); margin-top: 8px;">Redirecting to processing status...</div>
+        </div>
+      `;
+      setStatus("Upload successful! Redirecting...", "ok");
+      
+      setTimeout(() => {
+        if (result.redirect) {
+          window.location.href = result.redirect;
+        } else {
+          window.location.href = "/account/meetings";
+        }
+      }, 1000);
     } else {
+      // Re-enable buttons on error
+      if (uploadRecordingBtn) uploadRecordingBtn.disabled = false;
+      if (uploadFileBtn) uploadFileBtn.disabled = false;
+      
       // Check if it's an enrollment required error
       if (result.error === "enrollment_required") {
+        processingCard.style.display = "none";
         showEnrollmentRequiredModal();
       } else {
         setStatus(result.error || "Upload failed", "error");
-        processingStatus.innerHTML = `<div style="color: var(--accent-red);">${result.error || "Upload failed"}</div>`;
+        processingStatus.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+          <div style="font-size: 24px; margin-bottom: 12px;">❌</div>
+          <div style="font-size: 16px; font-weight: 600;">${result.error || "Upload failed"}</div>
+          <div style="font-size: 14px; margin-top: 8px;">Please try again.</div>
+        </div>`;
       }
     }
   } catch (err) {
+    // Re-enable buttons on error
+    if (uploadRecordingBtn) uploadRecordingBtn.disabled = false;
+    if (uploadFileBtn) uploadFileBtn.disabled = false;
+    
     setStatus(`Error: ${err.message}`, "error");
-    processingStatus.innerHTML = `<div style="color: var(--accent-red);">Error: ${err.message}</div>`;
+    processingStatus.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+      <div style="font-size: 24px; margin-bottom: 12px;">❌</div>
+      <div style="font-size: 16px; font-weight: 600;">Upload Error</div>
+      <div style="font-size: 14px; margin-top: 8px;">${err.message}</div>
+    </div>`;
   }
 }
 
@@ -1253,6 +1308,45 @@ document.getElementById("deleteRecording").addEventListener("click", async () =>
     startBtn.disabled = false;
     stopBtn.disabled = true;
   }
+});
+
+// Upload Recording button (appears after recording)
+document.getElementById("uploadRecording").addEventListener("click", async () => {
+  if (!recordedBlob) {
+    setStatus("No recording to upload. Please record first.", "error");
+    return;
+  }
+  
+  // Check enrollment before uploading
+  const hasEnrollment = JSON.parse(document.getElementById('enrollment-status').textContent);
+  if (!hasEnrollment) {
+    showEnrollmentRequiredModal();
+    return;
+  }
+  
+  // Check participants
+  const participantsJson = document.getElementById("participantsJson").value;
+  let participants = [];
+  try {
+    participants = JSON.parse(participantsJson);
+  } catch (e) {
+    participants = [];
+  }
+  
+  // Warn if no participants
+  if (participants.length === 0) {
+    const confirmed = await showConfirmModal(
+      "No Participants Selected",
+      "Are you sure you want to upload this meeting with no other participants? Only you will receive the transcript.",
+      "Continue Anyway",
+      "Add Participants"
+    );
+    if (!confirmed) {
+      return;
+    }
+  }
+  
+  await uploadMeeting(recordedBlob);
 });
 
 uploadFileBtn.addEventListener("click", async () => {

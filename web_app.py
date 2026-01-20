@@ -5250,7 +5250,8 @@ def upload_meeting():
     return jsonify({
         "status": "processing",
         "filename": meeting_path.name,
-        "redirect": url_for("upload_success"),
+        "meeting_id": meeting_id,
+        "redirect": url_for("account_meetings"),
         "message": "Meeting uploaded successfully. Processing will begin shortly. You and all participants will receive an email when transcription is complete."
     }), 202
 

@@ -37,6 +37,81 @@
     .meta-row { display: flex; gap: var(--space-md); flex-wrap: wrap; margin-top: var(--space-sm); color: var(--text-secondary); }
     .meta-pill { padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.08); background: rgba(255,255,255,0.6); }
     .actions { display: flex; gap: var(--space-sm); margin-top: var(--space-lg); flex-wrap: wrap; }
+    
+    /* Multi-stage progress stepper */
+    .stage-stepper {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin: var(--space-xl) 0 var(--space-lg);
+      position: relative;
+    }
+    .stage-stepper::before {
+      content: '';
+      position: absolute;
+      top: 20px;
+      left: 40px;
+      right: 40px;
+      height: 3px;
+      background: rgba(0,0,0,0.1);
+      z-index: 0;
+    }
+    .stage-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      max-width: 100px;
+    }
+    .stage-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.06);
+      border: 3px solid rgba(0,0,0,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      margin-bottom: 8px;
+      transition: all 0.3s ease;
+    }
+    .stage-step.completed .stage-icon {
+      background: #34C759;
+      border-color: #34C759;
+      color: white;
+    }
+    .stage-step.active .stage-icon {
+      background: #007AFF;
+      border-color: #007AFF;
+      color: white;
+      animation: stagePulse 1.5s ease-in-out infinite;
+    }
+    .stage-step.pending .stage-icon {
+      background: rgba(0,0,0,0.04);
+      border-color: rgba(0,0,0,0.15);
+      color: rgba(0,0,0,0.3);
+    }
+    @keyframes stagePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0,122,255,0.4); }
+      50% { box-shadow: 0 0 0 8px rgba(0,122,255,0); }
+    }
+    .stage-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stage-step.active .stage-label {
+      color: #007AFF;
+    }
+    .stage-step.completed .stage-label {
+      color: #34C759;
+    }
   </style>
 </head>
 <body>
@@ -98,6 +173,30 @@
             </div>
           </div>
 
+          <!-- Multi-stage progress stepper -->
+          <div class="stage-stepper" id="stageStepper">
+            <div class="stage-step" data-stage="uploading,queued">
+              <div class="stage-icon">📤</div>
+              <div class="stage-label">Upload</div>
+            </div>
+            <div class="stage-step" data-stage="transcription">
+              <div class="stage-icon">🎙️</div>
+              <div class="stage-label">Transcribe</div>
+            </div>
+            <div class="stage-step" data-stage="speaker_identification">
+              <div class="stage-icon">👥</div>
+              <div class="stage-label">Identify Speakers</div>
+            </div>
+            <div class="stage-step" data-stage="pdf_generation">
+              <div class="stage-icon">📄</div>
+              <div class="stage-label">Generate Report</div>
+            </div>
+            <div class="stage-step" data-stage="cloud_upload,email,done">
+              <div class="stage-icon">✅</div>
+              <div class="stage-label">Complete</div>
+            </div>
+          </div>
+
           <div class="progress-wrap">
             <div class="progress-bar" aria-label="Progress bar">
               <div id="progressFill" style="width: {{ (job.transcription_percent if job.stage == 'transcription' and job.transcription_percent is not none else (job.percent or 0)) }}%;"></div>
@@ -132,6 +231,21 @@
     const stageEl = document.getElementById("stage");
     const statusEl = document.getElementById("status");
 
+    // Stage order for progress stepper
+    const stageOrder = ["uploading", "queued", "transcription", "speaker_identification", "pdf_generation", "cloud_upload", "email", "done"];
+    
+    // Stage display names and descriptions
+    const stageInfo = {
+      "uploading": { name: "Uploading", note: "Uploading your audio file..." },
+      "queued": { name: "Queued", note: "Waiting to start processing..." },
+      "transcription": { name: "Transcription", note: "Converting speech to text..." },
+      "speaker_identification": { name: "Speaker ID", note: "Identifying speakers & diarization..." },
+      "pdf_generation": { name: "PDF Generation", note: "Generating meeting report..." },
+      "cloud_upload": { name: "Cloud Upload", note: "Uploading to cloud storage..." },
+      "email": { name: "Sending Email", note: "Sending notifications..." },
+      "done": { name: "Complete", note: "Processing complete!" }
+    };
+
     function renderLog(lines) {
       logPanel.textContent = (lines || []).join("\n");
       logPanel.scrollTop = logPanel.scrollHeight;
@@ -146,28 +260,76 @@
       return `${m}:${String(ss).padStart(2,'0')}`;
     }
 
+    function updateStageStepper(currentStage) {
+      const steps = document.querySelectorAll('.stage-step');
+      const currentIdx = stageOrder.indexOf(currentStage);
+      
+      steps.forEach(step => {
+        const stageList = (step.dataset.stage || "").split(",");
+        let stepIdx = -1;
+        
+        // Find the earliest stage index for this step
+        for (const s of stageList) {
+          const idx = stageOrder.indexOf(s);
+          if (idx !== -1 && (stepIdx === -1 || idx < stepIdx)) {
+            stepIdx = idx;
+          }
+        }
+        
+        // Determine step state
+        const isActive = stageList.includes(currentStage);
+        const isCompleted = stepIdx !== -1 && currentIdx > stepIdx && !isActive;
+        
+        step.classList.remove('active', 'completed', 'pending');
+        if (isActive) {
+          step.classList.add('active');
+        } else if (isCompleted) {
+          step.classList.add('completed');
+        } else {
+          step.classList.add('pending');
+        }
+      });
+    }
+
+    function getProgressNote(stage, job) {
+      if (stage === "transcription" && job.total_audio_seconds) {
+        const done = Number(job.transcribed_seconds || 0);
+        const total = Number(job.total_audio_seconds || 0);
+        return `Transcribed ${fmtHMS(done)} / ${fmtHMS(total)}`;
+      }
+      
+      const info = stageInfo[stage];
+      return info ? info.note : "Processing...";
+    }
+
     async function poll() {
       try {
         const res = await fetch(`/api/jobs/${encodeURIComponent(meetingId)}?tail=250`, { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
         const job = data.job || {};
+        const stage = job.stage || "queued";
+        
         let percent = parseInt(job.percent || 0);
-        if (job.stage === "transcription" && job.transcription_percent !== undefined && job.transcription_percent !== null) {
+        if (stage === "transcription" && job.transcription_percent !== undefined && job.transcription_percent !== null) {
           percent = parseInt(job.transcription_percent || 0);
         }
         percent = Math.max(0, Math.min(100, percent));
+        
         progressFill.style.width = percent + "%";
         percentText.textContent = percent + "%";
-        stageEl.textContent = job.stage || "";
+        
+        // Update stage display with friendly name
+        const info = stageInfo[stage] || { name: stage };
+        stageEl.textContent = info.name;
         statusEl.textContent = job.status || "";
-        if (job.stage === "transcription" && job.total_audio_seconds) {
-          const done = Number(job.transcribed_seconds || 0);
-          const total = Number(job.total_audio_seconds || 0);
-          progressNote.textContent = `Transcribed ${fmtHMS(done)} / ${fmtHMS(total)}`;
-        } else {
-          progressNote.textContent = "Transcription progress";
-        }
+        
+        // Update progress note based on stage
+        progressNote.textContent = getProgressNote(stage, job);
+        
+        // Update stage stepper
+        updateStageStepper(stage);
+        
         renderLog(data.log_lines || []);
 
         if (job.status === "done") {

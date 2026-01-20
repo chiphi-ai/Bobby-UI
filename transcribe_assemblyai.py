@@ -385,6 +385,15 @@ def transcribe_with_whisper(wav_path: Path, custom_vocab: list[str] | None = Non
 
 def diarize_with_pyannote(wav_path: Path, speakers_expected: int | None = None) -> list[dict]:
     print("3) Diarizing (pyannote)...")
+    
+    # PyTorch 2.6+ compatibility: allow TorchVersion in safe globals for model loading
+    try:
+        import torch
+        import torch.torch_version
+        torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
+    except Exception:
+        pass  # Older PyTorch versions don't need this
+    
     token = _pick_token()
     if not token:
         die(
@@ -422,7 +431,7 @@ def diarize_with_pyannote(wav_path: Path, speakers_expected: int | None = None) 
 
     pipeline = Pipeline.from_pretrained(
         "pyannote/speaker-diarization-3.1",
-        use_auth_token=token,
+        token=token,
     )
 
     # pyannote pipelines accept num_speakers / min_speakers / max_speakers (varies by version).
