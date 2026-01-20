@@ -14,6 +14,12 @@
     }
     @media (max-width: 980px) {
       .transcript-layout { grid-template-columns: 1fr; }
+      #audioPlayerSection {
+        padding: var(--space-sm) !important;
+      }
+      #audioPlayerSection audio {
+        min-width: 0;
+      }
     }
     .speaker-list {
       display: flex;
@@ -219,7 +225,10 @@
             </div>
           </div>
 
-          <div style="margin-bottom: var(--space-lg);">
+          <!-- Spacer to prevent content from being hidden behind fixed audio player -->
+          <div id="audioPlayerSpacer"></div>
+          
+          <div id="audioPlayerSection" style="position: relative; z-index: 100; background: var(--bg-primary); padding: var(--space-md); margin: 0 0 var(--space-lg) 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); border-bottom: 1px solid var(--border-light); border-radius: var(--border-radius);">
             <div style="display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-sm);">
               <audio id="meetingAudio" controls style="flex: 1;">
                 <source src="{{ audio_url }}" />
@@ -419,6 +428,76 @@
       const def = input.getAttribute('data-default-display') || raw;
       defaultDisplayByRaw[raw] = def;
     });
+
+    // ============================================
+    // Fixed Audio Player on Scroll
+    // ============================================
+    (function() {
+      const audioPlayerSection = document.getElementById('audioPlayerSection');
+      const audioPlayerSpacer = document.getElementById('audioPlayerSpacer');
+      const header = document.querySelector('.header');
+      
+      if (!audioPlayerSection || !audioPlayerSpacer) return;
+      
+      function makeFixed() {
+        const headerHeight = header ? header.offsetHeight : 0;
+        const audioPlayerHeight = audioPlayerSection.offsetHeight;
+        const cardBody = audioPlayerSection.closest('.card-body');
+        
+        if (!cardBody) return;
+        
+        // Get initial position
+        const initialRect = audioPlayerSection.getBoundingClientRect();
+        const initialTop = initialRect.top + window.pageYOffset;
+        
+        function updatePosition() {
+          const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+          
+          // If scrolled past the original position, make it fixed
+          if (scrollTop >= initialTop - headerHeight) {
+            audioPlayerSection.style.position = 'fixed';
+            audioPlayerSection.style.top = headerHeight + 'px';
+            audioPlayerSection.style.left = '0';
+            audioPlayerSection.style.right = '0';
+            audioPlayerSection.style.width = '100%';
+            audioPlayerSection.style.margin = '0';
+            audioPlayerSection.style.borderRadius = '0';
+            audioPlayerSection.style.zIndex = '1000';
+            audioPlayerSpacer.style.height = audioPlayerHeight + 'px';
+          } else {
+            audioPlayerSection.style.position = 'relative';
+            audioPlayerSection.style.top = '';
+            audioPlayerSection.style.left = '';
+            audioPlayerSection.style.right = '';
+            audioPlayerSection.style.width = '';
+            audioPlayerSection.style.margin = '0 0 var(--space-lg) 0';
+            audioPlayerSection.style.borderRadius = 'var(--border-radius)';
+            audioPlayerSection.style.zIndex = '100';
+            audioPlayerSpacer.style.height = '0';
+          }
+        }
+        
+        // Update on scroll and resize
+        window.addEventListener('scroll', updatePosition, { passive: true });
+        window.addEventListener('resize', function() {
+          const newHeight = audioPlayerSection.offsetHeight;
+          if (audioPlayerSpacer.style.height && audioPlayerSpacer.style.height !== '0px') {
+            audioPlayerSpacer.style.height = newHeight + 'px';
+          }
+          updatePosition();
+        }, { passive: true });
+        
+        // Initial check
+        updatePosition();
+      }
+      
+      // Wait for layout to complete
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', makeFixed);
+      } else {
+        setTimeout(makeFixed, 100);
+      }
+    })();
 
     function toast(msg) {
       const el = document.getElementById('toast');
