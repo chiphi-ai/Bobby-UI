@@ -1,6 +1,8 @@
 {
   "watch_dir": "C:\\Users\\bjones25\\Box\\Meetings\\Drop",
   "speakers_expected": null,
+  "min_speakers": null,
+  "max_speakers": null,
   "stable_seconds": 6,
   "stable_checks": 4,
   "min_speaker_seconds": 6.0,

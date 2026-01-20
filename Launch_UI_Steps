@@ -1,4 +1,5 @@
 cd /Users/cartermagnano/Bobby_UI/Bobby-UI
+#This is different for each person. 
 
 # get out of the venv + base stacking
 deactivate 2>/dev/null || true

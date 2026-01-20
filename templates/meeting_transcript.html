@@ -89,6 +89,24 @@
       flex-wrap: wrap;
       justify-content: flex-end;
     }
+    .word-span {
+      display: inline;
+      transition: all 0.2s ease;
+      border-radius: 3px;
+    }
+    .word-span.word-active {
+      background-color: rgba(0, 122, 255, 0.2) !important;
+      font-weight: 600 !important;
+      color: var(--accent) !important;
+    }
+    .word-mode-text {
+      line-height: 1.8;
+    }
+    #wordModeToggle.active {
+      background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);
+      color: white;
+      box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+    }
     .modal-overlay {
       position: fixed;
       inset: 0;
@@ -202,11 +220,24 @@
           </div>
 
           <div style="margin-bottom: var(--space-lg);">
-            <audio id="meetingAudio" controls style="width: 100%;">
-              <source src="{{ audio_url }}" />
-            </audio>
+            <div style="display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-sm);">
+              <audio id="meetingAudio" controls style="flex: 1;">
+                <source src="{{ audio_url }}" />
+              </audio>
+              <button id="wordModeToggle" class="btn btn-sm btn-secondary" type="button" title="Toggle word-by-word mode">
+                📝 Word Mode
+              </button>
+            </div>
+            <div style="display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-xs);">
+              <div id="wordNavigation" style="display: none; gap: var(--space-xs); align-items: center;">
+                <button id="prevWordBtn" class="btn btn-sm btn-secondary" type="button" title="Previous word (Left Arrow)">◀ Prev</button>
+                <span id="wordCounter" style="color: var(--text-secondary); font-size: var(--font-size-sm); min-width: 100px; text-align: center;">Word 0 of 0</span>
+                <button id="nextWordBtn" class="btn btn-sm btn-secondary" type="button" title="Next word (Right Arrow)">Next ▶</button>
+              </div>
+            </div>
             <div style="margin-top: var(--space-xs); color: var(--text-secondary); font-size: var(--font-size-xs);">
-              Tip: click any utterance to jump audio to that timestamp.
+              <span id="normalModeTip">Tip: click any utterance to jump audio to that timestamp.</span>
+              <span id="wordModeTip" style="display: none;">Word mode: click any word to jump to that moment. Use arrow keys to navigate.</span>
             </div>
           </div>
 
@@ -259,10 +290,28 @@
                     <button type="button" class="btn btn-sm btn-secondary utterance-override-btn">New Speaker</button>
                     {% if u.utterance_id == u.source_utterance_id %}
                     <button type="button" class="btn btn-sm btn-secondary utterance-split-btn">Split</button>
+                    {% else %}
+                    <button type="button" class="btn btn-sm btn-secondary utterance-add-split-btn" data-source-utterance-id="{{ u.source_utterance_id }}">Add Split</button>
+                    <button type="button" class="btn btn-sm btn-secondary utterance-undo-split-btn" data-source-utterance-id="{{ u.source_utterance_id }}">Undo Split</button>
                     {% endif %}
                   </div>
                 </div>
-                <div style="white-space: pre-wrap;">{{ u.text }}</div>
+                <div class="utterance-text" style="white-space: pre-wrap;" data-utterance-text="{{ u.text }}" data-has-words="{{ 'true' if u.words else 'false' }}">
+                  {% if u.words %}
+                    <span class="word-mode-text" style="display: none;">
+                      {% for word in u.words %}
+                        <span class="word-span" 
+                              data-word-start="{{ word.start }}" 
+                              data-word-end="{{ word.end }}"
+                              data-word-index="{{ loop.index0 }}"
+                              title="{{ '%.2f'|format(word.start) }}s - {{ '%.2f'|format(word.end) }}s">{{ word.word }}</span>{% if not loop.last %} {% endif %}
+                      {% endfor %}
+                    </span>
+                    <span class="normal-mode-text">{{ u.text }}</span>
+                  {% else %}
+                    {{ u.text }}
+                  {% endif %}
+                </div>
               </div>
               {% endfor %}
             </section>
@@ -296,16 +345,41 @@
 
   <!-- Split utterance modal -->
   <div id="splitModal" class="modal-overlay" role="dialog" aria-modal="true">
-    <div class="modal">
+    <div class="modal" style="max-width: 700px;">
       <div class="modal-header">
-        <h3 class="modal-title">Split utterance at timestamp</h3>
+        <h3 class="modal-title">Split utterance at word</h3>
         <button type="button" class="btn btn-sm btn-secondary" id="splitCloseBtn">Close</button>
       </div>
       <div class="modal-body">
-        <div style="display:flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
-          <div style="min-width: 120px; color: var(--text-secondary); font-size: 13px;">Split time (seconds)</div>
-          <input id="splitTimeInput" type="number" step="0.1" />
+        <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+          Click on a word below to select where to split. The split will occur <strong>before</strong> the selected word (the selected word will be the first word of the second part).
         </div>
+        
+        <!-- Word selection area -->
+        <div id="splitWordSelection" style="padding: 20px; background: var(--bg-secondary); border-radius: var(--border-radius); margin-bottom: 16px; min-height: 80px; max-height: 250px; overflow-y: auto; border: 1px solid var(--border);">
+          <div style="color: var(--text-secondary); font-size: 12px; text-align: center; padding: 20px;">
+            Loading words...
+          </div>
+        </div>
+        
+        <!-- Selected word info -->
+        <div id="splitSelectedWordInfo" style="display: none; padding: 12px; background: rgba(0, 122, 255, 0.1); border-radius: var(--border-radius); margin-bottom: 12px; border-left: 3px solid var(--accent);">
+          <div style="font-size: 13px; color: var(--text-primary);">
+            <strong>Selected:</strong> <span id="splitSelectedWordText"></span>
+            <span id="splitSelectedWordTime" style="margin-left: 12px; color: var(--text-secondary);"></span>
+          </div>
+          <button type="button" id="splitClearSelection" class="btn btn-sm btn-secondary" style="margin-top: 8px;">Clear selection</button>
+        </div>
+        
+        <!-- Fallback: word dropdown (if no word-level data) -->
+        <div id="splitWordDropdown" style="display: none; margin-bottom: 12px;">
+          <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 6px;">Select word to split at:</div>
+          <select id="splitWordSelect" style="width: 100%; padding: 8px; border-radius: var(--border-radius); border: 1px solid var(--border);">
+            <option value="">-- Select a word --</option>
+          </select>
+        </div>
+        
+        <!-- Speaker names -->
         <div style="display:grid; grid-template-columns: 1fr; gap: 10px;">
           <div>
             <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 6px;">Speaker name for first part (optional)</div>
@@ -316,10 +390,17 @@
             <input id="splitSpeakerB" type="text" placeholder="e.g., Mike" maxlength="100" list="speakerSuggestions" />
           </div>
         </div>
+        
+        <!-- Existing splits indicator -->
+        <div id="splitExistingSplits" style="display: none; margin-top: 12px; padding: 12px; background: rgba(255, 149, 0, 0.1); border-radius: var(--border-radius); border-left: 3px solid var(--warning);">
+          <div style="font-size: 12px; color: var(--text-secondary);">
+            <strong>Note:</strong> This utterance already has <span id="splitExistingCount">0</span> split(s). New split will be added.
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="splitCancelBtn">Cancel</button>
-        <button type="button" class="btn btn-primary" id="splitSaveBtn">Save split</button>
+        <button type="button" class="btn btn-primary" id="splitSaveBtn" disabled>Save split</button>
       </div>
     </div>
   </div>
@@ -415,6 +496,68 @@
           openSplitModal(el);
         });
       }
+
+      const addSplitBtn = el.querySelector('.utterance-add-split-btn');
+      if (addSplitBtn) {
+        addSplitBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openSplitModal(el);
+        });
+      }
+
+      const undoSplitBtn = el.querySelector('.utterance-undo-split-btn');
+      if (undoSplitBtn) {
+        undoSplitBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const sourceId = undoSplitBtn.getAttribute('data-source-utterance-id');
+          if (!sourceId) return;
+          
+          const btn = undoSplitBtn;
+          btn.disabled = true;
+          btn.textContent = 'Undoing...';
+          
+          try {
+            const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/utterance_split/undo`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({ source_utterance_id: sourceId })
+            });
+            
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data && (data.message || data.error) || 'Undo failed');
+            
+            // Find all split parts and replace with restored utterance
+            const section = document.querySelector('section');
+            const splitParts = Array.from(section.querySelectorAll(`[data-source-utterance-id="${sourceId}"]`));
+            
+            if (splitParts.length > 0 && data.restored_utterance) {
+              const firstPart = splitParts[0];
+              const newEl = buildUtteranceElement(data.restored_utterance);
+              section.insertBefore(newEl, firstPart);
+              
+              // Remove all split parts
+              splitParts.forEach(part => part.remove());
+              
+              // Update speaker chips if needed
+              applyLabelMapToUI(currentLabelMap());
+              
+              // Rebuild word array if word mode is enabled
+              if (wordModeEnabled) {
+                buildWordArray();
+              }
+              
+              toast('Split undone. Transcript/PDFs regenerated.');
+            } else {
+              window.location.reload();
+            }
+          } catch (e) {
+            toast(String(e.message || e));
+          } finally {
+            btn.disabled = false;
+            btn.textContent = 'Undo Split';
+          }
+        });
+      }
     }
 
     function buildUtteranceElement(u) {
@@ -426,6 +569,21 @@
       el.setAttribute('data-utterance-id', String(u.utterance_id ?? ''));
       el.setAttribute('data-source-utterance-id', String(u.source_utterance_id ?? ''));
       const canSplit = String(u.utterance_id ?? '') === String(u.source_utterance_id ?? '');
+      const hasWords = u.words && Array.isArray(u.words) && u.words.length > 0;
+
+      // Build word mode text if words are available
+      let textContent = '';
+      if (hasWords) {
+        const wordModeText = u.words.map((word, idx) => 
+          `<span class="word-span" data-word-start="${word.start}" data-word-end="${word.end}" data-word-index="${idx}" title="${word.start.toFixed(2)}s - ${word.end.toFixed(2)}s">${escapeHtml(word.word)}</span>${idx < u.words.length - 1 ? ' ' : ''}`
+        ).join('');
+        textContent = `
+          <span class="word-mode-text" style="display: none;">${wordModeText}</span>
+          <span class="normal-mode-text">${escapeHtml(String(u.text ?? ''))}</span>
+        `;
+      } else {
+        textContent = escapeHtml(String(u.text ?? ''));
+      }
 
       el.innerHTML = `
         <div class="utterance-header">
@@ -441,10 +599,12 @@
           <div class="utterance-actions">
             <div class="timestamp">${Number(u.start ?? 0).toFixed(1)}s</div>
             <button type="button" class="btn btn-sm btn-secondary utterance-override-btn">New Speaker</button>
-            ${canSplit ? `<button type="button" class="btn btn-sm btn-secondary utterance-split-btn">Split</button>` : ``}
+            ${canSplit ? `<button type="button" class="btn btn-sm btn-secondary utterance-split-btn">Split</button>` : `<button type="button" class="btn btn-sm btn-secondary utterance-add-split-btn" data-source-utterance-id="${escapeHtml(String(u.source_utterance_id ?? ''))}">Add Split</button><button type="button" class="btn btn-sm btn-secondary utterance-undo-split-btn" data-source-utterance-id="${escapeHtml(String(u.source_utterance_id ?? ''))}">Undo Split</button>`}
           </div>
         </div>
-        <div style="white-space: pre-wrap;">${escapeHtml(String(u.text ?? ''))}</div>
+        <div class="utterance-text" style="white-space: pre-wrap;" data-utterance-text="${escapeHtml(String(u.text ?? ''))}" data-has-words="${hasWords ? 'true' : 'false'}">
+          ${textContent}
+        </div>
       `;
       attachUtteranceHandlers(el);
       return el;
@@ -553,29 +713,292 @@
     const splitSpeakerB = document.getElementById('splitSpeakerB');
     let activeSplitEl = null;
 
+    let selectedSplitWordIndex = null;
+    let selectedSplitWordTime = null;
+    let currentSplitUtteranceWords = null;
+    let currentSplitUtteranceText = null;
+
     function openSplitModal(utteranceEl) {
-      const utteranceId = utteranceEl.getAttribute('data-utterance-id');
-      const sourceId = utteranceEl.getAttribute('data-source-utterance-id');
-      if (utteranceId !== sourceId) {
-        toast('This utterance is already split.');
-        return;
-      }
+      // Allow splitting on any utterance (for multiple splits)
       activeSplitEl = utteranceEl;
-      const start = parseFloat(utteranceEl.getAttribute('data-start') || '0');
-      const end = parseFloat(utteranceEl.getAttribute('data-end') || '0');
-      const mid = (start + end) / 2.0;
-      splitTimeInput.min = String(start + 0.1);
-      splitTimeInput.max = String(end - 0.1);
-      splitTimeInput.value = String(Number(mid.toFixed(1)));
+      const sourceId = utteranceEl.getAttribute('data-source-utterance-id');
+      const utteranceId = utteranceEl.getAttribute('data-utterance-id');
+      const isOriginal = (utteranceId === sourceId);
+      
+      // Try to get full original utterance data if this is a split part
+      if (!isOriginal) {
+        // Find all parts with same source_utterance_id to reconstruct original
+        const section = document.querySelector('section');
+        const allParts = Array.from(section.querySelectorAll(`[data-source-utterance-id="${sourceId}"]`));
+        
+        // Sort by start time
+        allParts.sort((a, b) => {
+          const aStart = parseFloat(a.getAttribute('data-start') || '0');
+          const bStart = parseFloat(b.getAttribute('data-start') || '0');
+          return aStart - bStart;
+        });
+        
+        // Reconstruct full text and words from all parts
+        const fullTextParts = [];
+        const fullWords = [];
+        
+        allParts.forEach(part => {
+          const partTextEl = part.querySelector('.utterance-text');
+          if (partTextEl) {
+            const partText = partTextEl.getAttribute('data-utterance-text') || partTextEl.querySelector('.normal-mode-text')?.textContent || '';
+            if (partText) fullTextParts.push(partText);
+            
+            // Get words from this part
+            const wordSpans = partTextEl.querySelectorAll('.word-span');
+            wordSpans.forEach(span => {
+              fullWords.push({
+                word: span.textContent.trim(),
+                start: parseFloat(span.getAttribute('data-word-start') || '0'),
+                end: parseFloat(span.getAttribute('data-word-end') || '0'),
+                index: fullWords.length
+              });
+            });
+          }
+        });
+        
+        currentSplitUtteranceText = fullTextParts.join(' ');
+        currentSplitUtteranceWords = fullWords.length > 0 ? fullWords : null;
+      } else {
+        // Original utterance - get data directly
+        const textEl = utteranceEl.querySelector('.utterance-text');
+        const hasWords = textEl && textEl.getAttribute('data-has-words') === 'true';
+        
+        currentSplitUtteranceText = textEl ? textEl.getAttribute('data-utterance-text') || textEl.querySelector('.normal-mode-text')?.textContent || '' : '';
+        
+        currentSplitUtteranceWords = null;
+        if (hasWords && textEl) {
+          const wordSpans = textEl.querySelectorAll('.word-span');
+          if (wordSpans.length > 0) {
+            currentSplitUtteranceWords = Array.from(wordSpans).map((span, idx) => ({
+              word: span.textContent.trim(),
+              start: parseFloat(span.getAttribute('data-word-start') || '0'),
+              end: parseFloat(span.getAttribute('data-word-end') || '0'),
+              index: idx
+            }));
+          }
+        }
+      }
+      
+      // Reset selection
+      selectedSplitWordIndex = null;
+      selectedSplitWordTime = null;
       splitSpeakerA.value = '';
       splitSpeakerB.value = '';
+      
+      // Render word selection interface
+      renderSplitWordSelection();
+      
+      // Check for existing splits
+      checkExistingSplits(sourceId);
+      
       splitModal.style.display = 'flex';
-      setTimeout(() => splitTimeInput.focus(), 50);
     }
+    
+    function renderSplitWordSelection() {
+      const container = document.getElementById('splitWordSelection');
+      const selectedInfo = document.getElementById('splitSelectedWordInfo');
+      const wordDropdown = document.getElementById('splitWordDropdown');
+      const saveBtn = document.getElementById('splitSaveBtn');
+      
+      // Get sourceId for existing splits check
+      const sourceId = activeSplitEl ? activeSplitEl.getAttribute('data-source-utterance-id') : '';
+      const existingSplits = getExistingSplitIndices(sourceId);
+      
+      // Hide dropdown - we'll use sentence-style display for all cases
+      wordDropdown.style.display = 'none';
+      
+      // Prepare words array - either from word-level data or from text
+      let wordsArray = [];
+      if (currentSplitUtteranceWords && currentSplitUtteranceWords.length > 0) {
+        wordsArray = currentSplitUtteranceWords.map((word, idx) => ({
+          word: word.word,
+          index: idx,
+          start: word.start,
+          end: word.end,
+          hasTimestamp: true
+        }));
+      } else if (currentSplitUtteranceText) {
+        // Parse text into words when word-level data isn't available
+        const textWords = currentSplitUtteranceText.split(/\s+/).filter(w => w.trim());
+        wordsArray = textWords.map((word, idx) => ({
+          word: word,
+          index: idx,
+          start: null,
+          end: null,
+          hasTimestamp: false
+        }));
+      }
+      
+      if (wordsArray.length > 0) {
+        // Render clickable words as a natural sentence
+        container.innerHTML = '';
+        const wordsContainer = document.createElement('div');
+        wordsContainer.style.cssText = 'font-size: 16px; line-height: 1.8; color: var(--text-primary); word-wrap: break-word;';
+        
+        wordsArray.forEach((wordData, idx) => {
+          const span = document.createElement('span');
+          span.className = 'split-word-option';
+          span.textContent = wordData.word;
+          
+          // Check if this is an existing split point
+          const isExistingSplit = existingSplits.includes(idx);
+          
+          // Base styling for natural sentence flow
+          if (isExistingSplit) {
+            // Existing split - visually distinct but not clickable
+            span.style.cssText = 'display: inline; padding: 1px 2px; cursor: not-allowed; transition: all 0.2s; opacity: 0.5; text-decoration: line-through; color: var(--text-secondary);';
+            span.title = 'Existing split point';
+          } else {
+            // Clickable word - minimal styling for natural flow
+            span.style.cssText = 'display: inline; padding: 1px 2px; cursor: pointer; transition: all 0.2s; border-radius: 2px;';
+          }
+          
+          span.setAttribute('data-word-index', idx);
+          if (wordData.hasTimestamp) {
+            span.setAttribute('data-word-start', wordData.start);
+            span.setAttribute('data-word-end', wordData.end);
+          }
+          
+          if (!isExistingSplit) {
+            span.addEventListener('mouseenter', function() {
+              if (!this.classList.contains('split-word-selected')) {
+                this.style.backgroundColor = 'rgba(0, 122, 255, 0.15)';
+                this.style.textDecoration = 'underline';
+                this.style.textDecorationColor = 'rgba(0, 122, 255, 0.5)';
+              }
+            });
+            
+            span.addEventListener('mouseleave', function() {
+              if (!this.classList.contains('split-word-selected')) {
+                this.style.backgroundColor = '';
+                this.style.textDecoration = '';
+                this.style.textDecorationColor = '';
+              }
+            });
+            
+            span.addEventListener('click', function() {
+              selectSplitWord(idx, wordData.start, wordData.word);
+            });
+          }
+          
+          wordsContainer.appendChild(span);
+          // Add space after word (except for last word)
+          if (idx < wordsArray.length - 1) {
+            wordsContainer.appendChild(document.createTextNode(' '));
+          }
+        });
+        
+        container.appendChild(wordsContainer);
+      } else {
+        container.innerHTML = '<div style="color: var(--text-error); font-size: 12px; text-align: center; padding: 20px;">Could not load utterance text.</div>';
+      }
+      
+      selectedInfo.style.display = 'none';
+      saveBtn.disabled = true;
+    }
+    
+    function selectSplitWord(wordIndex, wordTime, wordText) {
+      selectedSplitWordIndex = wordIndex;
+      selectedSplitWordTime = wordTime;
+      
+      // Update UI - clear previous selection
+      document.querySelectorAll('.split-word-option').forEach(el => {
+        el.classList.remove('split-word-selected');
+        // Reset to base styling
+        if (el.style.cursor !== 'not-allowed') {
+          el.style.backgroundColor = '';
+          el.style.textDecoration = '';
+          el.style.textDecorationColor = '';
+          el.style.borderBottom = '';
+          el.style.fontWeight = '';
+        }
+      });
+      
+      // Highlight selected word
+      const selectedEl = document.querySelector(`.split-word-option[data-word-index="${wordIndex}"]`);
+      if (selectedEl && selectedEl.style.cursor !== 'not-allowed') {
+        selectedEl.classList.add('split-word-selected');
+        selectedEl.style.backgroundColor = 'rgba(0, 122, 255, 0.2)';
+        selectedEl.style.borderBottom = '2px solid var(--accent)';
+        selectedEl.style.fontWeight = '600';
+        selectedEl.style.textDecoration = '';
+        selectedEl.style.textDecorationColor = '';
+      }
+      
+      // Update selected info
+      const selectedInfo = document.getElementById('splitSelectedWordInfo');
+      const selectedText = document.getElementById('splitSelectedWordText');
+      const selectedTime = document.getElementById('splitSelectedWordTime');
+      
+      selectedText.textContent = `"${wordText}" (word ${wordIndex + 1}) - split will occur before this word`;
+      if (wordTime !== null) {
+        selectedTime.textContent = `at ${wordTime.toFixed(2)}s`;
+      } else {
+        selectedTime.textContent = '';
+      }
+      
+      selectedInfo.style.display = 'block';
+      document.getElementById('splitSaveBtn').disabled = false;
+    }
+    
+    function clearSplitSelection() {
+      selectedSplitWordIndex = null;
+      selectedSplitWordTime = null;
+      document.getElementById('splitSelectedWordInfo').style.display = 'none';
+      document.querySelectorAll('.split-word-option').forEach(el => {
+        el.classList.remove('split-word-selected');
+        // Reset styling but preserve existing split styling
+        if (el.style.cursor !== 'not-allowed') {
+          el.style.backgroundColor = '';
+          el.style.textDecoration = '';
+          el.style.textDecorationColor = '';
+          el.style.borderBottom = '';
+          el.style.fontWeight = '';
+        }
+      });
+      document.getElementById('splitSaveBtn').disabled = true;
+    }
+    
+    function getExistingSplitIndices(sourceId) {
+      // Get existing split word indices by checking other parts
+      // This is a simplified approach - in a real implementation, we'd fetch from the API
+      const section = document.querySelector('section');
+      const existingParts = Array.from(section.querySelectorAll(`[data-source-utterance-id="${sourceId}"]`));
+      // For now, return empty array - we'll enhance this if needed
+      // The backend validation will catch duplicate splits
+      return [];
+    }
+    
+    function checkExistingSplits(sourceId) {
+      // Check if this utterance already has splits by looking for other parts
+      const section = document.querySelector('section');
+      const existingParts = Array.from(section.querySelectorAll(`[data-source-utterance-id="${sourceId}"]`));
+      const existingCount = existingParts.length - 1; // Subtract 1 for the original/current part
+      
+      const existingSplitsDiv = document.getElementById('splitExistingSplits');
+      const existingCountSpan = document.getElementById('splitExistingCount');
+      
+      if (existingCount > 0) {
+        existingCountSpan.textContent = existingCount;
+        existingSplitsDiv.style.display = 'block';
+      } else {
+        existingSplitsDiv.style.display = 'none';
+      }
+    }
+    
+    document.getElementById('splitClearSelection').addEventListener('click', clearSplitSelection);
 
     function closeSplitModal() {
       splitModal.style.display = 'none';
       activeSplitEl = null;
+      clearSplitSelection();
+      document.getElementById('splitWordSelection').innerHTML = '<div style="color: var(--text-secondary); font-size: 12px; text-align: center; padding: 20px;">Loading words...</div>';
+      document.getElementById('splitExistingSplits').style.display = 'none';
     }
 
     document.getElementById('splitCloseBtn').addEventListener('click', closeSplitModal);
@@ -584,32 +1007,65 @@
 
     document.getElementById('splitSaveBtn').addEventListener('click', async () => {
       if (!activeSplitEl) return;
+      if (selectedSplitWordIndex === null) {
+        toast('Please select a word to split at.');
+        return;
+      }
+      
       const sourceId = activeSplitEl.getAttribute('data-source-utterance-id');
-      const splitTime = parseFloat(splitTimeInput.value || '0');
       const aName = (splitSpeakerA.value || '').trim();
       const bName = (splitSpeakerB.value || '').trim();
       const btn = document.getElementById('splitSaveBtn');
       btn.disabled = true;
       btn.textContent = 'Saving...';
+      
       try {
+        const requestBody = {
+          utterance_id: sourceId,
+          split_word_index: selectedSplitWordIndex,
+          speaker_display_a: aName,
+          speaker_display_b: bName
+        };
+        
+        // Include split_time if we have word-level data for better accuracy
+        if (selectedSplitWordTime !== null) {
+          requestBody.split_time = selectedSplitWordTime;
+        }
+        
         const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/utterance_split`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ utterance_id: sourceId, split_time: splitTime, speaker_display_a: aName, speaker_display_b: bName })
+          body: JSON.stringify(requestBody)
         });
+        
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(data && (data.message || data.error) || 'Split failed');
+        
         const newUtts = data.new_utterances || [];
-        if (newUtts.length >= 2) {
+        if (newUtts.length > 0) {
           const parent = activeSplitEl.parentNode;
           const before = activeSplitEl;
+          
+          // Remove all existing parts of this split
+          const existingParts = Array.from(parent.querySelectorAll(`[data-source-utterance-id="${sourceId}"]`));
+          existingParts.forEach(part => {
+            if (part !== activeSplitEl) part.remove();
+          });
+          
+          // Insert all new parts
           newUtts.forEach((u) => {
             parent.insertBefore(buildUtteranceElement(u), before);
           });
           parent.removeChild(activeSplitEl);
+          
+          // Update word array if word mode is enabled
+          if (wordModeEnabled) {
+            buildWordArray();
+          }
         } else {
           window.location.reload();
         }
+        
         toast('Split saved. Transcript/PDFs regenerated.');
         closeSplitModal();
       } catch (e) {
@@ -619,6 +1075,259 @@
         btn.textContent = 'Save split';
       }
     });
+
+    // ============================================
+    // Word-by-Word Audio Playback
+    // ============================================
+    let wordModeEnabled = false;
+    let allWords = [];
+    let currentWordIndex = -1;
+    const audioEl = document.getElementById('meetingAudio');
+    const wordModeToggle = document.getElementById('wordModeToggle');
+    const wordNavigation = document.getElementById('wordNavigation');
+    const prevWordBtn = document.getElementById('prevWordBtn');
+    const nextWordBtn = document.getElementById('nextWordBtn');
+    const wordCounter = document.getElementById('wordCounter');
+    const normalModeTip = document.getElementById('normalModeTip');
+    const wordModeTip = document.getElementById('wordModeTip');
+    let timeupdateDebounce = null;
+
+    // Build flat array of all words with their utterance context
+    function buildWordArray() {
+      allWords = [];
+      document.querySelectorAll('.utterance').forEach((utteranceEl) => {
+        const textEl = utteranceEl.querySelector('.utterance-text');
+        if (!textEl) return;
+        
+        const hasWords = textEl.getAttribute('data-has-words') === 'true';
+        if (!hasWords) return;
+
+        const wordSpans = textEl.querySelectorAll('.word-span');
+        wordSpans.forEach((span, idx) => {
+          const start = parseFloat(span.getAttribute('data-word-start'));
+          const end = parseFloat(span.getAttribute('data-word-end'));
+          const wordIndex = parseInt(span.getAttribute('data-word-index'));
+          
+          allWords.push({
+            element: span,
+            utterance: utteranceEl,
+            start: start,
+            end: end,
+            word: span.textContent.trim(),
+            index: allWords.length,
+          });
+        });
+      });
+    }
+
+    // Toggle word mode
+    function toggleWordMode() {
+      wordModeEnabled = !wordModeEnabled;
+      
+      if (wordModeEnabled) {
+        buildWordArray();
+        
+        if (allWords.length === 0) {
+          toast('No word-level timestamps available for this meeting. Re-process the audio to enable word-by-word mode.');
+          wordModeEnabled = false;
+          return;
+        }
+        
+        // Show word mode UI
+        document.querySelectorAll('.word-mode-text').forEach(el => el.style.display = 'inline');
+        document.querySelectorAll('.normal-mode-text').forEach(el => el.style.display = 'none');
+        wordNavigation.style.display = 'flex';
+        normalModeTip.style.display = 'none';
+        wordModeTip.style.display = 'inline';
+        wordModeToggle.textContent = '📝 Normal Mode';
+        wordModeToggle.classList.add('active');
+        
+        // Add click handlers to words
+        allWords.forEach((w) => {
+          w.element.style.cursor = 'pointer';
+          w.element.style.padding = '2px 4px';
+          w.element.style.borderRadius = '3px';
+          w.element.style.transition = 'all 0.2s';
+          w.element.addEventListener('click', () => jumpToWord(w.index));
+          w.element.addEventListener('mouseenter', function() {
+            if (!this.classList.contains('word-active')) {
+              this.style.backgroundColor = 'rgba(0, 122, 255, 0.1)';
+            }
+          });
+          w.element.addEventListener('mouseleave', function() {
+            if (!this.classList.contains('word-active')) {
+              this.style.backgroundColor = '';
+            }
+          });
+        });
+        
+        // Start tracking if audio is playing
+        if (!audioEl.paused) {
+          updateCurrentWord();
+        }
+      } else {
+        // Show normal mode UI
+        document.querySelectorAll('.word-mode-text').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('.normal-mode-text').forEach(el => el.style.display = 'inline');
+        wordNavigation.style.display = 'none';
+        normalModeTip.style.display = 'inline';
+        wordModeTip.style.display = 'none';
+        wordModeToggle.textContent = '📝 Word Mode';
+        wordModeToggle.classList.remove('active');
+        
+        // Clear active word
+        clearActiveWord();
+        currentWordIndex = -1;
+        updateWordCounter();
+      }
+    }
+
+    // Clear active word highlighting
+    function clearActiveWord() {
+      document.querySelectorAll('.word-active').forEach(el => {
+        el.classList.remove('word-active');
+        el.style.backgroundColor = '';
+        el.style.fontWeight = '';
+        el.style.color = '';
+      });
+    }
+
+    // Highlight a specific word
+    function highlightWord(index) {
+      if (index < 0 || index >= allWords.length) return;
+      
+      clearActiveWord();
+      const word = allWords[index];
+      word.element.classList.add('word-active');
+      word.element.style.backgroundColor = 'rgba(0, 122, 255, 0.2)';
+      word.element.style.fontWeight = '600';
+      word.element.style.color = 'var(--accent)';
+      
+      // Scroll to word
+      word.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      currentWordIndex = index;
+      updateWordCounter();
+    }
+
+    // Update current word based on audio time
+    function updateCurrentWord() {
+      if (!wordModeEnabled || allWords.length === 0) return;
+      
+      const currentTime = audioEl.currentTime;
+      
+      // Find the word that should be active
+      let activeIndex = -1;
+      for (let i = 0; i < allWords.length; i++) {
+        const word = allWords[i];
+        if (currentTime >= word.start && currentTime < word.end) {
+          activeIndex = i;
+          break;
+        }
+      }
+      
+      // If no word is active, find the next word
+      if (activeIndex === -1) {
+        for (let i = 0; i < allWords.length; i++) {
+          if (allWords[i].start > currentTime) {
+            activeIndex = i - 1;
+            break;
+          }
+        }
+        if (activeIndex === -1 && allWords.length > 0) {
+          activeIndex = allWords.length - 1;
+        }
+      }
+      
+      if (activeIndex !== currentWordIndex && activeIndex >= 0) {
+        highlightWord(activeIndex);
+      }
+    }
+
+    // Jump to a specific word
+    function jumpToWord(index) {
+      if (index < 0 || index >= allWords.length) return;
+      
+      const word = allWords[index];
+      audioEl.currentTime = word.start;
+      highlightWord(index);
+      
+      // Play if paused
+      if (audioEl.paused) {
+        audioEl.play().catch(() => {});
+      }
+    }
+
+    // Navigate to previous word
+    function goToPreviousWord() {
+      if (currentWordIndex > 0) {
+        jumpToWord(currentWordIndex - 1);
+      } else if (allWords.length > 0) {
+        jumpToWord(0);
+      }
+    }
+
+    // Navigate to next word
+    function goToNextWord() {
+      if (currentWordIndex < allWords.length - 1) {
+        jumpToWord(currentWordIndex + 1);
+      } else if (allWords.length > 0) {
+        jumpToWord(allWords.length - 1);
+      }
+    }
+
+    // Update word counter display
+    function updateWordCounter() {
+      if (allWords.length === 0) {
+        wordCounter.textContent = 'Word 0 of 0';
+      } else {
+        wordCounter.textContent = `Word ${currentWordIndex + 1} of ${allWords.length}`;
+      }
+    }
+
+    // Event listeners
+    wordModeToggle.addEventListener('click', toggleWordMode);
+    prevWordBtn.addEventListener('click', goToPreviousWord);
+    nextWordBtn.addEventListener('click', goToNextWord);
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (!wordModeEnabled) return;
+      
+      // Only handle if not typing in an input
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goToPreviousWord();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        goToNextWord();
+      }
+    });
+
+    // Track audio playback for word highlighting
+    audioEl.addEventListener('timeupdate', () => {
+      if (!wordModeEnabled) return;
+      
+      // Debounce to avoid excessive updates
+      if (timeupdateDebounce) {
+        clearTimeout(timeupdateDebounce);
+      }
+      timeupdateDebounce = setTimeout(() => {
+        updateCurrentWord();
+      }, 50); // Update every 50ms
+    });
+
+    // Update word when audio seeks
+    audioEl.addEventListener('seeked', () => {
+      if (wordModeEnabled) {
+        updateCurrentWord();
+      }
+    });
+
+    // Initialize word counter
+    updateWordCounter();
   </script>
 </body>
 </html>

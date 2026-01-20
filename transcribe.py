@@ -81,15 +81,42 @@ def transcribe_with_whisper(wav_path: Path, model_name: str = "small", language:
         language=language or None,
         fp16=(device == "cuda"),
         verbose=False,
+        word_timestamps=True,  # Enable word-level timestamps
     )
 
     segments = []
+    segment_start_offset = 0.0
     for s in (result.get("segments") or []):
-        segments.append({
-            "start": float(s.get("start", 0.0)),
-            "end": float(s.get("end", 0.0)),
-            "text": (s.get("text") or "").strip(),
-        })
+        seg_start = float(s.get("start", 0.0))
+        seg_end = float(s.get("end", 0.0))
+        seg_text = (s.get("text") or "").strip()
+        
+        # Extract word-level timestamps if available
+        words = []
+        if "words" in s and isinstance(s["words"], list):
+            for w in s["words"]:
+                word_text = (w.get("word") or "").strip()
+                if word_text:
+                    # Word timestamps are relative to segment start, convert to absolute
+                    word_start = float(w.get("start", 0.0)) + seg_start
+                    word_end = float(w.get("end", 0.0)) + seg_start
+                    words.append({
+                        "word": word_text,
+                        "start": round(word_start, 3),
+                        "end": round(word_end, 3),
+                    })
+        
+        segment_data = {
+            "start": seg_start,
+            "end": seg_end,
+            "text": seg_text,
+        }
+        
+        # Only include words array if we have word-level data
+        if words:
+            segment_data["words"] = words
+        
+        segments.append(segment_data)
 
     full_text = " ".join([s["text"] for s in segments if s["text"]]).strip()
     return {
@@ -99,17 +126,47 @@ def transcribe_with_whisper(wav_path: Path, model_name: str = "small", language:
     }
 
 
-def diarize_with_pyannote(wav_path):
+def diarize_with_pyannote(wav_path, min_speakers=None, max_speakers=None):
+    """
+    Diarize audio using pyannote.audio pipeline.
+    
+    Args:
+        wav_path: Path to audio file
+        min_speakers: Minimum number of speakers (optional, improves accuracy if known)
+        max_speakers: Maximum number of speakers (optional, improves accuracy if known)
+    
+    Returns:
+        List of segments with speaker, start, end
+    """
     print("3) Diarizing (pyannote)...")
 
     from pyannote.audio import Pipeline
 
     pipeline = Pipeline.from_pretrained(
-    "pyannote/speaker-diarization-3.1",
-    use_auth_token=_pick_token()
-)
-
-    diarization = pipeline(str(wav_path))
+        "pyannote/speaker-diarization-3.1",
+        use_auth_token=_pick_token()
+    )
+    
+    # Configure pipeline parameters for better accuracy
+    # These parameters can be tuned based on audio quality and number of speakers
+    pipeline_params = {}
+    
+    # If speaker count is known, provide hints to improve accuracy
+    if min_speakers is not None and max_speakers is not None and min_speakers == max_speakers:
+        pipeline_params["num_speakers"] = min_speakers
+        print(f"   Using fixed speaker count: {min_speakers}")
+    elif min_speakers is not None or max_speakers is not None:
+        if min_speakers is not None:
+            pipeline_params["min_speakers"] = min_speakers
+        if max_speakers is not None:
+            pipeline_params["max_speakers"] = max_speakers
+        print(f"   Using speaker range: min={min_speakers}, max={max_speakers}")
+    
+    # Run diarization with parameters
+    if pipeline_params:
+        diarization = pipeline(str(wav_path), **pipeline_params)
+    else:
+        diarization = pipeline(str(wav_path))
 
     segments = []
     for turn, _, speaker in diarization.itertracks(yield_label=True):
@@ -118,7 +175,8 @@ def diarize_with_pyannote(wav_path):
             "start": round(turn.start, 2),
             "end": round(turn.end, 2),
         })
-
+    
+    print(f"   Detected {len(set(s['speaker'] for s in segments))} unique speakers")
     return segments
 
 
@@ -151,12 +209,18 @@ def assign_speaker_to_transcript(transcript: dict, diar_segments: list[dict]) ->
             if d["start"] <= m <= d["end"]:
                 speaker = d["speaker"]
 
-        utterances.append({
+        utterance_data = {
             "start": s,
             "end": e,
             "speaker": speaker,
             "text": seg.get("text", "")
-        })
+        }
+        
+        # Preserve word-level timestamps if available
+        if "words" in seg and isinstance(seg["words"], list):
+            utterance_data["words"] = seg["words"]
+        
+        utterances.append(utterance_data)
 
     return utterances
 
@@ -240,7 +304,17 @@ def main() -> None:
     if not _pick_token():
         print("   WARNING: HF_TOKEN / HUGGINGFACE_TOKEN is not set. Diarization model download will fail.")
 
-    diar_segments = diarize_with_pyannote(wav_path)
+    # Get speaker count hints from config if available
+    min_speakers = cfg.get("min_speakers")
+    max_speakers = cfg.get("max_speakers")
+    speakers_expected = cfg.get("speakers_expected")
+    
+    # If speakers_expected is set, use it for both min and max
+    if speakers_expected is not None and isinstance(speakers_expected, int) and speakers_expected > 0:
+        min_speakers = speakers_expected
+        max_speakers = speakers_expected
+    
+    diar_segments = diarize_with_pyannote(wav_path, min_speakers=min_speakers, max_speakers=max_speakers)
     diar_path.write_text(json.dumps(diar_segments, indent=2), encoding="utf-8")
     write_rttm(diar_segments, rttm_path, file_id=stem)
     print(f"   wrote: {diar_path}")

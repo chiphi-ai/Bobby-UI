@@ -346,10 +346,35 @@
     let currentLabels = {};
 
     function openLabelSpeakersModal(meetingId, unknownSpeakers) {
+      console.log('[Label Speakers] Opening modal for meeting:', meetingId, 'unknown speakers:', unknownSpeakers);
+      
+      if (!meetingId) {
+        console.error('[Label Speakers] No meeting ID provided');
+        alert('Error: Meeting ID is missing');
+        return;
+      }
+      
+      if (!unknownSpeakers || !Array.isArray(unknownSpeakers) || unknownSpeakers.length === 0) {
+        console.warn('[Label Speakers] No unknown speakers to label');
+        alert('No unidentified speakers found in this meeting.');
+        return;
+      }
+      
       currentMeetingId = meetingId;
       currentLabels = {};
       
+      const modal = document.getElementById('labelSpeakersModal');
+      if (!modal) {
+        console.error('[Label Speakers] Modal element not found');
+        alert('Error: Modal element not found');
+        return;
+      }
+      
       const inputsContainer = document.getElementById('speakerInputs');
+      if (!inputsContainer) {
+        console.error('[Label Speakers] Speaker inputs container not found');
+        return;
+      }
       inputsContainer.innerHTML = '';
       
       unknownSpeakers.forEach((speaker, index) => {
@@ -378,10 +403,17 @@
       
       // Initialize preview
       updateLabelPreview();
+      
+      // Show the modal
+      modal.style.display = 'flex';
+      console.log('[Label Speakers] Modal displayed');
     }
 
     function closeLabelSpeakersModal() {
-      document.getElementById('labelSpeakersModal').style.display = 'none';
+      const modal = document.getElementById('labelSpeakersModal');
+      if (modal) {
+        modal.style.display = 'none';
+      }
       currentMeetingId = null;
       currentLabels = {};
     }
@@ -454,14 +486,28 @@
     }
 
     async function submitLabelSpeakers() {
-      if (!currentMeetingId) return;
+      if (!currentMeetingId) {
+        console.error('[Label Speakers] No meeting ID set');
+        alert('Error: Meeting ID is missing');
+        return;
+      }
+      
+      console.log('[Label Speakers] Submitting labels:', currentLabels);
       
       const btn = document.getElementById('finalConfirmBtn');
+      if (!btn) {
+        console.error('[Label Speakers] Final confirm button not found');
+        return;
+      }
+      
       btn.disabled = true;
       btn.textContent = 'Processing...';
       
       try {
-        const response = await fetch(`/api/meetings/${currentMeetingId}/label_speakers`, {
+        const url = `/api/meetings/${encodeURIComponent(currentMeetingId)}/label_speakers`;
+        console.log('[Label Speakers] Calling API:', url);
+        
+        const response = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -469,20 +515,32 @@
           body: JSON.stringify({ labels: currentLabels })
         });
         
-        const result = await response.json();
+        console.log('[Label Speakers] Response status:', response.status);
+        
+        let result;
+        try {
+          result = await response.json();
+        } catch (e) {
+          const text = await response.text();
+          console.error('[Label Speakers] Failed to parse JSON response:', text);
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
         
         if (response.ok) {
+          console.log('[Label Speakers] Success:', result);
           closeFinalConfirmModal();
           await showConfirmModal("Success", 
-            `Speaker labels updated successfully!\n\n${result.summary || ''}`, 
+            `Speaker labels updated successfully!\n\n${result.summary || result.message || ''}`, 
             "OK");
           window.location.reload();
         } else {
+          console.error('[Label Speakers] API error:', result);
           await showConfirmModal("Error", result.error || result.message || "Failed to update speaker labels", "OK");
           btn.disabled = false;
           btn.textContent = 'Confirm Update';
         }
       } catch (error) {
+        console.error('[Label Speakers] Exception:', error);
         await showConfirmModal("Error", `An error occurred: ${error.message}`, "OK");
         btn.disabled = false;
         btn.textContent = 'Confirm Update';
