@@ -1,0 +1,26 @@
+cd /Users/cartermagnano/Bobby_UI/Bobby-UI
+
+# get out of the venv + base stacking
+deactivate 2>/dev/null || true
+conda deactivate 2>/dev/null || true
+
+# enter ONLY the conda env
+conda activate bobby-ui
+
+# confirm python/pip are from conda
+which python
+python -V
+python -m pip -V
+
+# install deps into this conda env (this installs requests)
+python -m pip install -r requirements.txt
+
+# run the UI
+python web_app.py
+
+Open it:
+open http://127.0.0.1:5000
+If port 5000 is taken again
+lsof -nP -iTCP:5000 -sTCP:LISTEN
+kill -9 <PID>
+python web_app.py
