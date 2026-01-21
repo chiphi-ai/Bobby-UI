@@ -169,10 +169,28 @@ def main():
 
     # Load speaker embedding model (ECAPA)
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    classifier = EncoderClassifier.from_hparams(
-        source="speechbrain/spkrec-ecapa-voxceleb",
-        run_opts={"device": device},
-    )
+    savedir = Path("pretrained_models/spkrec-ecapa-voxceleb")
+    savedir.mkdir(parents=True, exist_ok=True)
+    try:
+        classifier = EncoderClassifier.from_hparams(
+            source="speechbrain/spkrec-ecapa-voxceleb",
+            savedir=str(savedir),
+            run_opts={"device": device},
+        )
+    except Exception as e:
+        # Fallback: try without custom.py by using a different revision or approach
+        print(f"Warning: Could not load model with default settings: {e}")
+        print("Trying alternative model loading...")
+        try:
+            classifier = EncoderClassifier.from_hparams(
+                source="speechbrain/spkrec-ecapa-voxceleb2",
+                savedir=str(savedir),
+                run_opts={"device": device},
+            )
+        except Exception as e2:
+            print(f"Error loading speaker model: {e2}")
+            print("Speaker identification will be skipped.")
+            sys.exit(1)
 
     # Build enrollment embeddings
     # Use lists to store multiple embeddings per person (for averaging)

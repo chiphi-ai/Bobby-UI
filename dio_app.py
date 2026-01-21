@@ -215,7 +215,7 @@ def remove_person():
 def run_meeting_pipeline(audio_path: Path, cfg: dict):
     """
     Runs:
-      1) transcribe_assemblyai.py
+      1) transcribe.py
       2) identify_speakers.py
       3) email_named_script.py (filters to speakers who spoke using thresholds)
     """
@@ -223,7 +223,7 @@ def run_meeting_pipeline(audio_path: Path, cfg: dict):
     stem = audio_path.stem
 
     # 1) transcription (allow auto-detect if speakers_expected is None)
-    cmd1 = [PY, "transcribe_assemblyai.py", str(audio_path)]
+    cmd1 = [PY, "transcribe.py", str(audio_path)]
     if cfg.get("speakers_expected") is not None:
         cmd1 += ["--speakers", str(cfg["speakers_expected"])]
 

@@ -49,7 +49,7 @@ def run_pipeline(audio_path: Path):
 
     PY = sys.executable  # <-- always use the same python running the watcher
 
-    cmd1 = [PY, "transcribe_assemblyai.py", str(audio_path)]
+    cmd1 = [PY, "transcribe.py", str(audio_path)]
     if SPEAKERS is not None:
         cmd1 += ["--speakers", str(SPEAKERS)]
     cmd2 = [PY, "identify_speakers.py",

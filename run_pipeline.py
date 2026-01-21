@@ -19,7 +19,7 @@ def main():
     stem = in_path.stem
 
     # 1) Transcribe
-    cmd1 = ["python", "transcribe_assemblyai.py", str(in_path), "--speakers", str(args.speakers)]
+    cmd1 = ["python", "transcribe.py", str(in_path), "--speakers", str(args.speakers)]
     run(cmd1)
 
     # 2) Identify speakers -> named script

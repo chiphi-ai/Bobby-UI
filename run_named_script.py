@@ -24,7 +24,7 @@ def main():
     stem = in_path.stem
 
     # 1) transcribe (old script)
-    cmd1 = ["python", "transcribe_assemblyai.py", str(in_path)]
+    cmd1 = ["python", "transcribe.py", str(in_path)]
     if args.speakers is not None:
         cmd1 += ["--speakers", str(args.speakers)]
     run(cmd1)

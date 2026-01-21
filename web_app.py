@@ -3690,7 +3690,7 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
                 for line in proc.stdout:
                     line = (line or "").rstrip("\n")
                     if line:
-                        # Parse transcription progress lines emitted by transcribe_assemblyai.py
+                        # Parse transcription progress lines emitted by transcribe.py
                         if stage == "transcription" and line.startswith("TRANSCRIBE_PROGRESS "):
                             try:
                                 m = re.search(r"percent=(\\d+).*done=([0-9.]+).*total=([0-9.]+)", line)
@@ -3755,7 +3755,7 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
         if current:
             user_email = current["email"].lower()
     
-    cmd1 = [PY, "transcribe_assemblyai.py", str(audio_path)]
+    cmd1 = [PY, "transcribe.py", str(audio_path)]
     if speakers_expected is not None:
         cmd1 += ["--speakers", str(speakers_expected)]
     
@@ -5117,19 +5117,8 @@ def record_meeting():
         return redirect(url_for("login_get"))
     user = current_user()
     
-    # Check if user has enrollment audio - must be >= 30 seconds
-    username = user.get("username", "").strip().lower()
-    has_enrollment = False
-    if username:
-        enroll_dir = ENROLL_DIR
-        if enroll_dir.exists():
-            for f in enroll_dir.iterdir():
-                if f.is_file() and f.suffix.lower() in ALLOWED_UPLOAD_EXT:
-                    if enrollment_file_matches_user(f.name, user) and f.stat().st_size > 0:
-                        duration = get_audio_duration(f)
-                        if duration >= 30.0:
-                            has_enrollment = True
-                            break
+    # Enrollment check disabled - voice enrollment is optional
+    has_enrollment = True
     
     organizations_directory = load_organizations_directory()
     return render_template("record_meeting.html", user=user, org_types=ORGANIZATION_TYPES, organizations_directory=organizations_directory, has_enrollment=has_enrollment)
@@ -5144,22 +5133,7 @@ def upload_meeting():
     if not user:
         return jsonify({"error": "User not found"}), 400
     
-    # Check if user has enrollment audio - must be >= 30 seconds
-    username = user.get("username", "").strip().lower()
-    has_enrollment = False
-    if username:
-        enroll_dir = ENROLL_DIR
-        if enroll_dir.exists():
-            for f in enroll_dir.iterdir():
-                if f.is_file() and f.suffix.lower() in ALLOWED_UPLOAD_EXT:
-                    if enrollment_file_matches_user(f.name, user) and f.stat().st_size > 0:
-                        duration = get_audio_duration(f)
-                        if duration >= 30.0:
-                            has_enrollment = True
-                            break
-    
-    if not has_enrollment:
-        return jsonify({"error": "enrollment_required", "message": "You must have enrollment audio (at least 30 seconds) to record a meeting. Please record your enrollment audio first."}), 400
+    # Enrollment check disabled - voice enrollment is optional
     
     f = request.files.get("audio")
     if not f:
