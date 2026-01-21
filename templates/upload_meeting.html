@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Record Meeting — Phi AI</title>
+  <title>Upload Meeting — Phi AI</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <style>
-    /* Page-specific: Preserve JS functionality for recording */
+    /* Page-specific: Preserve JS functionality for upload */
     :root{
       --bg-primary: #ffffff;
       --bg-secondary: #f5f5f7;
@@ -240,12 +240,6 @@
       color: var(--text-secondary);
     }
 
-    audio{
-      width: 100%;
-      margin: 12px 0;
-      border-radius: 8px;
-    }
-
     #status{
       margin-top: 12px;
       padding: 12px;
@@ -388,19 +382,13 @@
     </div>
 
     <div class="card">
-      <h2>Record Meeting</h2>
-      <button id="start" class="btnPrimary">Start Recording</button>
-      <button id="stop" disabled>Stop Recording</button>
-      <div id="recordingControls" style="display: none; margin-top: 12px;">
-        <audio id="playback" controls style="width: 100%; margin-bottom: 12px;"></audio>
-        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-          <button id="uploadRecording" class="btnPrimary" style="flex: 1; min-width: 160px;">
-            <span style="margin-right: 8px;">📤</span> Upload Recording
-          </button>
-          <button id="deleteRecording" class="btn" style="background: #FF3B30; color: white; border: none; width: auto; padding: 12px 20px;">Delete Recording</button>
-        </div>
+      <h2>Upload Meeting File</h2>
+      <input type="file" id="file" accept="audio/*,video/*">
+      <button type="button" id="uploadFile" class="btnPrimary" style="cursor: pointer; position: relative; z-index: 10;">Upload & Process</button>
+      <div id="uploadButtonStatus" style="font-size: 12px; color: var(--text-secondary); margin-top: 8px; display: none;"></div>
+      <div class="info-box">
+        <b>Supported formats:</b> MP3, MP4, M4A, WAV, MOV, OGG, FLAC, AAC, WEBM
       </div>
-      <div id="status"></div>
     </div>
 
     <div class="card" id="processingCard" style="display:none;">
@@ -427,7 +415,7 @@
       <div style="background: white; border-radius: var(--radius); padding: 24px; max-width: 400px; width: 90%; box-shadow: var(--shadow-hover);">
         <h2 style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">Enrollment Audio Required</h2>
         <p style="font-size: 15px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.5;">
-          You must have enrollment audio to record a meeting. Please record your enrollment audio first so the system can identify your voice.
+          You must have enrollment audio to upload a meeting. Please record your enrollment audio first so the system can identify your voice.
         </p>
         <div style="display: flex; gap: 12px; justify-content: flex-end;">
           <button onclick="goToHome()" class="btn" style="background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);">Go Back to Home</button>
@@ -508,14 +496,8 @@
 
 <script type="application/json" id="org-directory-data">{{ organizations_directory | tojson | safe }}</script>
 <script>
-let mediaRecorder;
-let chunks = [];
-let recordedBlob = null;
-
-const startBtn = document.getElementById("start");
-const stopBtn = document.getElementById("stop");
-const playback = document.getElementById("playback");
-const statusDiv = document.getElementById("status");
+const fileInput = document.getElementById("file");
+const uploadFileBtn = document.getElementById("uploadFile");
 const meetingNameInput = document.getElementById("meetingName");
 const processingCard = document.getElementById("processingCard");
 const processingStatus = document.getElementById("processingStatus");
@@ -562,54 +544,10 @@ function showConfirmModal(title, message, okText = "OK", cancelText = "Cancel") 
 }
 
 function setStatus(msg, cls="") {
+  const statusDiv = document.getElementById("status");
   statusDiv.className = cls;
   statusDiv.textContent = msg;
   statusDiv.style.display = msg ? "block" : "none";
-}
-
-async function startRecording() {
-  // Check enrollment before starting
-  const hasEnrollment = JSON.parse(document.getElementById('enrollment-status').textContent);
-  if (!hasEnrollment) {
-    showEnrollmentRequiredModal();
-    return;
-  }
-  
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-    chunks = [];
-    
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) {
-        chunks.push(e.data);
-      }
-    };
-    
-    mediaRecorder.onstop = () => {
-      recordedBlob = new Blob(chunks, { type: "audio/webm" });
-      playback.src = URL.createObjectURL(recordedBlob);
-      document.getElementById("recordingControls").style.display = "block";
-      setStatus("Recording complete! Review your recording, then click 'Upload Recording' to process.", "ok");
-      
-      stream.getTracks().forEach(track => track.stop());
-    };
-    
-    mediaRecorder.start();
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    setStatus("Recording... Click 'Stop Recording' when done.", "processing");
-  } catch (err) {
-    setStatus(`Error: ${err.message}`, "error");
-  }
-}
-
-function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state !== "inactive") {
-    mediaRecorder.stop();
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-  }
 }
 
 let selectedParticipants = [];
@@ -696,11 +634,6 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 const orgDirectory = JSON.parse(document.getElementById('org-directory-data').textContent);
-
-// Attach click handlers when page loads
-document.addEventListener('DOMContentLoaded', function() {
-  // Modal is now handled inline, no need for sessionStorage
-});
 
 function toggleOrgDropdown() {
   const dropdown = document.getElementById("orgDropdown");
@@ -1122,26 +1055,62 @@ document.getElementById("addMembersModal").addEventListener("click", (e) => {
   }
 });
 
-async function uploadMeeting(audioBlob) {
-  const meetingName = meetingNameInput.value.trim();
-  const participantsJson = document.getElementById("participantsJson").value;
-  const sourceOrgsJson = document.getElementById("sourceOrganizationsJson").value;
+async function uploadMeeting(audioFile) {
+  console.log("[Upload] uploadMeeting function called with file:", audioFile?.name);
+  
+  const meetingNameEl = document.getElementById("meetingName");
+  if (!meetingNameEl) {
+    console.error("[Upload] Meeting name input not found");
+    setStatus("Error: Page not fully loaded. Please refresh and try again.", "error");
+    return;
+  }
+  
+  const meetingName = meetingNameEl.value.trim();
+  const participantsJsonEl = document.getElementById("participantsJson");
+  const sourceOrgsJsonEl = document.getElementById("sourceOrganizationsJson");
+  
+  if (!participantsJsonEl || !sourceOrgsJsonEl) {
+    console.error("[Upload] Required form elements not found");
+    setStatus("Error: Page not fully loaded. Please refresh and try again.", "error");
+    return;
+  }
+  
+  const participantsJson = participantsJsonEl.value;
+  const sourceOrgsJson = sourceOrgsJsonEl.value;
   
   const formData = new FormData();
-  formData.append("audio", audioBlob, "meeting.webm");
+  // Use the file's name if it's a File object, otherwise use default name
+  const fileName = audioFile instanceof File ? audioFile.name : "meeting.webm";
+  formData.append("audio", audioFile, fileName);
   if (meetingName) {
     formData.append("meeting_name", meetingName);
   }
   formData.append("participants", participantsJson);
   formData.append("source_organizations", sourceOrgsJson);
   
-  // Disable upload button during upload
-  const uploadRecordingBtn = document.getElementById("uploadRecording");
-  if (uploadRecordingBtn) uploadRecordingBtn.disabled = true;
+  console.log("[Upload] FormData created - file:", fileName, "meeting name:", meetingName || "(none)");
   
+  // Get processing card elements - ensure they exist
+  const processingCardEl = document.getElementById("processingCard");
+  const processingStatusEl = document.getElementById("processingStatus");
+  
+  if (!processingCardEl || !processingStatusEl) {
+    console.error("[Upload] Processing card elements not found");
+    setStatus("Error: Processing elements not found. Please refresh the page.", "error");
+    return;
+  }
+  
+  // Disable upload button during upload
+  const uploadBtn = document.getElementById("uploadFile");
+  if (uploadBtn) {
+    uploadBtn.disabled = true;
+    console.log("[Upload] Upload button disabled");
+  }
+  
+  // Show processing card IMMEDIATELY before fetch
   setStatus("Uploading meeting...", "processing");
-  processingCard.style.display = "block";
-  processingStatus.innerHTML = `
+  processingCardEl.style.display = "block";
+  processingStatusEl.innerHTML = `
     <div style="text-align: center;">
       <div style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">📤 Uploading your meeting...</div>
       <div style="width: 100%; height: 8px; background: rgba(0,0,0,0.1); border-radius: 999px; overflow: hidden; margin: 16px 0;">
@@ -1157,17 +1126,38 @@ async function uploadMeeting(audioBlob) {
     </style>
   `;
   
+  console.log("[Upload] Processing card displayed, starting fetch...");
+  
   try {
     const response = await fetch("/upload_meeting", {
       method: "POST",
       body: formData
     });
     
-    const result = await response.json();
+    console.log("[Upload] Fetch completed - status:", response.status, "ok:", response.ok);
     
-    if (response.ok) {
+    // Handle JSON parsing with error handling
+    let result;
+    try {
+      const responseText = await response.text();
+      console.log("[Upload] Response text:", responseText.substring(0, 200));
+      if (responseText.trim()) {
+        result = JSON.parse(responseText);
+      } else {
+        result = {};
+      }
+    } catch (jsonError) {
+      console.error("[Upload] JSON parsing error:", jsonError);
+      throw new Error(`Server response was not valid JSON. Status: ${response.status}`);
+    }
+    
+    // Check for success: 200-299 status codes OR explicit 202
+    const isSuccess = response.ok || response.status === 202;
+    
+    if (isSuccess) {
+      console.log("[Upload] Upload successful, result:", result);
       // Show success message briefly then redirect to processing page
-      processingStatus.innerHTML = `
+      processingStatusEl.innerHTML = `
         <div style="text-align: center;">
           <div style="font-size: 24px; margin-bottom: 12px;">✅</div>
           <div style="font-size: 18px; font-weight: 600; color: var(--accent-green);">Upload Complete!</div>
@@ -1177,39 +1167,56 @@ async function uploadMeeting(audioBlob) {
       setStatus("Upload successful! Redirecting...", "ok");
       
       setTimeout(() => {
-        if (result.redirect) {
-          window.location.href = result.redirect;
-        } else {
-          window.location.href = "/account/meetings";
-        }
+        const redirectUrl = result.redirect || "/account/meetings";
+        console.log("[Upload] Redirecting to:", redirectUrl);
+        window.location.href = redirectUrl;
       }, 1000);
     } else {
+      console.error("[Upload] Upload failed - status:", response.status, "response:", result);
       // Re-enable button on error
-      if (uploadRecordingBtn) uploadRecordingBtn.disabled = false;
+      const uploadBtn = document.getElementById("uploadFile");
+      if (uploadBtn) uploadBtn.disabled = false;
+      
+      // Ensure processing card is visible to show error
+      if (processingCardEl) {
+        processingCardEl.style.display = "block";
+      }
       
       // Check if it's an enrollment required error
-      if (result.error === "enrollment_required") {
-        processingCard.style.display = "none";
+      if (result && result.error === "enrollment_required") {
+        processingCardEl.style.display = "none";
         showEnrollmentRequiredModal();
       } else {
-        setStatus(result.error || "Upload failed", "error");
-        processingStatus.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+        const errorMessage = (result && result.error) || `Upload failed (Status: ${response.status})`;
+        setStatus(errorMessage, "error");
+        processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
           <div style="font-size: 24px; margin-bottom: 12px;">❌</div>
-          <div style="font-size: 16px; font-weight: 600;">${result.error || "Upload failed"}</div>
+          <div style="font-size: 16px; font-weight: 600;">${errorMessage}</div>
           <div style="font-size: 14px; margin-top: 8px;">Please try again.</div>
         </div>`;
       }
     }
   } catch (err) {
+    console.error("[Upload] Exception during upload:", err);
     // Re-enable button on error
-    if (uploadRecordingBtn) uploadRecordingBtn.disabled = false;
+    const uploadBtn = document.getElementById("uploadFile");
+    if (uploadBtn) uploadBtn.disabled = false;
     
-    setStatus(`Error: ${err.message}`, "error");
-    processingStatus.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
-      <div style="font-size: 24px; margin-bottom: 12px;">❌</div>
-      <div style="font-size: 16px; font-weight: 600;">Upload Error</div>
-      <div style="font-size: 14px; margin-top: 8px;">${err.message}</div>
-    </div>`;
+    // Ensure processing card is visible to show error
+    if (processingCardEl) {
+      processingCardEl.style.display = "block";
+    }
+    
+    const errorMsg = err.message || "Unknown error occurred";
+    setStatus(`Error: ${errorMsg}`, "error");
+    if (processingStatusEl) {
+      processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+        <div style="font-size: 24px; margin-bottom: 12px;">❌</div>
+        <div style="font-size: 16px; font-weight: 600;">Upload Error</div>
+        <div style="font-size: 14px; margin-top: 8px;">${errorMsg}</div>
+        <div style="font-size: 12px; margin-top: 8px; color: var(--text-secondary);">Check the browser console for more details.</div>
+      </div>`;
+    }
   }
 }
 
@@ -1244,20 +1251,20 @@ function goToHome() {
 document.addEventListener("DOMContentLoaded", function() {
   const hasEnrollment = JSON.parse(document.getElementById('enrollment-status').textContent);
   if (!hasEnrollment) {
-    // User doesn't have enrollment audio - show modal and disable recording
+    // User doesn't have enrollment audio - show modal and disable upload
     showEnrollmentRequiredModal();
     
-    // Disable recording buttons
-    const startBtn = document.getElementById("start");
-    const stopBtn = document.getElementById("stop");
+    // Disable upload button
+    const uploadFileBtn = document.getElementById("uploadFile");
+    const fileInput = document.getElementById("file");
     
-    if (startBtn) {
-      startBtn.disabled = true;
-      startBtn.style.opacity = "0.5";
-      startBtn.style.cursor = "not-allowed";
+    if (uploadFileBtn) {
+      uploadFileBtn.disabled = true;
+      uploadFileBtn.style.opacity = "0.5";
+      uploadFileBtn.style.cursor = "not-allowed";
     }
-    if (stopBtn) {
-      stopBtn.disabled = true;
+    if (fileInput) {
+      fileInput.disabled = true;
     }
   }
 });
@@ -1265,51 +1272,79 @@ document.addEventListener("DOMContentLoaded", function() {
 // Initialize participant display
 updateParticipantDisplay();
 
-startBtn.addEventListener("click", startRecording);
-stopBtn.addEventListener("click", stopRecording);
-
-document.getElementById("deleteRecording").addEventListener("click", async () => {
-  const confirmed = await showConfirmModal(
-    "Delete Recording",
-    "Are you sure you want to delete this recording? This cannot be undone.",
-    "Delete",
-    "Cancel"
-  );
-  if (confirmed) {
-    recordedBlob = null;
-    playback.src = "";
-    document.getElementById("recordingControls").style.display = "none";
-    setStatus("", "");
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-  }
-});
-
-// Upload Recording button (appears after recording)
-document.getElementById("uploadRecording").addEventListener("click", async () => {
-  if (!recordedBlob) {
-    setStatus("No recording to upload. Please record first.", "error");
+// Upload button click handler - simplified and direct
+async function handleUploadClick() {
+  console.log("[Upload] ===== UPLOAD BUTTON CLICKED =====");
+  
+  // Get all required elements
+  const uploadBtn = document.getElementById("uploadFile");
+  const fileInputEl = document.getElementById("file");
+  const processingCardEl = document.getElementById("processingCard");
+  const processingStatusEl = document.getElementById("processingStatus");
+  const enrollmentStatusEl = document.getElementById('enrollment-status');
+  const participantsJsonEl = document.getElementById("participantsJson");
+  
+  // Validate all elements exist
+  if (!uploadBtn) {
+    alert("Error: Upload button not found. Please refresh the page.");
+    console.error("[Upload] Upload button element not found");
     return;
   }
   
-  // Check enrollment before uploading
-  const hasEnrollment = JSON.parse(document.getElementById('enrollment-status').textContent);
+  if (!fileInputEl) {
+    alert("Error: File input not found. Please refresh the page.");
+    console.error("[Upload] File input element not found");
+    return;
+  }
+  
+  if (!processingCardEl || !processingStatusEl) {
+    alert("Error: Processing elements not found. Please refresh the page.");
+    console.error("[Upload] Processing card elements not found");
+    return;
+  }
+  
+  // Check enrollment
+  if (!enrollmentStatusEl) {
+    console.error("[Upload] Enrollment status element not found");
+    processingCardEl.style.display = "block";
+    processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+      <div style="font-size: 16px; font-weight: 600;">Page Not Fully Loaded</div>
+      <div style="font-size: 14px; margin-top: 8px;">Please refresh the page and try again.</div>
+    </div>`;
+    return;
+  }
+  
+  const hasEnrollment = JSON.parse(enrollmentStatusEl.textContent);
   if (!hasEnrollment) {
+    console.log("[Upload] Enrollment required - showing modal");
     showEnrollmentRequiredModal();
     return;
   }
   
   // Check participants
-  const participantsJson = document.getElementById("participantsJson").value;
+  if (!participantsJsonEl) {
+    console.error("[Upload] Participants JSON element not found");
+    processingCardEl.style.display = "block";
+    processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+      <div style="font-size: 16px; font-weight: 600;">Page Not Fully Loaded</div>
+      <div style="font-size: 14px; margin-top: 8px;">Please refresh the page and try again.</div>
+    </div>`;
+    return;
+  }
+  
+  const participantsJson = participantsJsonEl.value;
   let participants = [];
   try {
     participants = JSON.parse(participantsJson);
+    console.log("[Upload] Participants:", participants.length);
   } catch (e) {
+    console.warn("[Upload] Error parsing participants JSON:", e);
     participants = [];
   }
   
   // Warn if no participants
   if (participants.length === 0) {
+    console.log("[Upload] No participants - showing confirmation");
     const confirmed = await showConfirmModal(
       "No Participants Selected",
       "Are you sure you want to upload this meeting with no other participants? Only you will receive the transcript.",
@@ -1317,13 +1352,128 @@ document.getElementById("uploadRecording").addEventListener("click", async () =>
       "Add Participants"
     );
     if (!confirmed) {
+      console.log("[Upload] User cancelled - no participants");
       return;
     }
   }
   
-  await uploadMeeting(recordedBlob);
-});
+  // Get selected file
+  const file = fileInputEl.files[0];
+  if (!file) {
+    console.warn("[Upload] No file selected");
+    setStatus("Please select a file to upload", "error");
+    processingCardEl.style.display = "block";
+    processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+      <div style="font-size: 16px; font-weight: 600;">No File Selected</div>
+      <div style="font-size: 14px; margin-top: 8px;">Please select a file to upload.</div>
+    </div>`;
+    return;
+  }
+  
+  console.log("[Upload] File selected:", file.name, "Size:", file.size, "bytes");
+  console.log("[Upload] Calling uploadMeeting function");
+  
+  try {
+    await uploadMeeting(file);
+    console.log("[Upload] Upload completed successfully");
+  } catch (error) {
+    console.error("[Upload] Error in uploadMeeting:", error);
+    const errorMsg = error.message || "Unknown error occurred";
+    setStatus(`Upload error: ${errorMsg}`, "error");
+    processingCardEl.style.display = "block";
+    processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+      <div style="font-size: 24px; margin-bottom: 12px;">❌</div>
+      <div style="font-size: 16px; font-weight: 600;">Upload Error</div>
+      <div style="font-size: 14px; margin-top: 8px;">${errorMsg}</div>
+    </div>`;
+  }
+}
 
+// Attach event listener - multiple methods to ensure it works
+function setupUploadButton() {
+  const uploadBtn = document.getElementById("uploadFile");
+  
+  if (!uploadBtn) {
+    console.error("[Upload] Upload button not found - will retry");
+    setTimeout(setupUploadButton, 100);
+    return;
+  }
+  
+  console.log("[Upload] Found upload button:", uploadBtn.id, uploadBtn);
+  
+  // Remove any existing listeners by cloning the button
+  const newBtn = uploadBtn.cloneNode(true);
+  uploadBtn.parentNode.replaceChild(newBtn, uploadBtn);
+  
+  // Test click handler - logs immediately
+  newBtn.addEventListener("click", function(e) {
+    console.log("[Upload] ===== BUTTON CLICKED (addEventListener) =====");
+    e.preventDefault();
+    e.stopPropagation();
+    handleUploadClick();
+    return false;
+  }, true); // Use capture phase
+  
+  // Also add inline onclick as backup
+  newBtn.onclick = function(e) {
+    console.log("[Upload] ===== BUTTON CLICKED (onclick) =====");
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    handleUploadClick();
+    return false;
+  };
+  
+  // Add mousedown as another test
+  newBtn.addEventListener("mousedown", function(e) {
+    console.log("[Upload] Button mousedown detected");
+  });
+  
+  console.log("[Upload] Event listeners attached to button:", newBtn.id);
+  console.log("[Upload] Button element:", newBtn);
+  
+  // Test if we can trigger it programmatically
+  console.log("[Upload] Testing button accessibility...");
+  if (newBtn.click) {
+    console.log("[Upload] Button has click method");
+  }
+  
+  // Show status indicator
+  const statusEl = document.getElementById("uploadButtonStatus");
+  if (statusEl) {
+    statusEl.style.display = "block";
+    statusEl.textContent = "✓ Button ready - Click to upload";
+    statusEl.style.color = "var(--accent-green)";
+  }
+}
+
+// Try to setup immediately
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function() {
+    console.log("[Upload] DOM loaded, setting up button");
+    setupUploadButton();
+  });
+} else {
+  console.log("[Upload] DOM already ready, setting up button");
+  setupUploadButton();
+}
+
+// Also try after delays as fallback
+setTimeout(function() {
+  console.log("[Upload] Retry 1: Setting up button after 100ms");
+  setupUploadButton();
+}, 100);
+
+setTimeout(function() {
+  console.log("[Upload] Retry 2: Setting up button after 500ms");
+  setupUploadButton();
+}, 500);
+
+setTimeout(function() {
+  console.log("[Upload] Retry 3: Setting up button after 1000ms");
+  setupUploadButton();
+}, 1000);
 
 // Close dropdown when clicking outside
 window.onclick = function(event) {

@@ -225,8 +225,9 @@
             <div class="empty-state">
               <h3>No meetings found</h3>
               <p>Record your first meeting to get started.</p>
-              <div style="margin-top: var(--space-lg);">
+              <div style="margin-top: var(--space-lg); display: flex; gap: var(--space-md); justify-content: center; flex-wrap: wrap;">
                 <a class="btn btn-primary" href="{{ url_for('record_meeting') }}">Record Meeting</a>
+                <a class="btn btn-secondary" href="{{ url_for('upload_meeting_get') }}">Upload Meeting</a>
               </div>
             </div>
           {% endif %}

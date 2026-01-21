@@ -5123,6 +5123,19 @@ def record_meeting():
     organizations_directory = load_organizations_directory()
     return render_template("record_meeting.html", user=user, org_types=ORGANIZATION_TYPES, organizations_directory=organizations_directory, has_enrollment=has_enrollment)
 
+@app.get("/upload")
+def upload_meeting_get():
+    """Page for uploading meeting audio file"""
+    if not require_login():
+        return redirect(url_for("login_get"))
+    user = current_user()
+    
+    # Enrollment check disabled - voice enrollment is optional
+    has_enrollment = True
+    
+    organizations_directory = load_organizations_directory()
+    return render_template("upload_meeting.html", user=user, org_types=ORGANIZATION_TYPES, organizations_directory=organizations_directory, has_enrollment=has_enrollment)
+
 @app.post("/upload_meeting")
 def upload_meeting():
     """Handle meeting audio upload and trigger pipeline"""
