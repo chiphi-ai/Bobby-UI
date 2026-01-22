@@ -385,7 +385,6 @@
       <h2>Upload Meeting File</h2>
       <input type="file" id="file" accept="audio/*,video/*">
       <button type="button" id="uploadFile" class="btnPrimary" style="cursor: pointer; position: relative; z-index: 10;">Upload & Process</button>
-      <div id="uploadButtonStatus" style="font-size: 12px; color: var(--text-secondary); margin-top: 8px; display: none;"></div>
       <div class="info-box">
         <b>Supported formats:</b> MP3, MP4, M4A, WAV, MOV, OGG, FLAC, AAC, WEBM
       </div>
@@ -1056,167 +1055,126 @@ document.getElementById("addMembersModal").addEventListener("click", (e) => {
 });
 
 async function uploadMeeting(audioFile) {
-  console.log("[Upload] uploadMeeting function called with file:", audioFile?.name);
+  console.log("[Upload] uploadMeeting called with file:", audioFile?.name);
   
-  const meetingNameEl = document.getElementById("meetingName");
-  if (!meetingNameEl) {
-    console.error("[Upload] Meeting name input not found");
-    setStatus("Error: Page not fully loaded. Please refresh and try again.", "error");
-    return;
+  if (!audioFile) {
+    throw new Error("No audio file provided");
   }
   
-  const meetingName = meetingNameEl.value.trim();
+  const meetingNameEl = document.getElementById("meetingName");
+  const meetingName = meetingNameEl ? meetingNameEl.value.trim() : "";
+  
   const participantsJsonEl = document.getElementById("participantsJson");
   const sourceOrgsJsonEl = document.getElementById("sourceOrganizationsJson");
   
-  if (!participantsJsonEl || !sourceOrgsJsonEl) {
-    console.error("[Upload] Required form elements not found");
-    setStatus("Error: Page not fully loaded. Please refresh and try again.", "error");
-    return;
-  }
-  
-  const participantsJson = participantsJsonEl.value;
-  const sourceOrgsJson = sourceOrgsJsonEl.value;
+  const participantsJson = participantsJsonEl ? participantsJsonEl.value : "[]";
+  const sourceOrgsJson = sourceOrgsJsonEl ? sourceOrgsJsonEl.value : "[]";
   
   const formData = new FormData();
-  // Use the file's name if it's a File object, otherwise use default name
-  const fileName = audioFile instanceof File ? audioFile.name : "meeting.webm";
+  const fileName = audioFile.name || "meeting.webm";
   formData.append("audio", audioFile, fileName);
-  if (meetingName) {
-    formData.append("meeting_name", meetingName);
-  }
-  formData.append("participants", participantsJson);
-  formData.append("source_organizations", sourceOrgsJson);
+  formData.append("meeting_name", meetingName || "");
+  formData.append("participants", participantsJson || "[]");
+  formData.append("source_organizations", sourceOrgsJson || "[]");
   
-  console.log("[Upload] FormData created - file:", fileName, "meeting name:", meetingName || "(none)");
+  console.log("[Upload] FormData created - file:", fileName);
   
-  // Get processing card elements - ensure they exist
   const processingCardEl = document.getElementById("processingCard");
   const processingStatusEl = document.getElementById("processingStatus");
-  
-  if (!processingCardEl || !processingStatusEl) {
-    console.error("[Upload] Processing card elements not found");
-    setStatus("Error: Processing elements not found. Please refresh the page.", "error");
-    return;
-  }
-  
-  // Disable upload button during upload
   const uploadBtn = document.getElementById("uploadFile");
+  
+  // Disable upload button
   if (uploadBtn) {
     uploadBtn.disabled = true;
-    console.log("[Upload] Upload button disabled");
   }
   
-  // Show processing card IMMEDIATELY before fetch
-  setStatus("Uploading meeting...", "processing");
-  processingCardEl.style.display = "block";
-  processingStatusEl.innerHTML = `
-    <div style="text-align: center;">
-      <div style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">📤 Uploading your meeting...</div>
-      <div style="width: 100%; height: 8px; background: rgba(0,0,0,0.1); border-radius: 999px; overflow: hidden; margin: 16px 0;">
-        <div id="uploadProgressBar" style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent-blue), var(--accent-green)); transition: width 0.3s ease; animation: uploadPulse 1.5s ease-in-out infinite;"></div>
+  // Show processing card
+  if (processingCardEl && processingStatusEl) {
+    processingCardEl.style.display = "block";
+    processingStatusEl.innerHTML = `
+      <div style="text-align: center;">
+        <div style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">📤 Uploading your meeting...</div>
+        <div style="width: 100%; height: 8px; background: rgba(0,0,0,0.1); border-radius: 999px; overflow: hidden; margin: 16px 0;">
+          <div style="height: 100%; width: 50%; background: linear-gradient(90deg, var(--accent-blue), var(--accent-green)); animation: uploadPulse 1.5s ease-in-out infinite;"></div>
+        </div>
+        <div style="font-size: 14px; color: var(--text-secondary);">Please wait...</div>
       </div>
-      <div style="font-size: 14px; color: var(--text-secondary);">Please wait while we upload your audio file...</div>
-    </div>
-    <style>
-      @keyframes uploadPulse {
-        0%, 100% { width: 30%; }
-        50% { width: 70%; }
-      }
-    </style>
-  `;
-  
-  console.log("[Upload] Processing card displayed, starting fetch...");
+      <style>
+        @keyframes uploadPulse {
+          0%, 100% { width: 30%; }
+          50% { width: 70%; }
+        }
+      </style>
+    `;
+  }
   
   try {
+    console.log("[Upload] Sending POST to /upload_meeting...");
     const response = await fetch("/upload_meeting", {
       method: "POST",
       body: formData
     });
     
-    console.log("[Upload] Fetch completed - status:", response.status, "ok:", response.ok);
+    console.log("[Upload] Response status:", response.status);
     
-    // Handle JSON parsing with error handling
-    let result;
-    try {
-      const responseText = await response.text();
-      console.log("[Upload] Response text:", responseText.substring(0, 200));
-      if (responseText.trim()) {
+    const responseText = await response.text();
+    console.log("[Upload] Response:", responseText.substring(0, 300));
+    
+    let result = {};
+    if (responseText && responseText.trim()) {
+      try {
         result = JSON.parse(responseText);
-      } else {
-        result = {};
+      } catch (e) {
+        console.warn("[Upload] Could not parse response as JSON");
       }
-    } catch (jsonError) {
-      console.error("[Upload] JSON parsing error:", jsonError);
-      throw new Error(`Server response was not valid JSON. Status: ${response.status}`);
     }
     
-    // Check for success: 200-299 status codes OR explicit 202
-    const isSuccess = response.ok || response.status === 202;
-    
-    if (isSuccess) {
-      console.log("[Upload] Upload successful, result:", result);
-      // Show success message briefly then redirect to processing page
-      processingStatusEl.innerHTML = `
-        <div style="text-align: center;">
-          <div style="font-size: 24px; margin-bottom: 12px;">✅</div>
-          <div style="font-size: 18px; font-weight: 600; color: var(--accent-green);">Upload Complete!</div>
-          <div style="font-size: 14px; color: var(--text-secondary); margin-top: 8px;">Redirecting to processing status...</div>
-        </div>
-      `;
-      setStatus("Upload successful! Redirecting...", "ok");
-      
-      setTimeout(() => {
-        const redirectUrl = result.redirect || "/account/meetings";
-        console.log("[Upload] Redirecting to:", redirectUrl);
-        window.location.href = redirectUrl;
-      }, 1000);
-    } else {
-      console.error("[Upload] Upload failed - status:", response.status, "response:", result);
-      // Re-enable button on error
-      const uploadBtn = document.getElementById("uploadFile");
-      if (uploadBtn) uploadBtn.disabled = false;
-      
-      // Ensure processing card is visible to show error
-      if (processingCardEl) {
-        processingCardEl.style.display = "block";
+    if (response.ok || response.status === 202) {
+      console.log("[Upload] Success!");
+      if (processingStatusEl) {
+        processingStatusEl.innerHTML = `
+          <div style="text-align: center;">
+            <div style="font-size: 24px; margin-bottom: 12px;">✅</div>
+            <div style="font-size: 18px; font-weight: 600; color: var(--accent-green);">Upload Complete!</div>
+            <div style="font-size: 14px; color: var(--text-secondary); margin-top: 8px;">Redirecting...</div>
+          </div>
+        `;
       }
       
-      // Check if it's an enrollment required error
-      if (result && result.error === "enrollment_required") {
-        processingCardEl.style.display = "none";
+      setTimeout(() => {
+        window.location.href = result.redirect || "/account/meetings";
+      }, 1000);
+    } else {
+      // Error response
+      if (uploadBtn) uploadBtn.disabled = false;
+      
+      const errorMessage = result.error || `Upload failed (${response.status})`;
+      
+      if (result.error === "enrollment_required") {
+        if (processingCardEl) processingCardEl.style.display = "none";
         showEnrollmentRequiredModal();
       } else {
-        const errorMessage = (result && result.error) || `Upload failed (Status: ${response.status})`;
-        setStatus(errorMessage, "error");
-        processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
-          <div style="font-size: 24px; margin-bottom: 12px;">❌</div>
-          <div style="font-size: 16px; font-weight: 600;">${errorMessage}</div>
-          <div style="font-size: 14px; margin-top: 8px;">Please try again.</div>
-        </div>`;
+        if (processingStatusEl) {
+          processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+            <div style="font-size: 24px; margin-bottom: 12px;">❌</div>
+            <div style="font-size: 16px; font-weight: 600;">${errorMessage}</div>
+            <div style="font-size: 14px; margin-top: 8px;">Please try again.</div>
+          </div>`;
+        }
       }
     }
   } catch (err) {
-    console.error("[Upload] Exception during upload:", err);
-    // Re-enable button on error
-    const uploadBtn = document.getElementById("uploadFile");
+    console.error("[Upload] Error:", err);
     if (uploadBtn) uploadBtn.disabled = false;
     
-    // Ensure processing card is visible to show error
-    if (processingCardEl) {
-      processingCardEl.style.display = "block";
-    }
-    
-    const errorMsg = err.message || "Unknown error occurred";
-    setStatus(`Error: ${errorMsg}`, "error");
     if (processingStatusEl) {
       processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
         <div style="font-size: 24px; margin-bottom: 12px;">❌</div>
         <div style="font-size: 16px; font-weight: 600;">Upload Error</div>
-        <div style="font-size: 14px; margin-top: 8px;">${errorMsg}</div>
-        <div style="font-size: 12px; margin-top: 8px; color: var(--text-secondary);">Check the browser console for more details.</div>
+        <div style="font-size: 14px; margin-top: 8px;">${err.message || "Network error"}</div>
       </div>`;
     }
+    throw err;
   }
 }
 
@@ -1276,204 +1234,186 @@ updateParticipantDisplay();
 async function handleUploadClick() {
   console.log("[Upload] ===== UPLOAD BUTTON CLICKED =====");
   
-  // Get all required elements
-  const uploadBtn = document.getElementById("uploadFile");
-  const fileInputEl = document.getElementById("file");
-  const processingCardEl = document.getElementById("processingCard");
-  const processingStatusEl = document.getElementById("processingStatus");
-  const enrollmentStatusEl = document.getElementById('enrollment-status');
-  const participantsJsonEl = document.getElementById("participantsJson");
-  
-  // Validate all elements exist
-  if (!uploadBtn) {
-    alert("Error: Upload button not found. Please refresh the page.");
-    console.error("[Upload] Upload button element not found");
-    return;
-  }
-  
-  if (!fileInputEl) {
-    alert("Error: File input not found. Please refresh the page.");
-    console.error("[Upload] File input element not found");
-    return;
-  }
-  
-  if (!processingCardEl || !processingStatusEl) {
-    alert("Error: Processing elements not found. Please refresh the page.");
-    console.error("[Upload] Processing card elements not found");
-    return;
-  }
-  
-  // Check enrollment
-  if (!enrollmentStatusEl) {
-    console.error("[Upload] Enrollment status element not found");
-    processingCardEl.style.display = "block";
-    processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
-      <div style="font-size: 16px; font-weight: 600;">Page Not Fully Loaded</div>
-      <div style="font-size: 14px; margin-top: 8px;">Please refresh the page and try again.</div>
-    </div>`;
-    return;
-  }
-  
-  const hasEnrollment = JSON.parse(enrollmentStatusEl.textContent);
-  if (!hasEnrollment) {
-    console.log("[Upload] Enrollment required - showing modal");
-    showEnrollmentRequiredModal();
-    return;
-  }
-  
-  // Check participants
-  if (!participantsJsonEl) {
-    console.error("[Upload] Participants JSON element not found");
-    processingCardEl.style.display = "block";
-    processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
-      <div style="font-size: 16px; font-weight: 600;">Page Not Fully Loaded</div>
-      <div style="font-size: 14px; margin-top: 8px;">Please refresh the page and try again.</div>
-    </div>`;
-    return;
-  }
-  
-  const participantsJson = participantsJsonEl.value;
-  let participants = [];
   try {
-    participants = JSON.parse(participantsJson);
-    console.log("[Upload] Participants:", participants.length);
-  } catch (e) {
-    console.warn("[Upload] Error parsing participants JSON:", e);
-    participants = [];
-  }
-  
-  // Warn if no participants
-  if (participants.length === 0) {
-    console.log("[Upload] No participants - showing confirmation");
-    const confirmed = await showConfirmModal(
-      "No Participants Selected",
-      "Are you sure you want to upload this meeting with no other participants? Only you will receive the transcript.",
-      "Continue Anyway",
-      "Add Participants"
-    );
-    if (!confirmed) {
-      console.log("[Upload] User cancelled - no participants");
+    // Get all required elements
+    const uploadBtn = document.getElementById("uploadFile");
+    const fileInputEl = document.getElementById("file");
+    const processingCardEl = document.getElementById("processingCard");
+    const processingStatusEl = document.getElementById("processingStatus");
+    const enrollmentStatusEl = document.getElementById('enrollment-status');
+    const participantsJsonEl = document.getElementById("participantsJson");
+    
+    console.log("[Upload] Elements found:", {
+      uploadBtn: !!uploadBtn,
+      fileInputEl: !!fileInputEl,
+      processingCardEl: !!processingCardEl,
+      processingStatusEl: !!processingStatusEl,
+      enrollmentStatusEl: !!enrollmentStatusEl,
+      participantsJsonEl: !!participantsJsonEl
+    });
+    
+    // Validate all elements exist
+    if (!uploadBtn) {
+      alert("Error: Upload button not found. Please refresh the page.");
+      console.error("[Upload] Upload button element not found");
       return;
     }
-  }
-  
-  // Get selected file
-  const file = fileInputEl.files[0];
-  if (!file) {
-    console.warn("[Upload] No file selected");
-    setStatus("Please select a file to upload", "error");
-    processingCardEl.style.display = "block";
-    processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
-      <div style="font-size: 16px; font-weight: 600;">No File Selected</div>
-      <div style="font-size: 14px; margin-top: 8px;">Please select a file to upload.</div>
-    </div>`;
-    return;
-  }
-  
-  console.log("[Upload] File selected:", file.name, "Size:", file.size, "bytes");
-  console.log("[Upload] Calling uploadMeeting function");
-  
-  try {
+    
+    if (!fileInputEl) {
+      alert("Error: File input not found. Please refresh the page.");
+      console.error("[Upload] File input element not found");
+      return;
+    }
+    
+    if (!processingCardEl || !processingStatusEl) {
+      alert("Error: Processing elements not found. Please refresh the page.");
+      console.error("[Upload] Processing card elements not found");
+      return;
+    }
+    
+    // Check enrollment
+    if (!enrollmentStatusEl) {
+      console.error("[Upload] Enrollment status element not found");
+      processingCardEl.style.display = "block";
+      processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+        <div style="font-size: 16px; font-weight: 600;">Page Not Fully Loaded</div>
+        <div style="font-size: 14px; margin-top: 8px;">Please refresh the page and try again.</div>
+      </div>`;
+      return;
+    }
+    
+    let hasEnrollment = true;
+    try {
+      hasEnrollment = JSON.parse(enrollmentStatusEl.textContent);
+    } catch (e) {
+      console.warn("[Upload] Error parsing enrollment status, assuming true:", e);
+    }
+    
+    console.log("[Upload] hasEnrollment:", hasEnrollment);
+    
+    if (!hasEnrollment) {
+      console.log("[Upload] Enrollment required - showing modal");
+      showEnrollmentRequiredModal();
+      return;
+    }
+    
+    // Check participants
+    if (!participantsJsonEl) {
+      console.error("[Upload] Participants JSON element not found");
+      processingCardEl.style.display = "block";
+      processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+        <div style="font-size: 16px; font-weight: 600;">Page Not Fully Loaded</div>
+        <div style="font-size: 14px; margin-top: 8px;">Please refresh the page and try again.</div>
+      </div>`;
+      return;
+    }
+    
+    const participantsJson = participantsJsonEl.value;
+    let participants = [];
+    try {
+      participants = JSON.parse(participantsJson);
+      console.log("[Upload] Participants:", participants.length);
+    } catch (e) {
+      console.warn("[Upload] Error parsing participants JSON:", e);
+      participants = [];
+    }
+    
+    // Warn if no participants
+    if (participants.length === 0) {
+      console.log("[Upload] No participants - showing confirmation");
+      const confirmed = await showConfirmModal(
+        "No Participants Selected",
+        "Are you sure you want to upload this meeting with no other participants? Only you will receive the transcript.",
+        "Continue Anyway",
+        "Add Participants"
+      );
+      if (!confirmed) {
+        console.log("[Upload] User cancelled - no participants");
+        return;
+      }
+    }
+    
+    // Get selected file
+    const file = fileInputEl.files[0];
+    console.log("[Upload] File input files:", fileInputEl.files.length);
+    
+    if (!file) {
+      console.warn("[Upload] No file selected");
+      setStatus("Please select a file to upload", "error");
+      processingCardEl.style.display = "block";
+      processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+        <div style="font-size: 16px; font-weight: 600;">No File Selected</div>
+        <div style="font-size: 14px; margin-top: 8px;">Please select a file to upload.</div>
+      </div>`;
+      return;
+    }
+    
+    console.log("[Upload] File selected:", file.name, "Size:", file.size, "bytes");
+    console.log("[Upload] Calling uploadMeeting function");
+    
     await uploadMeeting(file);
     console.log("[Upload] Upload completed successfully");
+    
   } catch (error) {
-    console.error("[Upload] Error in uploadMeeting:", error);
+    console.error("[Upload] Error in handleUploadClick:", error);
     const errorMsg = error.message || "Unknown error occurred";
-    setStatus(`Upload error: ${errorMsg}`, "error");
-    processingCardEl.style.display = "block";
-    processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
-      <div style="font-size: 24px; margin-bottom: 12px;">❌</div>
-      <div style="font-size: 16px; font-weight: 600;">Upload Error</div>
-      <div style="font-size: 14px; margin-top: 8px;">${errorMsg}</div>
-    </div>`;
+    alert("Upload error: " + errorMsg);
+    
+    const processingCardEl = document.getElementById("processingCard");
+    const processingStatusEl = document.getElementById("processingStatus");
+    
+    if (processingCardEl && processingStatusEl) {
+      setStatus(`Upload error: ${errorMsg}`, "error");
+      processingCardEl.style.display = "block";
+      processingStatusEl.innerHTML = `<div style="color: var(--accent-red); text-align: center;">
+        <div style="font-size: 24px; margin-bottom: 12px;">❌</div>
+        <div style="font-size: 16px; font-weight: 600;">Upload Error</div>
+        <div style="font-size: 14px; margin-top: 8px;">${errorMsg}</div>
+      </div>`;
+    }
   }
 }
 
-// Attach event listener - multiple methods to ensure it works
+// Attach event listener - simplified and robust
+let uploadButtonSetup = false;
+
 function setupUploadButton() {
+  if (uploadButtonSetup) {
+    return;
+  }
+  
   const uploadBtn = document.getElementById("uploadFile");
   
   if (!uploadBtn) {
-    console.error("[Upload] Upload button not found - will retry");
     setTimeout(setupUploadButton, 100);
     return;
   }
   
-  console.log("[Upload] Found upload button:", uploadBtn.id, uploadBtn);
+  uploadButtonSetup = true;
   
-  // Remove any existing listeners by cloning the button
-  const newBtn = uploadBtn.cloneNode(true);
-  uploadBtn.parentNode.replaceChild(newBtn, uploadBtn);
-  
-  // Test click handler - logs immediately
-  newBtn.addEventListener("click", function(e) {
-    console.log("[Upload] ===== BUTTON CLICKED (addEventListener) =====");
+  // Simple click handler
+  uploadBtn.addEventListener("click", async function(e) {
+    console.log("[Upload] Button clicked");
     e.preventDefault();
     e.stopPropagation();
-    handleUploadClick();
-    return false;
-  }, true); // Use capture phase
-  
-  // Also add inline onclick as backup
-  newBtn.onclick = function(e) {
-    console.log("[Upload] ===== BUTTON CLICKED (onclick) =====");
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
+    
+    try {
+      await handleUploadClick();
+    } catch (error) {
+      console.error("[Upload] Error:", error);
+      alert("Upload error: " + (error.message || error));
+      // Re-enable button on error
+      uploadBtn.disabled = false;
     }
-    handleUploadClick();
-    return false;
-  };
-  
-  // Add mousedown as another test
-  newBtn.addEventListener("mousedown", function(e) {
-    console.log("[Upload] Button mousedown detected");
   });
-  
-  console.log("[Upload] Event listeners attached to button:", newBtn.id);
-  console.log("[Upload] Button element:", newBtn);
-  
-  // Test if we can trigger it programmatically
-  console.log("[Upload] Testing button accessibility...");
-  if (newBtn.click) {
-    console.log("[Upload] Button has click method");
-  }
-  
-  // Show status indicator
-  const statusEl = document.getElementById("uploadButtonStatus");
-  if (statusEl) {
-    statusEl.style.display = "block";
-    statusEl.textContent = "✓ Button ready - Click to upload";
-    statusEl.style.color = "var(--accent-green)";
-  }
 }
 
-// Try to setup immediately
+// Setup when DOM is ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', function() {
-    console.log("[Upload] DOM loaded, setting up button");
-    setupUploadButton();
-  });
+  document.addEventListener('DOMContentLoaded', setupUploadButton);
 } else {
-  console.log("[Upload] DOM already ready, setting up button");
   setupUploadButton();
 }
-
-// Also try after delays as fallback
-setTimeout(function() {
-  console.log("[Upload] Retry 1: Setting up button after 100ms");
-  setupUploadButton();
-}, 100);
-
-setTimeout(function() {
-  console.log("[Upload] Retry 2: Setting up button after 500ms");
-  setupUploadButton();
-}, 500);
-
-setTimeout(function() {
-  console.log("[Upload] Retry 3: Setting up button after 1000ms");
-  setupUploadButton();
-}, 1000);
 
 // Close dropdown when clicking outside
 window.onclick = function(event) {
