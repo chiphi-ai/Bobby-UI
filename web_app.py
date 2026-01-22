@@ -1387,12 +1387,21 @@ def _effective_raw_display_map(meeting_id: str, meeting: dict, utterances: list[
     return effective_map
 
 
-def _regenerate_meeting_assets(meeting_id: str, meeting: dict) -> dict[str, Any]:
-    """Regenerate named transcript + transcript PDF + meeting report PDF from the current meeting state."""
+def _regenerate_meeting_assets(meeting_id: str, meeting: dict, skip_ai_summary: bool = True) -> dict[str, Any]:
+    """Regenerate named transcript + transcript PDF from the current meeting state.
+    
+    By default, skips the AI-powered meeting report PDF generation (Ollama) to avoid
+    freezing the system. Set skip_ai_summary=False to include it (resource-intensive).
+    """
     assets = _build_labeled_script_from_utterances(meeting_id, meeting, {})
     _write_named_script_assets(assets["named_txt_path"], assets["named_json_path"], assets["rows"])
     transcript_pdf = _regenerate_transcript_pdf_from_named_json(meeting_id, assets["named_json_path"])
-    meeting_report_pdf = _regenerate_meeting_report_pdf_from_transcript(meeting_id, meeting, assets["named_txt_path"])
+    
+    # Skip Ollama-based meeting report by default - it's very resource intensive
+    meeting_report_pdf = None
+    if not skip_ai_summary:
+        meeting_report_pdf = _regenerate_meeting_report_pdf_from_transcript(meeting_id, meeting, assets["named_txt_path"])
+    
     return {
         "assets": assets,
         "transcript_pdf": transcript_pdf,
@@ -1716,12 +1725,13 @@ def api_save_speaker_labels(meeting_id: str):
         "labels": dict(raw_overrides),
     })
 
-    # Regenerate assets (named_script txt/json + transcript pdf + meeting report pdf)
+    # Regenerate assets (named_script txt/json + transcript pdf only - skip AI summary to avoid freezing)
     try:
         assets = _build_labeled_script_from_utterances(meeting_id, meeting, normalized_existing)
         _write_named_script_assets(assets["named_txt_path"], assets["named_json_path"], assets["rows"])
         transcript_pdf = _regenerate_transcript_pdf_from_named_json(meeting_id, assets["named_json_path"])
-        meeting_report_pdf = _regenerate_meeting_report_pdf_from_transcript(meeting_id, meeting, assets["named_txt_path"])
+        # Skip Ollama-based meeting report regeneration - user can trigger via "Generate AI Summary" button
+        meeting_report_pdf = None
     except Exception as e:
         return jsonify({"error": "Regeneration failed", "message": str(e)}), 500
 
@@ -1741,8 +1751,7 @@ def api_save_speaker_labels(meeting_id: str):
         "transcript_path": str((OUTPUT_DIR / f"{meeting_id}_named_script.txt").relative_to(ROOT)),
         "transcript_updated_at": datetime.now().isoformat(),
         "transcript_pdf_path": str((OUTPUT_DIR / f"{meeting_id}_transcript.pdf").relative_to(ROOT)) if transcript_pdf else meeting.get("transcript_pdf_path"),
-        "pdf_path": str((OUTPUT_DIR / f"{meeting_id}_meeting_report.pdf").relative_to(ROOT)) if meeting_report_pdf else meeting.get("pdf_path"),
-        "pdf_updated_at": datetime.now().isoformat() if meeting_report_pdf else meeting.get("pdf_updated_at"),
+        # Don't overwrite pdf_path - AI summary is generated on-demand via separate button
     })
 
     meeting = get_meeting(meeting_id) or meeting
@@ -2339,6 +2348,60 @@ def api_undo_utterance_split(meeting_id: str):
         },
         "utterance_splits_version": version,
     }), 200
+
+
+@app.post("/api/meetings/<meeting_id>/generate_summary")
+def api_generate_ai_summary(meeting_id: str):
+    """Generate AI-powered meeting summary PDF on demand using Ollama.
+    
+    This is resource-intensive and may take several minutes. Only call when
+    the user explicitly requests an AI summary.
+    """
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        return jsonify({"error": "Meeting not found"}), 404
+
+    # Check if transcript exists
+    transcript_path = OUTPUT_DIR / f"{meeting_id}_named_script.txt"
+    if not transcript_path.exists():
+        return jsonify({"error": "Transcript not found. Please ensure the meeting has been processed."}), 404
+
+    # Generate the AI summary PDF (this calls Ollama - resource intensive!)
+    try:
+        print(f"[AI SUMMARY] Starting Ollama-based summary generation for {meeting_id}...")
+        meeting_report_pdf = _regenerate_meeting_report_pdf_from_transcript(meeting_id, meeting, transcript_path)
+        
+        if meeting_report_pdf and meeting_report_pdf.exists():
+            # Update meeting record with new PDF path
+            update_meeting(meeting_id, {
+                "pdf_path": str((OUTPUT_DIR / f"{meeting_id}_meeting_report.pdf").relative_to(ROOT)),
+                "pdf_updated_at": datetime.now().isoformat(),
+                "ai_summary_generated": True,
+                "ai_summary_generated_at": datetime.now().isoformat(),
+            })
+            
+            print(f"[AI SUMMARY] Successfully generated summary for {meeting_id}")
+            return jsonify({
+                "status": "success",
+                "message": "AI summary generated successfully",
+                "pdf_path": str(meeting_report_pdf.relative_to(ROOT)),
+            }), 200
+        else:
+            return jsonify({
+                "error": "AI summary generation failed",
+                "message": "Ollama did not return a valid response. Make sure Ollama is running and the model is available."
+            }), 500
+            
+    except Exception as e:
+        print(f"[AI SUMMARY] Error generating summary for {meeting_id}: {e}")
+        return jsonify({
+            "error": "AI summary generation failed",
+            "message": str(e)
+        }), 500
+
 
 def get_user_meetings(user_email: str) -> list:
     """Get all meetings where user is a participant."""

@@ -302,7 +302,12 @@
       return info ? info.note : "Processing...";
     }
 
+    let pollInterval = null;
+    let pollingStopped = false;
+
     async function poll() {
+      if (pollingStopped) return;
+      
       try {
         const res = await fetch(`/api/jobs/${encodeURIComponent(meetingId)}?tail=250`, { cache: "no-store" });
         if (!res.ok) return;
@@ -332,17 +337,47 @@
         
         renderLog(data.log_lines || []);
 
+        // STOP polling on completion OR failure
         if (job.status === "done") {
+          stopPolling();
           window.location.href = meetingsUrl;
+        } else if (job.status === "failed") {
+          stopPolling();
+          progressNote.textContent = "Processing failed. Check the log for details.";
         }
       } catch (e) {
         // ignore transient errors
       }
     }
+    
+    function stopPolling() {
+      pollingStopped = true;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    }
+    
+    // Pause polling AND animations when tab is hidden to save resources
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        document.body.classList.add('animations-paused');
+        if (pollInterval) {
+          clearInterval(pollInterval);
+          pollInterval = null;
+        }
+      } else {
+        document.body.classList.remove('animations-paused');
+        if (!pollingStopped) {
+          poll();
+          pollInterval = setInterval(poll, 2000);
+        }
+      }
+    });
 
     // Initial paint
     poll();
-    setInterval(poll, 1000);
+    pollInterval = setInterval(poll, 2000);  // 2 seconds instead of 1
   </script>
 </body>
 </html>

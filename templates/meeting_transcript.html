@@ -284,6 +284,7 @@
               <a href="{{ transcript_txt_url }}" class="btn btn-sm btn-secondary" target="_blank">Transcript TXT</a>
             </div>
             <div style="display:flex; gap: var(--space-sm); flex-wrap: wrap; align-items: center;">
+              <button id="generateAiSummaryBtn" class="btn btn-sm btn-secondary" title="Generate AI-powered meeting summary (may take several minutes)">🤖 Generate AI Summary</button>
               <button id="saveLabelsBtn" class="btn btn-sm btn-primary">Save speaker names</button>
             </div>
           </div>
@@ -307,7 +308,6 @@
                     placeholder="Enter speaker name"
                     data-speaker-input="{{ s.raw }}"
                     data-default-display="{{ s.display }}"
-                    list="speakerSuggestions"
                   />
                 </div>
                 {% endfor %}
@@ -384,7 +384,7 @@
         <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 10px;">
           This changes the name for just this utterance (it won’t rename the whole speaker).
         </div>
-        <input id="overrideInput" type="text" placeholder="Enter speaker name (e.g., Mike)" maxlength="100" list="speakerSuggestions" />
+        <input id="overrideInput" type="text" placeholder="Enter speaker name (e.g., Mike)" maxlength="100" />
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="overrideCancelBtn">Cancel</button>
@@ -433,11 +433,11 @@
         <div style="display:grid; grid-template-columns: 1fr; gap: 10px;">
           <div>
             <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 6px;">Speaker name for first part (optional)</div>
-            <input id="splitSpeakerA" type="text" placeholder="e.g., Carter" maxlength="100" list="speakerSuggestions" />
+            <input id="splitSpeakerA" type="text" placeholder="e.g., Carter" maxlength="100" />
           </div>
           <div>
             <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 6px;">Speaker name for second part (optional)</div>
-            <input id="splitSpeakerB" type="text" placeholder="e.g., Mike" maxlength="100" list="speakerSuggestions" />
+            <input id="splitSpeakerB" type="text" placeholder="e.g., Mike" maxlength="100" />
           </div>
         </div>
         
@@ -454,12 +454,6 @@
       </div>
     </div>
   </div>
-
-  <datalist id="speakerSuggestions">
-    {% for opt in speaker_suggestions %}
-    <option value="{{ opt }}"></option>
-    {% endfor %}
-  </datalist>
 
   <!-- Fixed Bottom Audio Player -->
   <div id="audioPlayerSection" class="audio-player-bottom">
@@ -528,93 +522,48 @@
       }
     }
 
-    function attachUtteranceHandlers(el) {
-      el.addEventListener('click', () => {
-        const start = parseFloat(el.getAttribute('data-start') || '0');
-        jumpAudioTo(start);
-      });
-
-      const chip = el.querySelector('[data-speaker-chip]');
-      if (chip) {
-        chip.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const raw = chip.getAttribute('data-speaker-chip');
-          const input = document.querySelector(`[data-speaker-input="${raw}"]`);
-          if (input) input.focus();
+    // Undo split handler (called via event delegation)
+    async function handleUndoSplit(btn) {
+      const sourceId = btn.getAttribute('data-source-utterance-id');
+      if (!sourceId) return;
+      
+      btn.disabled = true;
+      btn.textContent = 'Undoing...';
+      
+      try {
+        const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/utterance_split/undo`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ source_utterance_id: sourceId })
         });
-      }
-
-      const overrideBtn = el.querySelector('.utterance-override-btn');
-      if (overrideBtn) {
-        overrideBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openOverrideModal(el);
-        });
-      }
-
-      const splitBtn = el.querySelector('.utterance-split-btn');
-      if (splitBtn) {
-        splitBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openSplitModal(el);
-        });
-      }
-
-      const addSplitBtn = el.querySelector('.utterance-add-split-btn');
-      if (addSplitBtn) {
-        addSplitBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openSplitModal(el);
-        });
-      }
-
-      const undoSplitBtn = el.querySelector('.utterance-undo-split-btn');
-      if (undoSplitBtn) {
-        undoSplitBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          const sourceId = undoSplitBtn.getAttribute('data-source-utterance-id');
-          if (!sourceId) return;
+        
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data && (data.message || data.error) || 'Undo failed');
+        
+        // Find all split parts and replace with restored utterance
+        const section = document.querySelector('section');
+        const splitParts = Array.from(section.querySelectorAll(`[data-source-utterance-id="${sourceId}"]`));
+        
+        if (splitParts.length > 0 && data.restored_utterance) {
+          const firstPart = splitParts[0];
+          const newEl = buildUtteranceElement(data.restored_utterance);
+          section.insertBefore(newEl, firstPart);
           
-          const btn = undoSplitBtn;
-          btn.disabled = true;
-          btn.textContent = 'Undoing...';
+          // Remove all split parts
+          splitParts.forEach(part => part.remove());
           
-          try {
-            const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/utterance_split/undo`, {
-              method: 'POST',
-              headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ source_utterance_id: sourceId })
-            });
-            
-            const data = await resp.json().catch(() => ({}));
-            if (!resp.ok) throw new Error(data && (data.message || data.error) || 'Undo failed');
-            
-            // Find all split parts and replace with restored utterance
-            const section = document.querySelector('section');
-            const splitParts = Array.from(section.querySelectorAll(`[data-source-utterance-id="${sourceId}"]`));
-            
-            if (splitParts.length > 0 && data.restored_utterance) {
-              const firstPart = splitParts[0];
-              const newEl = buildUtteranceElement(data.restored_utterance);
-              section.insertBefore(newEl, firstPart);
-              
-              // Remove all split parts
-              splitParts.forEach(part => part.remove());
-              
-              // Update speaker chips if needed
-              applyLabelMapToUI(currentLabelMap());
-              
-              toast('Split undone. Transcript/PDFs regenerated.');
-            } else {
-              window.location.reload();
-            }
-          } catch (e) {
-            toast(String(e.message || e));
-          } finally {
-            btn.disabled = false;
-            btn.textContent = 'Undo Split';
-          }
-        });
+          // Update speaker chips if needed
+          applyLabelMapToUI(currentLabelMap());
+          
+          toast('Split undone. Transcript/PDFs regenerated.');
+        } else {
+          window.location.reload();
+        }
+      } catch (e) {
+        toast(String(e.message || e));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Undo Split';
       }
     }
 
@@ -664,19 +613,78 @@
           ${textContent}
         </div>
       `;
-      attachUtteranceHandlers(el);
+      // No need to attach handlers - using event delegation on section
       return el;
     }
 
-    // Attach handlers to initial utterances
-    document.querySelectorAll('.utterance').forEach(attachUtteranceHandlers);
+    // EVENT DELEGATION - ONE set of listeners handles ALL utterances (prevents browser crash)
+    const utteranceSection = document.querySelector('.transcript-layout > section');
+    if (utteranceSection) {
+      // Click handler for all utterance interactions
+      utteranceSection.addEventListener('click', (e) => {
+        // Handle New Speaker button
+        const overrideBtn = e.target.closest('.utterance-override-btn');
+        if (overrideBtn) {
+          e.stopPropagation();
+          const utteranceEl = overrideBtn.closest('.utterance');
+          if (utteranceEl) openOverrideModal(utteranceEl);
+          return;
+        }
+        
+        // Handle Split button
+        const splitBtn = e.target.closest('.utterance-split-btn');
+        if (splitBtn) {
+          e.stopPropagation();
+          const utteranceEl = splitBtn.closest('.utterance');
+          if (utteranceEl) openSplitModal(utteranceEl);
+          return;
+        }
+        
+        // Handle Add Split button
+        const addSplitBtn = e.target.closest('.utterance-add-split-btn');
+        if (addSplitBtn) {
+          e.stopPropagation();
+          const utteranceEl = addSplitBtn.closest('.utterance');
+          if (utteranceEl) openSplitModal(utteranceEl);
+          return;
+        }
+        
+        // Handle Undo Split button
+        const undoSplitBtn = e.target.closest('.utterance-undo-split-btn');
+        if (undoSplitBtn) {
+          e.stopPropagation();
+          handleUndoSplit(undoSplitBtn);
+          return;
+        }
+        
+        // Handle speaker chip click (focus input)
+        const chip = e.target.closest('[data-speaker-chip]');
+        if (chip) {
+          e.stopPropagation();
+          const raw = chip.getAttribute('data-speaker-chip');
+          const input = document.querySelector(`[data-speaker-input="${raw}"]`);
+          if (input) input.focus();
+          return;
+        }
+        
+        // Handle utterance click (jump audio)
+        const utteranceEl = e.target.closest('.utterance');
+        if (utteranceEl) {
+          const start = parseFloat(utteranceEl.getAttribute('data-start') || '0');
+          jumpAudioTo(start);
+        }
+      });
+    }
 
-    // (speaker chip focus is handled per-utterance in attachUtteranceHandlers so it works for newly inserted splits)
-
-    // Live update labels across transcript as user types
+    // Live update labels across transcript as user types (DEBOUNCED to prevent lag)
+    let labelUpdateTimeout = null;
     document.querySelectorAll('[data-speaker-input]').forEach((input) => {
       input.addEventListener('input', () => {
-        applyLabelMapToUI(currentLabelMap());
+        // Debounce: wait 150ms after user stops typing before updating
+        if (labelUpdateTimeout) clearTimeout(labelUpdateTimeout);
+        labelUpdateTimeout = setTimeout(() => {
+          applyLabelMapToUI(currentLabelMap());
+        }, 150);
       });
     });
 
@@ -711,6 +719,46 @@
       } finally {
         btn.disabled = false;
         btn.textContent = 'Save speaker names';
+      }
+    });
+
+    // Generate AI Summary button
+    document.getElementById('generateAiSummaryBtn').addEventListener('click', async () => {
+      const confirmed = confirm(
+        '⚠️ Generate AI Summary?\n\n' +
+        'This will use Ollama to create an AI-powered meeting summary.\n\n' +
+        '• May take 2-5 minutes depending on transcript length\n' +
+        '• Uses significant system resources (CPU/RAM)\n' +
+        '• Requires Ollama to be running locally\n\n' +
+        'Continue?'
+      );
+      
+      if (!confirmed) return;
+      
+      const btn = document.getElementById('generateAiSummaryBtn');
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳ Generating...';
+      btn.style.opacity = '0.7';
+      
+      try {
+        const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/generate_summary`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'}
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(data && (data.message || data.error) || 'AI summary generation failed');
+        }
+        toast('✅ AI Summary generated successfully! Refresh to see the updated PDF.');
+        // Optionally reload to show updated PDF link
+        setTimeout(() => window.location.reload(), 1500);
+      } catch (e) {
+        toast('❌ ' + String(e.message || e));
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+        btn.style.opacity = '1';
       }
     });
 
@@ -898,6 +946,7 @@
         const wordsContainer = document.createElement('div');
         wordsContainer.style.cssText = 'font-size: 16px; line-height: 1.8; color: var(--text-primary); word-wrap: break-word;';
         
+        // Build all word spans WITHOUT individual event listeners (prevents browser crash)
         wordsArray.forEach((wordData, idx) => {
           const span = document.createElement('span');
           span.className = 'split-word-option';
@@ -911,43 +960,53 @@
             // Existing split - visually distinct but not clickable
             span.style.cssText = 'display: inline; padding: 1px 2px; cursor: not-allowed; transition: all 0.2s; opacity: 0.5; text-decoration: line-through; color: var(--text-secondary);';
             span.title = 'Existing split point';
+            span.setAttribute('data-existing-split', 'true');
           } else {
             // Clickable word - minimal styling for natural flow
             span.style.cssText = 'display: inline; padding: 1px 2px; cursor: pointer; transition: all 0.2s; border-radius: 2px;';
           }
           
           span.setAttribute('data-word-index', idx);
+          span.setAttribute('data-word-text', wordData.word);
           if (wordData.hasTimestamp) {
             span.setAttribute('data-word-start', wordData.start);
             span.setAttribute('data-word-end', wordData.end);
-          }
-          
-          if (!isExistingSplit) {
-            span.addEventListener('mouseenter', function() {
-              if (!this.classList.contains('split-word-selected')) {
-                this.style.backgroundColor = 'rgba(0, 122, 255, 0.15)';
-                this.style.textDecoration = 'underline';
-                this.style.textDecorationColor = 'rgba(0, 122, 255, 0.5)';
-              }
-            });
-            
-            span.addEventListener('mouseleave', function() {
-              if (!this.classList.contains('split-word-selected')) {
-                this.style.backgroundColor = '';
-                this.style.textDecoration = '';
-                this.style.textDecorationColor = '';
-              }
-            });
-            
-            span.addEventListener('click', function() {
-              selectSplitWord(idx, wordData.start, wordData.word);
-            });
           }
           
           wordsContainer.appendChild(span);
           // Add space after word (except for last word)
           if (idx < wordsArray.length - 1) {
             wordsContainer.appendChild(document.createTextNode(' '));
+          }
+        });
+        
+        // EVENT DELEGATION - ONE set of listeners handles ALL words (prevents browser crash)
+        wordsContainer.addEventListener('mouseover', function(e) {
+          const span = e.target.closest('.split-word-option');
+          if (span && !span.classList.contains('split-word-selected') && span.getAttribute('data-existing-split') !== 'true') {
+            span.style.backgroundColor = 'rgba(0, 122, 255, 0.15)';
+            span.style.textDecoration = 'underline';
+            span.style.textDecorationColor = 'rgba(0, 122, 255, 0.5)';
+          }
+        });
+        
+        wordsContainer.addEventListener('mouseout', function(e) {
+          const span = e.target.closest('.split-word-option');
+          if (span && !span.classList.contains('split-word-selected') && span.getAttribute('data-existing-split') !== 'true') {
+            span.style.backgroundColor = '';
+            span.style.textDecoration = '';
+            span.style.textDecorationColor = '';
+          }
+        });
+        
+        wordsContainer.addEventListener('click', function(e) {
+          const span = e.target.closest('.split-word-option');
+          if (span && span.getAttribute('data-existing-split') !== 'true') {
+            const idx = parseInt(span.getAttribute('data-word-index'), 10);
+            const startAttr = span.getAttribute('data-word-start');
+            const wordTime = startAttr ? parseFloat(startAttr) : null;
+            const wordText = span.getAttribute('data-word-text');
+            selectSplitWord(idx, wordTime, wordText);
           }
         });
         

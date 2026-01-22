@@ -70,6 +70,16 @@
     </footer>
   </div>
 
+  <!-- Global performance: pause animations when tab hidden -->
+  <script>
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        document.body.classList.add('animations-paused');
+      } else {
+        document.body.classList.remove('animations-paused');
+      }
+    });
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

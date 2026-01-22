@@ -1528,3 +1528,13 @@ a:hover {
     display: none;
   }
 }
+
+/* ============================================
+   Performance: Pause animations when tab hidden
+   ============================================ */
+.animations-paused .bg-waves::before,
+.animations-paused .bg-waves::after,
+.animations-paused [style*="animation"],
+.animations-paused .stage-icon {
+  animation-play-state: paused !important;
+}

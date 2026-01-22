@@ -320,6 +320,7 @@ def transcribe_with_whisper(wav_path: Path, custom_vocab: list[str] | None = Non
                     fp16=(device == "cuda"),
                     initial_prompt=prompt,
                     verbose=False,
+                    word_timestamps=True,  # Enable word-level timestamps for better diarization alignment
                 )
 
                 chunk_segments = []
@@ -363,15 +364,27 @@ def transcribe_with_whisper(wav_path: Path, custom_vocab: list[str] | None = Non
         fp16=(device == "cuda"),
         initial_prompt=initial_prompt,
         verbose=False,
+        word_timestamps=True,  # Enable word-level timestamps for better diarization alignment
     )
 
     segments = []
     for s in (result.get("segments") or []):
-        segments.append({
+        seg_data = {
             "start": float(s.get("start", 0.0)),
             "end": float(s.get("end", 0.0)),
             "text": (s.get("text") or "").strip(),
-        })
+        }
+        # Include word-level timestamps if available (for better diarization alignment)
+        if "words" in s and isinstance(s["words"], list):
+            seg_data["words"] = [
+                {
+                    "word": w.get("word", ""),
+                    "start": float(w.get("start", 0.0)),
+                    "end": float(w.get("end", 0.0)),
+                }
+                for w in s["words"]
+            ]
+        segments.append(seg_data)
 
     full_text = " ".join([s["text"] for s in segments if s["text"]]).strip()
     return {
@@ -396,10 +409,9 @@ def diarize_with_pyannote(wav_path: Path, speakers_expected: int | None = None) 
     
     token = _pick_token()
     if not token:
-        die(
-            "Missing HuggingFace token for pyannote.\n"
-            "Set HF_TOKEN (or HUGGINGFACE_TOKEN) in your environment or .env.\n"
-            "Then accept the model license for `pyannote/speaker-diarization-3.1` in HuggingFace."
+        raise RuntimeError(
+            "Missing HuggingFace token for pyannote. "
+            "Set HF_TOKEN in your environment or .env."
         )
     # Compatibility shim:
     # Some pyannote.audio versions call `huggingface_hub.hf_hub_download(..., use_auth_token=...)`,
@@ -423,10 +435,9 @@ def diarize_with_pyannote(wav_path: Path, speakers_expected: int | None = None) 
     try:
         from pyannote.audio import Pipeline
     except Exception as e:
-        die(
-            "pyannote backend selected but dependency is missing.\n"
-            "Install: pip install -r requirements.txt\n"
-            f"Import error: {e}"
+        raise RuntimeError(
+            f"pyannote import failed: {e}. "
+            "Diarization will be skipped."
         )
 
     # Try different parameter names for different pyannote versions
@@ -444,6 +455,41 @@ def diarize_with_pyannote(wav_path: Path, speakers_expected: int | None = None) 
         except Exception:
             # Last resort: try without token (might work if already logged in)
             pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1")
+
+    # ========================================================================
+    # TUNE DIARIZATION PARAMETERS for better short utterance detection
+    # Based on analysis of Training_5_20260122_120234 corrections:
+    # - Quick speaker turns were being merged into single segments
+    # - Short utterances like "True." were misattributed
+    # ========================================================================
+    try:
+        # Get current parameters (for logging)
+        params = pipeline.parameters(instantiated=True)
+        print(f"[DIARIZATION] Default parameters: {params}")
+        
+        # Reduce minimum speaker segment duration (default ~0.5s -> 0.3s)
+        # This allows shorter utterances to be detected as separate segments
+        pipeline._segmentation.min_duration_on = 0.3
+        
+        # Reduce minimum gap between speakers (default ~0.5s -> 0.2s)
+        # This helps detect quick back-and-forth conversations
+        pipeline._segmentation.min_duration_off = 0.2
+        
+        # Adjust clustering threshold for better speaker separation
+        # Lower = more sensitive to voice differences (may over-segment)
+        # Higher = more lenient (may under-segment)
+        # Default is around 0.7, try 0.65 for better separation
+        if hasattr(pipeline, '_clustering') and hasattr(pipeline._clustering, 'threshold'):
+            pipeline._clustering.threshold = 0.65
+        
+        print("[DIARIZATION] Tuned parameters for short utterance detection:")
+        print("  - min_duration_on: 0.3s (shorter speaker turns allowed)")
+        print("  - min_duration_off: 0.2s (quicker speaker changes detected)")
+        print("  - clustering.threshold: 0.65 (more sensitive speaker separation)")
+        
+    except Exception as e:
+        # If parameter tuning fails, continue with defaults
+        print(f"[DIARIZATION] Could not tune parameters (using defaults): {e}")
 
     # pyannote pipelines accept num_speakers / min_speakers / max_speakers (varies by version).
     diarization = None
@@ -467,39 +513,139 @@ def diarize_with_pyannote(wav_path: Path, speakers_expected: int | None = None) 
     segments.sort(key=lambda d: (d["start"], d["end"]))
     return segments
 
+def _get_speaker_at_time(t: float, diar_segments: list[dict]) -> str:
+    """Find which speaker is talking at time t."""
+    for d in diar_segments:
+        if float(d.get("start", 0.0)) <= t <= float(d.get("end", 0.0)):
+            return d.get("speaker") or "Unknown"
+    return "Unknown"
+
+
+def _calculate_speaker_overlap(start: float, end: float, diar_segments: list[dict]) -> dict[str, float]:
+    """Calculate how much time each speaker occupies within a time range."""
+    speaker_times: dict[str, float] = {}
+    
+    for d in diar_segments:
+        d_start = float(d.get("start", 0.0))
+        d_end = float(d.get("end", 0.0))
+        speaker = d.get("speaker") or "Unknown"
+        
+        # Calculate overlap
+        overlap_start = max(start, d_start)
+        overlap_end = min(end, d_end)
+        
+        if overlap_start < overlap_end:
+            overlap_duration = overlap_end - overlap_start
+            speaker_times[speaker] = speaker_times.get(speaker, 0.0) + overlap_duration
+    
+    return speaker_times
+
+
 def align_transcript_and_diarization(transcript: dict, diar_segments: list[dict]) -> list[dict]:
     """
-    Simple alignment:
-      For each transcript segment, assign the diarization speaker whose segment contains the transcript midpoint.
-    Output matches the existing utterances schema used downstream.
+    Improved alignment with word-level precision and multi-speaker detection.
+    
+    Features:
+    1. Uses word-level timestamps when available for precise speaker assignment
+    2. Detects when a segment spans multiple speakers and flags for review
+    3. Handles "Unknown" speakers by inferring from adjacent segments
+    4. Logs warnings when significant speaker overlap is detected
     """
-    diar_i = 0
-    diar_n = len(diar_segments)
-
     utterances = []
+    
     for seg in (transcript.get("segments") or []):
         s = float(seg.get("start", 0.0))
         e = float(seg.get("end", 0.0))
         txt = (seg.get("text") or "").strip()
+        words = seg.get("words", [])
+        
         if not txt:
             continue
-
-        m = _midpoint(s, e)
-        while diar_i < diar_n and float(diar_segments[diar_i].get("end", 0.0)) < m:
-            diar_i += 1
-
-        speaker = "Unknown"
-        if diar_i < diar_n:
-            d = diar_segments[diar_i]
-            if float(d.get("start", 0.0)) <= m <= float(d.get("end", 0.0)):
-                speaker = d.get("speaker") or "Unknown"
-
-        utterances.append({
+        
+        # Calculate speaker overlap for this segment
+        speaker_times = _calculate_speaker_overlap(s, e, diar_segments)
+        total_duration = e - s if e > s else 0.001
+        
+        # Determine primary speaker (most time in segment)
+        if speaker_times:
+            primary_speaker = max(speaker_times, key=speaker_times.get)
+            primary_ratio = speaker_times[primary_speaker] / total_duration
+        else:
+            primary_speaker = "Unknown"
+            primary_ratio = 0.0
+        
+        # Check for multi-speaker segments (another speaker has >30% of the segment)
+        multi_speaker_warning = False
+        secondary_speakers = []
+        for spk, time in speaker_times.items():
+            if spk != primary_speaker:
+                ratio = time / total_duration
+                if ratio > 0.30:
+                    multi_speaker_warning = True
+                    secondary_speakers.append((spk, ratio))
+        
+        if multi_speaker_warning:
+            print(f"[DIARIZATION WARNING] Segment {s:.1f}-{e:.1f}s spans multiple speakers:")
+            print(f"  Primary: {primary_speaker} ({primary_ratio*100:.0f}%)")
+            for spk, ratio in secondary_speakers:
+                print(f"  Secondary: {spk} ({ratio*100:.0f}%)")
+            print(f"  Text: \"{txt[:60]}...\"" if len(txt) > 60 else f"  Text: \"{txt}\"")
+            print(f"  → Consider using Split feature in transcript editor")
+        
+        # Build utterance with word-level data if available
+        utterance = {
             "start": s,
             "end": e,
-            "speaker": speaker,
+            "speaker": primary_speaker,
             "text": txt,
-        })
+        }
+        
+        # Include word-level timestamps with per-word speaker assignment
+        if words:
+            word_data = []
+            for w in words:
+                w_start = float(w.get("start", 0.0))
+                w_end = float(w.get("end", 0.0))
+                w_speaker = _get_speaker_at_time(_midpoint(w_start, w_end), diar_segments)
+                word_data.append({
+                    "word": w.get("word", ""),
+                    "start": w_start,
+                    "end": w_end,
+                    "speaker": w_speaker,
+                })
+            utterance["words"] = word_data
+        
+        # Flag segments that may need manual review
+        if multi_speaker_warning:
+            utterance["needs_review"] = True
+            utterance["speaker_overlap"] = {
+                spk: round(time / total_duration, 2)
+                for spk, time in speaker_times.items()
+            }
+        
+        utterances.append(utterance)
+    
+    # Post-process: Handle "Unknown" speakers by inferring from adjacent segments
+    for i, utt in enumerate(utterances):
+        if utt["speaker"] == "Unknown":
+            # Try to infer from previous segment
+            if i > 0 and utterances[i-1]["speaker"] != "Unknown":
+                inferred = utterances[i-1]["speaker"]
+                print(f"[DIARIZATION] Inferred speaker '{inferred}' for segment at {utt['start']:.1f}s (was Unknown)")
+                utt["speaker"] = inferred
+                utt["speaker_inferred"] = True
+            # Try to infer from next segment
+            elif i < len(utterances) - 1 and utterances[i+1]["speaker"] != "Unknown":
+                inferred = utterances[i+1]["speaker"]
+                print(f"[DIARIZATION] Inferred speaker '{inferred}' for segment at {utt['start']:.1f}s (was Unknown)")
+                utt["speaker"] = inferred
+                utt["speaker_inferred"] = True
+            else:
+                # Last resort: use SPEAKER_00 as placeholder
+                print(f"[DIARIZATION] Could not infer speaker for segment at {utt['start']:.1f}s, using SPEAKER_00")
+                utt["speaker"] = "SPEAKER_00"
+                utt["speaker_inferred"] = True
+    
     return utterances
 
 
@@ -696,9 +842,9 @@ def main():
         print("   Continuing with single speaker (SPEAKER_00)...")
         # Create fallback: assign all speech to a single speaker
         diar_segments = []
-        if transcript:
+        if transcript and transcript.get("segments"):
             # Use the transcript segments to create diarization
-            for seg in transcript:
+            for seg in transcript.get("segments", []):
                 diar_segments.append({
                     "speaker": "SPEAKER_00",
                     "start": seg.get("start", 0),
