@@ -687,11 +687,28 @@ def main():
 
     # Default: local Whisper + pyannote, but keep the same output contract.
     transcript = transcribe_with_whisper(wav_path, custom_vocab=custom_vocab)
-    diar_segments = diarize_with_pyannote(wav_path, speakers_expected=args.speakers)
+    
+    # Try diarization, but continue with single speaker if it fails
+    try:
+        diar_segments = diarize_with_pyannote(wav_path, speakers_expected=args.speakers)
+    except Exception as e:
+        print(f"⚠️  Diarization failed: {e}")
+        print("   Continuing with single speaker (SPEAKER_00)...")
+        # Create fallback: assign all speech to a single speaker
+        diar_segments = []
+        if transcript:
+            # Use the transcript segments to create diarization
+            for seg in transcript:
+                diar_segments.append({
+                    "speaker": "SPEAKER_00",
+                    "start": seg.get("start", 0),
+                    "end": seg.get("end", 0),
+                })
+    
     utterances = align_transcript_and_diarization(transcript, diar_segments)
 
     full = {
-        "backend": "whisper+pyannote",
+        "backend": "whisper+pyannote" if diar_segments else "whisper",
         "input": str(input_path),
         "wav": str(wav_path),
         "transcript": transcript,
