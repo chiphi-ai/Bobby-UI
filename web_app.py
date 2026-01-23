@@ -1581,11 +1581,11 @@ def _try_learn_enrollment_from_meeting(meeting_id: str, meeting: dict, raw_speak
             continue
         segments.append((start, end))
         total += dur
-        if total >= 32.0:
+        if total >= 17.0:
             break
 
-    if total < 30.0:
-        # Enrollment requires >= 30s to be used by identify_speakers.py
+    if total < 15.0:
+        # Enrollment requires >= 15s to be useful for speaker identification
         return False
 
     tmp_dir = OUTPUT_DIR / "_learn_segs" / meeting_id / raw_speaker
@@ -1736,12 +1736,27 @@ def api_save_speaker_labels(meeting_id: str):
         return jsonify({"error": "Regeneration failed", "message": str(e)}), 500
 
     # Best-effort: "global learning" by adding enrollment samples when the label matches an existing user
+    # Run in background threads so the UI doesn't slow down
+    def _enroll_speaker_background(m_id, m_data, raw_spk, label):
+        try:
+            result = _try_learn_enrollment_from_meeting(m_id, m_data, raw_spk, label)
+            if result:
+                print(f"[ENROLL] ✅ Successfully enrolled {label} from meeting {m_id}", flush=True)
+            else:
+                print(f"[ENROLL] ⏭️ Skipped enrollment for {label} (not enough audio or already enrolled)", flush=True)
+        except Exception as e:
+            print(f"[ENROLL] ❌ Failed to enroll {label}: {e}", flush=True)
+
     learned = {}
     for raw, name in raw_overrides.items():
-        try:
-            learned[raw] = bool(_try_learn_enrollment_from_meeting(meeting_id, meeting, raw, name))
-        except Exception:
-            learned[raw] = False
+        print(f"[ENROLL] Starting background enrollment for {name}...", flush=True)
+        thread = threading.Thread(
+            target=_enroll_speaker_background,
+            args=(meeting_id, meeting, raw, name),
+            daemon=True
+        )
+        thread.start()
+        learned[raw] = "pending"  # Enrollment is happening in background
 
     update_meeting(meeting_id, {
         "speaker_label_map": normalized_existing,
