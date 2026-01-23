@@ -438,8 +438,8 @@ def main():
     tmp_segs = Path("output") / "_seg_wavs"
     tmp_segs.mkdir(parents=True, exist_ok=True)
 
-    # Track unknown speakers: map diarization speaker ID -> Unknown Speaker N
-    unknown_speaker_map = {}  # diarization_speaker_id -> "Unknown Speaker N"
+    # Track unknown speakers: map diarization speaker ID -> Speaker N
+    unknown_speaker_map = {}  # diarization_speaker_id -> "Speaker N"
     unknown_counter = 1  # Next unknown speaker number
 
     labeled = []
@@ -474,7 +474,7 @@ def main():
             # Use diarization speaker ID to track consistency
             if diarization_speaker not in unknown_speaker_map:
                 # New unknown speaker - assign next number
-                unknown_speaker_map[diarization_speaker] = f"Unknown Speaker {unknown_counter}"
+                unknown_speaker_map[diarization_speaker] = f"Speaker {unknown_counter}"
                 unknown_counter += 1
             
             speaker_name = unknown_speaker_map[diarization_speaker]
@@ -485,13 +485,13 @@ def main():
 
         # Normalize speaker name: remove (2), (3) etc. if present
         normalized_name = speaker_name
-        is_unknown = speaker_name.startswith("Unknown Speaker")
+        is_unknown = speaker_name.startswith("Speaker ") and len(speaker_name) > 8 and speaker_name[8:].split()[0].isdigit()
         if normalized_name and not is_unknown and normalized_name != "Unknown":
             normalized_name = re.sub(r"\(\d+\)", "", normalized_name).strip()
         elif not is_unknown and normalized_name == "Unknown":
-            # Legacy "Unknown" -> convert to "Unknown Speaker 1" for consistency
+            # Legacy "Unknown" -> convert to "Speaker 1" for consistency
             if diarization_speaker not in unknown_speaker_map:
-                unknown_speaker_map[diarization_speaker] = "Unknown Speaker 1"
+                unknown_speaker_map[diarization_speaker] = "Speaker 1"
                 unknown_counter = max(unknown_counter, 2)  # Ensure next is 2+
             normalized_name = unknown_speaker_map[diarization_speaker]
             is_unknown = True
@@ -521,8 +521,8 @@ def main():
         speaker_name = r['speaker_name']
         is_unknown = r.get('is_unknown', False)
         
-        # Handle unknown speakers (keep as "Unknown Speaker N")
-        if is_unknown or speaker_name.startswith("Unknown Speaker"):
+        # Handle unknown speakers (keep as "Speaker N")
+        if is_unknown or (speaker_name.startswith("Speaker ") and len(speaker_name) > 8 and speaker_name[8:].split()[0].isdigit()):
             # Keep unknown speaker labels as-is
             formatted_name = speaker_name
         else:
@@ -538,17 +538,17 @@ def main():
             elif speaker_name != "Unknown":
                 formatted_name = speaker_name.strip().capitalize()
             else:
-                # Legacy "Unknown" -> convert to "Unknown Speaker 1"
-                formatted_name = "Unknown Speaker 1"
+                # Legacy "Unknown" -> convert to "Speaker 1"
+                formatted_name = "Speaker 1"
         
         lines.append(f"{formatted_name}: {r['text']}")
     out_txt.write_text("\n\n".join(lines) + "\n", encoding="utf-8")
     
     # Print summary of unknown speakers
-    unknown_speakers_found = [r['speaker_name'] for r in labeled if r.get('is_unknown', False) or r['speaker_name'].startswith("Unknown Speaker")]
+    unknown_speakers_found = [r['speaker_name'] for r in labeled if r.get('is_unknown', False) or (r['speaker_name'].startswith("Speaker ") and len(r['speaker_name']) > 8 and r['speaker_name'][8:].split()[0].isdigit())]
     if unknown_speakers_found:
         unique_unknowns = sorted(set(unknown_speakers_found))
-        print(f"Identified {len(unique_unknowns)} unknown speaker(s): {', '.join(unique_unknowns)}")
+        print(f"Identified {len(unique_unknowns)} unidentified speaker(s): {', '.join(unique_unknowns)}")
     out_json.write_text(json.dumps(labeled, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"\nDONE. Wrote:\n  {out_txt}\n  {out_json}\n  {out_utter}\n")

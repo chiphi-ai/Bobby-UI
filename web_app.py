@@ -51,6 +51,7 @@ TEMPLATES = ROOT / "templates"
 INPUT_DIR = ROOT / "input"
 OUTPUT_DIR = ROOT / "output"
 ENROLL_DIR = ROOT / "enroll"
+AUDIO_LIBRARY_DIR = ROOT / "audio_library"
 STATIC_DIR = ROOT / "static"
 UPLOAD_JOBS_DIR = OUTPUT_DIR / "jobs"
 MEETING_JOBS_DIR = UPLOAD_JOBS_DIR / "meetings"
@@ -832,7 +833,7 @@ def detect_unknown_speakers(meeting: dict) -> dict:
     Detect unknown speakers in a meeting.
     Returns dict with:
     - has_unknown_speakers: bool
-    - unknown_speakers: list of unknown speaker labels (e.g., ["Unknown Speaker 1", "Unknown Speaker 2"])
+    - unknown_speakers: list of unidentified speaker labels (e.g., ["Speaker 1", "Speaker 2"])
     - unknown_speaker_count: int
     """
     unknown_speakers = []
@@ -849,9 +850,9 @@ def detect_unknown_speakers(meeting: dict) -> dict:
     if transcript_path and transcript_path.exists():
         try:
             content = transcript_path.read_text(encoding="utf-8")
-            # Find all "Unknown Speaker N" patterns (preferred)
-            unknown_pattern = r"Unknown Speaker \d+"
-            matches = re.findall(unknown_pattern, content)
+            # Find all "Speaker N" patterns (new naming) or "Unknown Speaker N" (legacy)
+            speaker_pattern = r"(?:Unknown )?Speaker \d+"
+            matches = re.findall(speaker_pattern, content)
             unknown_speakers = sorted(list(set(matches)))  # Unique, sorted
 
             # Fallback: if transcript is still diarization-labeled, surface those too
@@ -862,7 +863,7 @@ def detect_unknown_speakers(meeting: dict) -> dict:
                     unknown_speakers = diar_matches
 
             # Legacy: plain "Unknown" label
-            if "Unknown:" in content and "Unknown Speaker" not in content:
+            if "Unknown:" in content and "Speaker" not in content:
                 if "Unknown" not in unknown_speakers:
                     unknown_speakers.append("Unknown")
 
@@ -872,13 +873,20 @@ def detect_unknown_speakers(meeting: dict) -> dict:
     
     # Filter out speakers that have already been labeled
     speaker_label_map = meeting.get("speaker_label_map", {})
+    
+    def _is_generic_speaker(name: str) -> bool:
+        """Check if a name is a generic speaker label (Speaker N or Unknown Speaker N)"""
+        if not isinstance(name, str):
+            return False
+        return bool(re.match(r"^(?:Unknown )?Speaker \d+$", name))
+    
     if speaker_label_map:
-        # Remove any unknown speakers that have been labeled (mapped to non-unknown names)
+        # Remove any unknown speakers that have been labeled (mapped to real names)
         labeled_unknowns = set()
         for key, value in speaker_label_map.items():
-            if isinstance(key, str) and key.startswith("Unknown Speaker"):
-                # If the value is NOT an "Unknown Speaker" pattern, it's been labeled
-                if isinstance(value, str) and not value.startswith("Unknown Speaker"):
+            if isinstance(key, str) and _is_generic_speaker(key):
+                # If the value is NOT a generic speaker pattern, it's been labeled
+                if isinstance(value, str) and not _is_generic_speaker(value):
                     labeled_unknowns.add(key)
         
         # Remove labeled speakers from the list
@@ -886,9 +894,9 @@ def detect_unknown_speakers(meeting: dict) -> dict:
         
         # Also check if there are any unlabeled entries in the map
         for key, value in speaker_label_map.items():
-            if isinstance(key, str) and key.startswith("Unknown Speaker"):
-                # If value is still "Unknown Speaker" or empty, it's unlabeled
-                if not value or (isinstance(value, str) and value.startswith("Unknown Speaker")):
+            if isinstance(key, str) and _is_generic_speaker(key):
+                # If value is still a generic speaker or empty, it's unlabeled
+                if not value or (isinstance(value, str) and _is_generic_speaker(value)):
                     if key not in unknown_speakers:
                         unknown_speakers.append(key)
                         has_unknown = True
@@ -945,7 +953,7 @@ def _unknown_map_from_utterances(utterances: list[dict]) -> tuple[dict[str, str]
             continue
         if s not in speakers_in_order:
             speakers_in_order.append(s)
-    unknown_by_raw: dict[str, str] = {raw: f"Unknown Speaker {i+1}" for i, raw in enumerate(speakers_in_order)}
+    unknown_by_raw: dict[str, str] = {raw: f"Speaker {i+1}" for i, raw in enumerate(speakers_in_order)}
     raw_by_unknown: dict[str, str] = {v: k for k, v in unknown_by_raw.items()}
     return unknown_by_raw, raw_by_unknown, speakers_in_order
 
@@ -1315,7 +1323,7 @@ def _build_labeled_script_from_utterances(meeting_id: str, meeting: dict, raw_la
         elif key in raw_by_unknown:
             stored_map_raw[raw_by_unknown[key]] = val
 
-    # Effective mapping: Unknown Speaker N defaults -> seeded names -> stored names -> API overrides
+    # Effective mapping: Speaker N defaults -> seeded names -> stored names -> API overrides
     effective: dict[str, str] = dict(unknown_by_raw)
     effective.update(seeded)
     effective.update(stored_map_raw)
@@ -1339,15 +1347,15 @@ def _build_labeled_script_from_utterances(meeting_id: str, meeting: dict, raw_la
 
         speaker_name = (display_override or (effective.get(raw) or raw or "Unknown")).strip()
         if speaker_name == "Unknown":
-            # Normalize legacy Unknown to Unknown Speaker 1
-            speaker_name = "Unknown Speaker 1"
+            # Normalize legacy Unknown to Speaker 1
+            speaker_name = "Speaker 1"
         rows.append({
             "start": start,
             "end": end,
             "speaker_name": speaker_name,
             "text": txt,
             "diarization_speaker": raw or f"SPEAKER_{len(rows)}",
-            "is_unknown": speaker_name.startswith("Unknown Speaker"),
+            "is_unknown": speaker_name.startswith("Speaker ") and len(speaker_name) > 8 and speaker_name[8:].split()[0].isdigit(),
         })
 
     rows = _merge_consecutive_script_rows(rows)
@@ -1715,6 +1723,300 @@ def _try_learn_enrollment_from_meeting(meeting_id: str, meeting: dict, speaker_d
             pass
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Audio Library Functions - Save every utterance for building speaker profiles
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _safe_speaker_folder_name(speaker_name: str) -> str:
+    """Convert speaker name to safe folder name (lowercase, underscores)."""
+    safe = "".join(c if c.isalnum() or c in " -" else "" for c in speaker_name)
+    safe = safe.strip().lower().replace(" ", "_").replace("-", "_")
+    # Collapse multiple underscores
+    while "__" in safe:
+        safe = safe.replace("__", "_")
+    return safe or "unknown"
+
+
+def _load_audio_library_manifest(speaker_name: str) -> dict:
+    """Load or create manifest for a speaker's audio library."""
+    folder_name = _safe_speaker_folder_name(speaker_name)
+    manifest_path = AUDIO_LIBRARY_DIR / folder_name / "manifest.json"
+    if manifest_path.exists():
+        try:
+            return json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {
+        "speaker_name": speaker_name,
+        "folder_name": folder_name,
+        "total_duration_seconds": 0.0,
+        "clips": [],
+        "enrollment_generated": False,
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+    }
+
+
+def _save_audio_library_manifest(speaker_name: str, manifest: dict) -> None:
+    """Save manifest for a speaker's audio library."""
+    folder_name = _safe_speaker_folder_name(speaker_name)
+    library_dir = AUDIO_LIBRARY_DIR / folder_name
+    library_dir.mkdir(parents=True, exist_ok=True)
+    manifest["updated_at"] = datetime.now().isoformat()
+    manifest_path = library_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def _save_utterance_to_audio_library(
+    meeting_id: str,
+    meeting: dict,
+    speaker_name: str,
+    utterance: dict,
+    utterance_index: int,
+) -> bool:
+    """
+    Save a single utterance to the speaker's audio library.
+    Returns True if saved successfully.
+    """
+    # Skip if utterance has issues
+    if utterance.get("needs_review") or utterance.get("speaker_overlap"):
+        return False
+    
+    start = float(utterance.get("start", 0.0) or 0.0)
+    end = float(utterance.get("end", 0.0) or 0.0)
+    duration = end - start
+    
+    # Skip very short utterances
+    if duration < 0.5:
+        return False
+    
+    # Get the 16k wav file
+    wav16k = _ensure_meeting_wav_16k(meeting_id, meeting)
+    if not wav16k:
+        return False
+    
+    # Create speaker's library folder
+    folder_name = _safe_speaker_folder_name(speaker_name)
+    library_dir = AUDIO_LIBRARY_DIR / folder_name
+    library_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate filename
+    clip_filename = f"{meeting_id}_{utterance_index:04d}.wav"
+    clip_path = library_dir / clip_filename
+    
+    # Skip if already exists
+    if clip_path.exists():
+        return False
+    
+    # Extract audio segment
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-ss", f"{start:.3f}",
+            "-t", f"{duration:.3f}",
+            "-i", str(wav16k),
+            "-ac", "1",
+            "-ar", "16000",
+            "-c:a", "pcm_s16le",
+            str(clip_path),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            return False
+        
+        if not clip_path.exists() or clip_path.stat().st_size == 0:
+            return False
+        
+        print(f"[AUDIO LIBRARY] Saved {duration:.1f}s clip for {speaker_name}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[AUDIO LIBRARY] ❌ Failed to save clip: {e}", flush=True)
+        return False
+
+
+def _update_audio_library_for_speaker(
+    meeting_id: str,
+    meeting: dict,
+    speaker_name: str,
+    utterances: list[dict],
+    raw_label_map: dict[str, str],
+) -> None:
+    """
+    Save all utterances for a speaker to their audio library and update manifest.
+    This runs in background thread.
+    """
+    if not speaker_name or speaker_name.startswith("Speaker ") or speaker_name == "Unknown":
+        # Don't save library for generic/unknown speakers
+        return
+    
+    print(f"[AUDIO LIBRARY] Processing utterances for {speaker_name}...", flush=True)
+    
+    manifest = _load_audio_library_manifest(speaker_name)
+    saved_count = 0
+    new_duration = 0.0
+    
+    for idx, u in enumerate(utterances):
+        # Get the final speaker display name after all corrections
+        final_name = _get_final_speaker_display(u, raw_label_map)
+        
+        if final_name != speaker_name:
+            continue
+        
+        # Try to save this utterance
+        if _save_utterance_to_audio_library(meeting_id, meeting, speaker_name, u, idx):
+            start = float(u.get("start", 0.0) or 0.0)
+            end = float(u.get("end", 0.0) or 0.0)
+            duration = end - start
+            
+            # Add to manifest
+            clip_filename = f"{meeting_id}_{idx:04d}.wav"
+            manifest["clips"].append({
+                "filename": clip_filename,
+                "duration_seconds": round(duration, 2),
+                "meeting_id": meeting_id,
+                "start": start,
+                "end": end,
+                "created_at": datetime.now().isoformat(),
+            })
+            saved_count += 1
+            new_duration += duration
+    
+    if saved_count > 0:
+        manifest["total_duration_seconds"] = round(
+            manifest.get("total_duration_seconds", 0.0) + new_duration, 2
+        )
+        _save_audio_library_manifest(speaker_name, manifest)
+        print(f"[AUDIO LIBRARY] ✅ Saved {saved_count} clips ({new_duration:.1f}s) for {speaker_name} "
+              f"(total: {manifest['total_duration_seconds']:.1f}s)", flush=True)
+        
+        # Check if we should auto-generate enrollment
+        _maybe_generate_enrollment_from_library(speaker_name, manifest)
+    else:
+        print(f"[AUDIO LIBRARY] No new clips to save for {speaker_name}", flush=True)
+
+
+def _maybe_generate_enrollment_from_library(speaker_name: str, manifest: dict) -> bool:
+    """
+    If speaker has 15+ seconds of audio in library, auto-generate enrollment file.
+    """
+    total_duration = manifest.get("total_duration_seconds", 0.0)
+    
+    if total_duration < 15.0:
+        return False
+    
+    # Check if we already generated enrollment recently
+    if manifest.get("enrollment_generated"):
+        # Only regenerate if we have significantly more audio (5+ more seconds)
+        last_enrollment_duration = manifest.get("last_enrollment_duration", 0.0)
+        if total_duration - last_enrollment_duration < 5.0:
+            return False
+    
+    print(f"[AUDIO LIBRARY] Generating enrollment for {speaker_name} ({total_duration:.1f}s available)...", flush=True)
+    
+    folder_name = _safe_speaker_folder_name(speaker_name)
+    library_dir = AUDIO_LIBRARY_DIR / folder_name
+    
+    # Get all clips, sorted by duration (prefer longer clips)
+    clips = sorted(manifest.get("clips", []), key=lambda c: c.get("duration_seconds", 0), reverse=True)
+    
+    # Collect clips until we have ~17 seconds (a bit more than minimum for quality)
+    selected_clips = []
+    selected_duration = 0.0
+    for clip in clips:
+        clip_path = library_dir / clip["filename"]
+        if clip_path.exists():
+            selected_clips.append(clip_path)
+            selected_duration += clip.get("duration_seconds", 0.0)
+            if selected_duration >= 17.0:
+                break
+    
+    if selected_duration < 15.0:
+        print(f"[AUDIO LIBRARY] Not enough valid clips for enrollment ({selected_duration:.1f}s)", flush=True)
+        return False
+    
+    # Concatenate clips into enrollment file
+    try:
+        tmp_dir = OUTPUT_DIR / "_audio_lib_enroll"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        
+        list_file = tmp_dir / f"{folder_name}_concat.txt"
+        list_file.write_text(
+            "\n".join([f"file '{p.as_posix()}'" for p in selected_clips]) + "\n",
+            encoding="utf-8"
+        )
+        
+        concat_path = tmp_dir / f"{folder_name}_concat.wav"
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(list_file),
+            "-c", "copy",
+            str(concat_path),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"[AUDIO LIBRARY] ❌ Failed to concat clips: {result.stderr}", flush=True)
+            return False
+        
+        if not concat_path.exists() or concat_path.stat().st_size == 0:
+            return False
+        
+        # Copy to enrollment directory
+        ENROLL_DIR.mkdir(parents=True, exist_ok=True)
+        enrollment_key = folder_name
+        
+        # Find available filename
+        n = 1
+        while True:
+            name = f"{enrollment_key}.wav" if n == 1 else f"{enrollment_key}({n}).wav"
+            dest = ENROLL_DIR / name
+            if not dest.exists():
+                shutil.copyfile(concat_path, dest)
+                print(f"[AUDIO LIBRARY] ✅ Generated enrollment: {dest.name} ({selected_duration:.1f}s)", flush=True)
+                
+                # Update manifest
+                manifest["enrollment_generated"] = True
+                manifest["last_enrollment_duration"] = total_duration
+                manifest["last_enrollment_at"] = datetime.now().isoformat()
+                _save_audio_library_manifest(speaker_name, manifest)
+                
+                # Clean up temp files
+                try:
+                    list_file.unlink(missing_ok=True)
+                    concat_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                
+                return True
+            n += 1
+            if n > 50:
+                print(f"[AUDIO LIBRARY] ❌ Too many enrollment files for {enrollment_key}", flush=True)
+                return False
+    except Exception as e:
+        print(f"[AUDIO LIBRARY] ❌ Error generating enrollment: {e}", flush=True)
+        return False
+
+
+def _background_update_audio_library(
+    meeting_id: str,
+    meeting: dict,
+    speaker_names: list[str],
+    effective_utterances: list[dict],
+    raw_label_map: dict[str, str],
+) -> None:
+    """
+    Background task to update audio library for all speakers.
+    """
+    for speaker_name in speaker_names:
+        try:
+            _update_audio_library_for_speaker(
+                meeting_id, meeting, speaker_name, effective_utterances, raw_label_map
+            )
+        except Exception as e:
+            print(f"[AUDIO LIBRARY] ❌ Error processing {speaker_name}: {e}", flush=True)
+
+
 @app.post("/api/meetings/<meeting_id>/speaker_labels")
 def api_save_speaker_labels(meeting_id: str):
     """Save diarization-speaker label mapping (raw diarization label -> display name) and regenerate assets."""
@@ -1823,6 +2125,17 @@ def api_save_speaker_labels(meeting_id: str):
         )
         thread.start()
         learned[name] = "pending"  # Enrollment is happening in background
+
+    # Also update audio library for all speakers (in background)
+    effective_utterances = _effective_utterances_for_meeting(meeting_id, meeting_for_enrollment)
+    if effective_utterances and speaker_names_to_enroll:
+        print(f"[AUDIO LIBRARY] Starting background audio library update for {len(speaker_names_to_enroll)} speaker(s)...", flush=True)
+        audio_lib_thread = threading.Thread(
+            target=_background_update_audio_library,
+            args=(meeting_id, meeting_for_enrollment, list(speaker_names_to_enroll), effective_utterances, normalized_existing),
+            daemon=True
+        )
+        audio_lib_thread.start()
 
     update_meeting(meeting_id, {
         "speaker_label_map": normalized_existing,
@@ -1955,6 +2268,23 @@ def api_save_utterance_override(meeting_id: str):
             daemon=True
         )
         thread.start()
+        
+        # Also update audio library for this speaker (in background)
+        def _update_audio_lib_single(m_id, m_data, speaker_name):
+            try:
+                effective_utts = _effective_utterances_for_meeting(m_id, m_data)
+                stored_map = m_data.get("speaker_label_map", {}) if isinstance(m_data.get("speaker_label_map"), dict) else {}
+                _update_audio_library_for_speaker(m_id, m_data, speaker_name, effective_utts, stored_map)
+            except Exception as e:
+                print(f"[AUDIO LIBRARY] ❌ Error updating library for {speaker_name}: {e}", flush=True)
+        
+        print(f"[AUDIO LIBRARY] Starting background update for {speaker_display}...", flush=True)
+        audio_thread = threading.Thread(
+            target=_update_audio_lib_single,
+            args=(meeting_id, meeting, speaker_display),
+            daemon=True
+        )
+        audio_thread.start()
 
     # Return updated utterance payload for fast UI update
     utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
@@ -4398,14 +4728,29 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
             try:
                 _job_log(f"[{datetime.now().isoformat()}] Creating named_script.json from utterances...")
                 utterances_data = json.loads(utterances_json.read_text(encoding="utf-8"))
+                
+                # Build mapping from raw speaker labels to "Speaker N" format
+                raw_to_speaker_n: dict[str, str] = {}
+                speaker_counter = 1
+                for u in utterances_data:
+                    raw_speaker = (u.get('speaker') or '').strip()
+                    if raw_speaker and raw_speaker not in raw_to_speaker_n:
+                        raw_to_speaker_n[raw_speaker] = f"Speaker {speaker_counter}"
+                        speaker_counter += 1
+                
                 named_data = []
                 for u in utterances_data:
+                    raw_speaker = (u.get('speaker') or '').strip()
                     named_data.append({
-                        'speaker_name': u.get('speaker', 'Unknown'),
-                        'text': u.get('text', '')
+                        'speaker_name': raw_to_speaker_n.get(raw_speaker, 'Speaker 1'),
+                        'text': u.get('text', ''),
+                        'diarization_speaker': raw_speaker,
+                        'start': u.get('start', 0.0),
+                        'end': u.get('end', 0.0),
+                        'is_unknown': True,
                     })
                 named_json_for_pdf.write_text(json.dumps(named_data, indent=2), encoding="utf-8")
-                print(f"✅ Created {named_json_for_pdf.name} from utterances")
+                print(f"✅ Created {named_json_for_pdf.name} from utterances (fallback)")
                 
                 # Now generate PDF
                 from email_named_script import create_pdf as _create_transcript_pdf, read_db as _read_db_for_pdf
@@ -4429,16 +4774,38 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
         
         # Get speakers who were identified from JSON (for labeling only)
         # Also track which emails correspond to identified speakers for email/upload
+        # Build speaker_label_map to pre-populate labels from identification results
         speakers = set()
         identified_speaker_emails = set()  # Emails of people who actually spoke (based on username matching)
+        initial_speaker_label_map = {}  # raw_diarization_speaker -> display_name
         json_path = OUTPUT_DIR / f"{stem}_named_script.json"
         if json_path.exists():
             try:
                 json_data = json.loads(json_path.read_text(encoding="utf-8"))
                 users_lookup = read_users()
+                
+                # Helper to check if a name is a generic "Speaker N" label
+                def _is_speaker_n(name: str) -> bool:
+                    return bool(name and re.match(r"^Speaker \d+$", name))
+                
                 for r in json_data:
                     speaker_name = r.get("speaker_name", "").strip()
+                    diar_speaker = r.get("diarization_speaker", "").strip()
+                    
+                    # If diar_speaker is missing, use speaker_name as the key (for fallback-created JSONs)
+                    if not diar_speaker:
+                        diar_speaker = speaker_name
+                    
                     if speaker_name and speaker_name != "Unknown":
+                        # Check if it's already a "Speaker N" format (unidentified)
+                        if _is_speaker_n(speaker_name):
+                            # For unidentified speakers, use the speaker_name directly
+                            display_name = speaker_name
+                            speakers.add(display_name)
+                            if diar_speaker and diar_speaker not in initial_speaker_label_map:
+                                initial_speaker_label_map[diar_speaker] = display_name
+                            continue
+                        
                         # Remove any (2), (3) etc. patterns first
                         speaker_name_clean = re.sub(r"\(\d+\)", "", speaker_name).strip().lower()
                         
@@ -4481,11 +4848,23 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
                                 if len(parts) == 2:
                                     first = parts[0].strip().capitalize()
                                     last = parts[1].strip().capitalize()
-                                    speakers.add(f"{first} {last}")
+                                    display_name = f"{first} {last}"
+                                    speakers.add(display_name)
                                 else:
-                                    speakers.add(speaker_name_clean.capitalize())
+                                    display_name = speaker_name_clean.capitalize()
+                                    speakers.add(display_name)
                             else:
-                                speakers.add(speaker_name_clean.capitalize())
+                                # Check if it looks like a raw label (SPEAKER_00)
+                                if speaker_name_clean.startswith("speaker_"):
+                                    # Don't use raw labels as display names
+                                    display_name = None
+                                else:
+                                    display_name = speaker_name_clean.capitalize()
+                                    speakers.add(display_name)
+                        
+                        # Build initial speaker_label_map: raw_diarization_speaker -> final_display_name
+                        if diar_speaker and display_name and diar_speaker not in initial_speaker_label_map:
+                            initial_speaker_label_map[diar_speaker] = display_name
             except Exception as e:
                 print(f"Warning: Could not parse speaker JSON: {e}")
         
@@ -4536,6 +4915,7 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
             "speakers": sorted(list(speakers)),  # For labeling in transcript
             "speaker_count": len(speakers),
             "participants": participant_emails,  # For email/account access
+            "speaker_label_map": initial_speaker_label_map,  # Pre-populate labels from speaker identification
         }
         save_meeting(meeting_data)
         print(f"\n📝 Meeting metadata saved: {meeting_name}")
@@ -6067,12 +6447,19 @@ def meeting_transcript(meeting_id: str):
             for r in labeled_rows:
                 diar = (r.get("diarization_speaker") or "").strip()
                 spk = (r.get("speaker_name") or "").strip()
-                if diar and spk and spk != "Unknown":
-                    seeded_label_map[diar] = spk
+                
+                # If diarization_speaker is missing, use speaker_name as key (for fallback JSONs)
+                if not diar:
+                    diar = spk
+                
+                # Skip if speaker_name is a raw SPEAKER_XX label (not identified)
+                if spk and spk != "Unknown" and not spk.upper().startswith("SPEAKER_"):
+                    if diar not in seeded_label_map:
+                        seeded_label_map[diar] = spk
         except Exception:
             seeded_label_map = {}
 
-    # Build stable Unknown Speaker numbering based on first appearance order of diarization labels
+    # Build stable Speaker numbering based on first appearance order of diarization labels
     speakers_in_order: list[str] = []
     for u in utterances:
         s = (u.get("speaker") or "").strip()
@@ -6081,11 +6468,11 @@ def meeting_transcript(meeting_id: str):
         if s not in speakers_in_order:
             speakers_in_order.append(s)
 
-    unknown_by_raw: dict[str, str] = {raw: f"Unknown Speaker {i+1}" for i, raw in enumerate(speakers_in_order)}
+    unknown_by_raw: dict[str, str] = {raw: f"Speaker {i+1}" for i, raw in enumerate(speakers_in_order)}
     raw_by_unknown: dict[str, str] = {v: k for k, v in unknown_by_raw.items()}
 
     stored_map: dict[str, str] = meeting.get("speaker_label_map", {}) if isinstance(meeting.get("speaker_label_map"), dict) else {}
-    # Back-compat: older flows store Unknown Speaker N -> Name. Convert to raw-keyed mapping for display.
+    # Back-compat: older flows store Speaker N -> Name. Convert to raw-keyed mapping for display.
     stored_map_raw: dict[str, str] = {}
     for k, v in stored_map.items():
         if not isinstance(k, str) or not isinstance(v, str):
@@ -6360,11 +6747,11 @@ def delete_meeting(meeting_id: str):
 def apply_speaker_labels_to_transcript(transcript_path: Path, label_map: dict) -> str:
     """
     Apply speaker labels to transcript text.
-    Replaces "Unknown Speaker N" with user-provided names.
+    Replaces generic speaker labels (e.g. "Speaker 1") with user-provided names.
     
     Args:
         transcript_path: Path to transcript file
-        label_map: Dict mapping "Unknown Speaker N" -> "New Name"
+        label_map: Dict mapping speaker label -> "New Name"
     
     Returns:
         Updated transcript text
@@ -6391,7 +6778,7 @@ def regenerate_meeting_pdf(meeting: dict, label_map: dict) -> Path:
     
     Args:
         meeting: Meeting dict from meetings.json
-        label_map: Dict mapping "Unknown Speaker N" -> "New Name"
+        label_map: Dict mapping speaker label -> "New Name"
     
     Returns:
         Path to regenerated PDF
@@ -6502,7 +6889,10 @@ def label_speakers(meeting_id: str):
     label_map = {}
     seen_names = set()
     for unknown_speaker, new_name in labels.items():
-        if not isinstance(unknown_speaker, str) or not unknown_speaker.startswith("Unknown Speaker"):
+        # Accept both "Speaker N" (new) and "Unknown Speaker N" (legacy) formats
+        if not isinstance(unknown_speaker, str):
+            continue
+        if not (unknown_speaker.startswith("Speaker ") or unknown_speaker.startswith("Unknown Speaker")):
             continue
         
         new_name = (new_name or "").strip()
@@ -6528,8 +6918,8 @@ def label_speakers(meeting_id: str):
     }
     
     try:
-        # Convert "Unknown Speaker N" labels to raw diarization labels
-        # First, get utterances to map Unknown Speaker N -> raw labels
+        # Convert "Speaker N" labels to raw diarization labels
+        # First, get utterances to map Speaker N -> raw labels
         utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
         if not utterances_path.exists():
             return jsonify({"error": "Utterances not found"}), 404
@@ -6542,10 +6932,10 @@ def label_speakers(meeting_id: str):
         if not isinstance(utterances, list):
             return jsonify({"error": "utterances.json must be a list"}), 500
         
-        # Build mapping from Unknown Speaker N to raw diarization labels
+        # Build mapping from Speaker N to raw diarization labels
         unknown_by_raw, raw_by_unknown, speakers_in_order = _unknown_map_from_utterances(utterances)
         
-        # Convert label_map from "Unknown Speaker N" -> "Name" to raw -> "Name"
+        # Convert label_map from "Speaker N" -> "Name" to raw -> "Name"
         raw_label_map: dict[str, str] = {}
         for unknown_speaker, new_name in label_map.items():
             if unknown_speaker in raw_by_unknown:

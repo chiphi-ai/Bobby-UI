@@ -304,7 +304,6 @@
               <div class="speaker-list" id="speakerList">
                 {% for s in speakers %}
                 <div class="speaker-row" data-speaker-raw="{{ s.raw }}">
-                  <small>Raw label: <code>{{ s.raw }}</code></small>
                   <input
                     type="text"
                     value="{{ s.display }}"
@@ -316,7 +315,7 @@
                 {% endfor %}
               </div>
               <div style="margin-top: var(--space-md); color: var(--text-secondary); font-size: var(--font-size-xs); line-height: 1.4;">
-                Merging speakers: set multiple raw labels to the same name (e.g. two speakers both = "Carter Magnano").
+                To merge speakers: set multiple speakers to the same name (e.g. both become "Carter Magnano").
               </div>
               
               <!-- Re-run Diarization Controls -->
@@ -352,7 +351,6 @@
                   <div style="display:flex; align-items:center; gap: var(--space-sm); flex-wrap: wrap;">
                     <div class="speaker-chip" data-speaker-chip="{{ u.speaker_raw }}">
                       <span class="speaker-display">{{ u.speaker_display }}</span>
-                      <code>{{ u.speaker_raw }}</code>
                     </div>
                     <div class="conf-badge" title="Approximate diarization confidence">
                       Conf: <span class="conf-val">{{ u.speaker_confidence_percent }}%</span>
@@ -684,7 +682,6 @@
           <div style="display:flex; align-items:center; gap: var(--space-sm); flex-wrap: wrap;">
             <div class="speaker-chip" data-speaker-chip="${escapeHtml(String(u.speaker_raw ?? ''))}">
               <span class="speaker-display">${escapeHtml(String(u.speaker_display ?? ''))}</span>
-              <code>${escapeHtml(String(u.speaker_raw ?? ''))}</code>
             </div>
             <div class="conf-badge" title="Approximate diarization confidence">
               Conf: <span class="conf-val">${escapeHtml(String(u.speaker_confidence_percent ?? 0))}%</span>
