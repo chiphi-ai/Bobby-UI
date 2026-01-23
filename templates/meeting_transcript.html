@@ -279,9 +279,7 @@
           <div class="top-actions">
             <div style="display:flex; gap: var(--space-sm); flex-wrap: wrap;">
               <a href="{{ url_for('account_meetings') }}" class="btn btn-sm btn-secondary">← Back</a>
-              <a href="{{ meeting_pdf_url }}" class="btn btn-sm btn-secondary" target="_blank">Meeting Summary PDF</a>
               <a href="{{ transcript_pdf_url }}" class="btn btn-sm btn-secondary" target="_blank">Transcript PDF</a>
-              <a href="{{ transcript_txt_url }}" class="btn btn-sm btn-secondary" target="_blank">Transcript TXT</a>
             </div>
             <div style="display:flex; gap: var(--space-sm); flex-wrap: wrap; align-items: center;">
               <button id="generateAiSummaryBtn" class="btn btn-sm btn-secondary" title="Generate AI-powered meeting summary (may take several minutes)">🤖 Generate AI Summary</button>

@@ -4035,6 +4035,57 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
             import traceback
             traceback.print_exc()
     
+    # Generate simple transcript PDF (does NOT require Ollama)
+    transcript_pdf_path = OUTPUT_DIR / f"{stem}_transcript.pdf"
+    transcript_pdf_exists = False
+    named_json_for_pdf = OUTPUT_DIR / f"{stem}_named_script.json"
+    if named_json_for_pdf.exists():
+        try:
+            _job_log(f"[{datetime.now().isoformat()}] Generating transcript PDF...")
+            from email_named_script import create_pdf as _create_transcript_pdf, read_db as _read_db_for_pdf
+            people_for_pdf = {}
+            try:
+                people_for_pdf = _read_db_for_pdf(Path("input") / "emails.csv")
+            except Exception:
+                pass
+            ok = _create_transcript_pdf(named_json_for_pdf, people_for_pdf, transcript_pdf_path)
+            if ok and transcript_pdf_path.exists() and transcript_pdf_path.stat().st_size > 0:
+                transcript_pdf_exists = True
+                print(f"✅ Created transcript PDF: {transcript_pdf_path} ({transcript_pdf_path.stat().st_size} bytes)")
+            else:
+                print(f"⚠️  Transcript PDF generation returned False or file is empty")
+        except Exception as e:
+            print(f"⚠️  Could not create transcript PDF: {e}")
+    else:
+        # Fallback: create named_script.json from utterances.json if it doesn't exist
+        utterances_json = OUTPUT_DIR / f"{stem}_utterances.json"
+        if utterances_json.exists():
+            try:
+                _job_log(f"[{datetime.now().isoformat()}] Creating named_script.json from utterances...")
+                utterances_data = json.loads(utterances_json.read_text(encoding="utf-8"))
+                named_data = []
+                for u in utterances_data:
+                    named_data.append({
+                        'speaker_name': u.get('speaker', 'Unknown'),
+                        'text': u.get('text', '')
+                    })
+                named_json_for_pdf.write_text(json.dumps(named_data, indent=2), encoding="utf-8")
+                print(f"✅ Created {named_json_for_pdf.name} from utterances")
+                
+                # Now generate PDF
+                from email_named_script import create_pdf as _create_transcript_pdf, read_db as _read_db_for_pdf
+                people_for_pdf = {}
+                try:
+                    people_for_pdf = _read_db_for_pdf(Path("input") / "emails.csv")
+                except Exception:
+                    pass
+                ok = _create_transcript_pdf(named_json_for_pdf, people_for_pdf, transcript_pdf_path)
+                if ok and transcript_pdf_path.exists() and transcript_pdf_path.stat().st_size > 0:
+                    transcript_pdf_exists = True
+                    print(f"✅ Created transcript PDF: {transcript_pdf_path} ({transcript_pdf_path.stat().st_size} bytes)")
+            except Exception as e:
+                print(f"⚠️  Could not create transcript PDF from utterances: {e}")
+    
     # Save meeting metadata after successful processing
     try:
         audio_size = audio_path.stat().st_size if audio_path.exists() else 0
@@ -4144,6 +4195,7 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
             "processed_at": datetime.now().isoformat(),
             "audio_path": _safe_relpath(audio_path) if audio_path.exists() else None,
             "transcript_path": _safe_relpath(transcript_path) if transcript_exists else None,
+            "transcript_pdf_path": _safe_relpath(transcript_pdf_path) if transcript_pdf_exists else None,
             "pdf_path": _safe_relpath(pdf_path) if pdf_exists else None,
             "audio_size_bytes": audio_size,
             "speakers": sorted(list(speakers)),  # For labeling in transcript
@@ -5792,7 +5844,7 @@ def meeting_transcript_txt(meeting_id: str):
 def meeting_transcript_pdf(meeting_id: str):
     """Download transcript-only PDF (not the meeting summary report)."""
     if not require_login():
-        return ("Not logged in", 401), 401
+        return "Not logged in", 401
     
     print(f"[TRANSCRIPT PDF] Request for meeting {meeting_id}")
     
@@ -5804,7 +5856,7 @@ def meeting_transcript_pdf(meeting_id: str):
             return send_from_directory(str(OUTPUT_DIR), pdf_path.name, as_attachment=False)
         except Exception as e:
             print(f"[TRANSCRIPT PDF] Error serving file: {e}")
-            return (f"Error serving PDF: {e}", 500), 500
+            return f"Error serving PDF: {e}", 500
     
     # Check meeting metadata for transcript_pdf_path
     meeting = get_meeting(meeting_id)
@@ -5823,10 +5875,10 @@ def meeting_transcript_pdf(meeting_id: str):
                 return send_from_directory(str(pdf_path.parent), pdf_path.name, as_attachment=False)
             except Exception as e:
                 print(f"[TRANSCRIPT PDF] Error serving file: {e}")
-                return (f"Error serving PDF: {e}", 500), 500
+                return f"Error serving PDF: {e}", 500
     
     print(f"[TRANSCRIPT PDF] PDF not found for meeting {meeting_id}")
-    return ("Transcript PDF not found", 404), 404
+    return "Transcript PDF not found", 404
 
 @app.get("/meeting/<meeting_id>/audio")
 def meeting_audio(meeting_id: str):
