@@ -46,6 +46,11 @@
       overflow: visible;
     }
     
+    /* Spinner animation for loading states */
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
     @media (max-width: 980px) {
       .transcript-layout { 
         grid-template-columns: 1fr; 
@@ -311,7 +316,27 @@
                 {% endfor %}
               </div>
               <div style="margin-top: var(--space-md); color: var(--text-secondary); font-size: var(--font-size-xs); line-height: 1.4;">
-                Merging speakers: set multiple raw labels to the same name (e.g. two speakers both = “Carter Magnano”).
+                Merging speakers: set multiple raw labels to the same name (e.g. two speakers both = "Carter Magnano").
+              </div>
+              
+              <!-- Re-run Diarization Controls -->
+              <div style="margin-top: var(--space-lg); padding-top: var(--space-md); border-top: 1px solid var(--border-light);">
+                <div style="font-weight: var(--font-weight-semibold); margin-bottom: var(--space-sm); font-size: var(--font-size-sm);">Adjust Speaker Count</div>
+                <div style="display: flex; flex-direction: column; gap: var(--space-sm);">
+                  <button type="button" class="btn btn-sm btn-primary" id="addSpeakersBtn" style="width: 100%;">
+                    ➕ Add Speakers
+                  </button>
+                  <button type="button" class="btn btn-sm btn-secondary" id="removeSpeakersBtn" style="width: 100%; color: var(--danger);">
+                    ➖ Remove Speakers
+                  </button>
+                </div>
+                <div id="rerunStatus" style="margin-top: var(--space-sm); font-size: var(--font-size-xs); color: var(--text-secondary); display: none;">
+                  <span class="spinner" style="display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border-light); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite;"></span>
+                  <span id="rerunStatusText">Re-running diarization...</span>
+                </div>
+                <div style="margin-top: var(--space-xs); color: var(--text-secondary); font-size: 11px; line-height: 1.3;">
+                  Re-runs diarization with updated speaker count. This may take a few minutes.
+                </div>
               </div>
             </aside>
 
@@ -449,6 +474,70 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="splitCancelBtn">Cancel</button>
         <button type="button" class="btn btn-primary" id="splitSaveBtn" disabled>Save split</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Speakers Modal -->
+  <div id="addSpeakersModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Add Speakers</h3>
+        <button type="button" class="btn btn-sm btn-secondary" id="addSpeakersCloseBtn">Close</button>
+      </div>
+      <div class="modal-body">
+        <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+          Add more speakers and re-run diarization. The system will re-analyze the audio to detect the new speaker count.
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 13px; margin-bottom: 6px; font-weight: var(--font-weight-semibold);">
+            How many speakers to add?
+          </label>
+          <input id="addSpeakersCount" type="number" min="1" max="10" value="1" style="width: 100%; padding: 8px; border-radius: var(--border-radius); border: 1px solid var(--border);" />
+        </div>
+        <div style="padding: 12px; background: var(--bg-secondary); border-radius: var(--border-radius); font-size: 12px; color: var(--text-secondary);">
+          <strong>Current speakers:</strong> <span id="addSpeakersCurrentCount">0</span><br/>
+          <strong>New total:</strong> <span id="addSpeakersNewTotal">0</span>
+        </div>
+        <div style="margin-top: 12px; padding: 10px; background: rgba(255, 149, 0, 0.1); border-radius: var(--border-radius); font-size: 11px; color: var(--text-secondary); border-left: 3px solid var(--warning);">
+          ⚠️ This will re-run diarization and may take a few minutes. Your speaker name assignments will be cleared (you'll need to re-assign names).
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="addSpeakersCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="addSpeakersConfirmBtn">Re-run Diarization</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Remove Speakers Modal -->
+  <div id="removeSpeakersModal" class="modal-overlay" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Remove Speakers</h3>
+        <button type="button" class="btn btn-sm btn-secondary" id="removeSpeakersCloseBtn">Close</button>
+      </div>
+      <div class="modal-body">
+        <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">
+          Reduce the number of speakers and re-run diarization. Use this if the system detected too many speakers.
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 13px; margin-bottom: 6px; font-weight: var(--font-weight-semibold);">
+            How many speakers to remove?
+          </label>
+          <input id="removeSpeakersCount" type="number" min="1" value="1" style="width: 100%; padding: 8px; border-radius: var(--border-radius); border: 1px solid var(--border);" />
+        </div>
+        <div style="padding: 12px; background: var(--bg-secondary); border-radius: var(--border-radius); font-size: 12px; color: var(--text-secondary);">
+          <strong>Current speakers:</strong> <span id="removeSpeakersCurrentCount">0</span><br/>
+          <strong>New total:</strong> <span id="removeSpeakersNewTotal">0</span>
+        </div>
+        <div style="margin-top: 12px; padding: 10px; background: rgba(255, 59, 48, 0.1); border-radius: var(--border-radius); font-size: 11px; color: var(--text-secondary); border-left: 3px solid var(--danger);">
+          ⚠️ This will re-run diarization and may take a few minutes. Your speaker name assignments will be cleared.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="removeSpeakersCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="removeSpeakersConfirmBtn" style="background: var(--danger);">Re-run Diarization</button>
       </div>
     </div>
   </div>
@@ -1202,6 +1291,148 @@
         // Adjust max-height to account for header and bottom padding
         speakersAside.style.maxHeight = `calc(100vh - ${headerHeight + 32}px)`;
       }
+    })();
+
+    // ============================================
+    // Add/Remove Speakers - Re-run Diarization
+    // ============================================
+    (function() {
+      const addSpeakersBtn = document.getElementById('addSpeakersBtn');
+      const removeSpeakersBtn = document.getElementById('removeSpeakersBtn');
+      const addSpeakersModal = document.getElementById('addSpeakersModal');
+      const removeSpeakersModal = document.getElementById('removeSpeakersModal');
+      const rerunStatus = document.getElementById('rerunStatus');
+      const rerunStatusText = document.getElementById('rerunStatusText');
+      
+      // Get current speaker count
+      function getCurrentSpeakerCount() {
+        return document.querySelectorAll('#speakerList .speaker-row').length;
+      }
+      
+      // Update totals in modals
+      function updateModalTotals() {
+        const current = getCurrentSpeakerCount();
+        
+        // Add speakers modal
+        document.getElementById('addSpeakersCurrentCount').textContent = current;
+        const addCount = parseInt(document.getElementById('addSpeakersCount').value) || 1;
+        document.getElementById('addSpeakersNewTotal').textContent = current + addCount;
+        
+        // Remove speakers modal
+        document.getElementById('removeSpeakersCurrentCount').textContent = current;
+        const removeCount = parseInt(document.getElementById('removeSpeakersCount').value) || 1;
+        const removeMax = Math.max(1, current - 1);
+        document.getElementById('removeSpeakersCount').max = removeMax;
+        document.getElementById('removeSpeakersNewTotal').textContent = Math.max(1, current - removeCount);
+      }
+      
+      // Open Add Speakers modal
+      addSpeakersBtn.addEventListener('click', () => {
+        updateModalTotals();
+        addSpeakersModal.style.display = 'flex';
+      });
+      
+      // Open Remove Speakers modal
+      removeSpeakersBtn.addEventListener('click', () => {
+        const current = getCurrentSpeakerCount();
+        if (current <= 1) {
+          toast('Cannot remove speakers: only 1 speaker remaining.');
+          return;
+        }
+        updateModalTotals();
+        removeSpeakersModal.style.display = 'flex';
+      });
+      
+      // Close modals
+      function closeAddModal() { addSpeakersModal.style.display = 'none'; }
+      function closeRemoveModal() { removeSpeakersModal.style.display = 'none'; }
+      
+      document.getElementById('addSpeakersCloseBtn').addEventListener('click', closeAddModal);
+      document.getElementById('addSpeakersCancelBtn').addEventListener('click', closeAddModal);
+      addSpeakersModal.addEventListener('click', (e) => { if (e.target === addSpeakersModal) closeAddModal(); });
+      
+      document.getElementById('removeSpeakersCloseBtn').addEventListener('click', closeRemoveModal);
+      document.getElementById('removeSpeakersCancelBtn').addEventListener('click', closeRemoveModal);
+      removeSpeakersModal.addEventListener('click', (e) => { if (e.target === removeSpeakersModal) closeRemoveModal(); });
+      
+      // Update totals when input changes
+      document.getElementById('addSpeakersCount').addEventListener('input', updateModalTotals);
+      document.getElementById('removeSpeakersCount').addEventListener('input', updateModalTotals);
+      
+      // Re-run diarization
+      async function rerunDiarization(newSpeakerCount) {
+        // Show loading state
+        rerunStatus.style.display = 'block';
+        rerunStatusText.textContent = 'Re-running diarization...';
+        addSpeakersBtn.disabled = true;
+        removeSpeakersBtn.disabled = true;
+        document.getElementById('saveLabelsBtn').disabled = true;
+        
+        try {
+          const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/rerun_diarization`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ num_speakers: newSpeakerCount, preserve_names: true })
+          });
+          
+          const data = await resp.json().catch(() => ({}));
+          
+          if (!resp.ok) {
+            throw new Error(data.error || data.message || 'Re-run failed');
+          }
+          
+          // Success! Reload the page to show new results
+          rerunStatusText.textContent = 'Complete! Reloading...';
+          toast(`Diarization complete with ${newSpeakerCount} speakers. Reloading...`);
+          
+          // Small delay then reload
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+          
+        } catch (e) {
+          toast('Error: ' + (e.message || e));
+          rerunStatus.style.display = 'none';
+          addSpeakersBtn.disabled = false;
+          removeSpeakersBtn.disabled = false;
+          document.getElementById('saveLabelsBtn').disabled = false;
+        }
+      }
+      
+      // Confirm Add Speakers
+      document.getElementById('addSpeakersConfirmBtn').addEventListener('click', () => {
+        const current = getCurrentSpeakerCount();
+        const addCount = parseInt(document.getElementById('addSpeakersCount').value) || 1;
+        const newTotal = current + addCount;
+        
+        if (addCount < 1) {
+          toast('Please enter a valid number of speakers to add.');
+          return;
+        }
+        
+        closeAddModal();
+        rerunDiarization(newTotal);
+      });
+      
+      // Confirm Remove Speakers
+      document.getElementById('removeSpeakersConfirmBtn').addEventListener('click', () => {
+        const current = getCurrentSpeakerCount();
+        const removeCount = parseInt(document.getElementById('removeSpeakersCount').value) || 1;
+        const newTotal = Math.max(1, current - removeCount);
+        
+        if (removeCount < 1) {
+          toast('Please enter a valid number of speakers to remove.');
+          return;
+        }
+        
+        if (newTotal < 1) {
+          toast('Cannot reduce to less than 1 speaker.');
+          return;
+        }
+        
+        closeRemoveModal();
+        rerunDiarization(newTotal);
+      });
     })();
   </script>
 </body>

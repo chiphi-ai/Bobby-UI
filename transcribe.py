@@ -396,7 +396,7 @@ def transcribe_with_whisper(wav_path: Path, custom_vocab: list[str] | None = Non
         "segments": segments,
     }
 
-def diarize_with_pyannote(wav_path: Path, speakers_expected: int | None = None) -> list[dict]:
+def diarize_with_pyannote(wav_path: Path, speakers_expected: int | None = None, force_exact_speakers: bool = False) -> list[dict]:
     print("3) Diarizing (pyannote)...")
     
     # PyTorch 2.6+ compatibility: allow TorchVersion in safe globals for model loading
@@ -494,10 +494,24 @@ def diarize_with_pyannote(wav_path: Path, speakers_expected: int | None = None) 
     # pyannote pipelines accept num_speakers / min_speakers / max_speakers (varies by version).
     diarization = None
     if speakers_expected is not None:
-        try:
-            diarization = pipeline(str(wav_path), num_speakers=int(speakers_expected))
-        except TypeError:
-            diarization = pipeline(str(wav_path))
+        n = int(speakers_expected)
+        if force_exact_speakers:
+            # Force exact speaker count by setting min=max=num
+            print(f"[DIARIZATION] Forcing exactly {n} speakers (min=max={n})")
+            try:
+                diarization = pipeline(str(wav_path), min_speakers=n, max_speakers=n)
+            except TypeError:
+                # Fallback if min/max not supported
+                try:
+                    diarization = pipeline(str(wav_path), num_speakers=n)
+                except TypeError:
+                    diarization = pipeline(str(wav_path))
+        else:
+            # Use num_speakers as a hint only
+            try:
+                diarization = pipeline(str(wav_path), num_speakers=n)
+            except TypeError:
+                diarization = pipeline(str(wav_path))
     else:
         diarization = pipeline(str(wav_path))
 
@@ -782,6 +796,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file", help="Path to audio/video file (e.g., input\\Square.m4a)")
     parser.add_argument("--speakers", type=int, default=None, help="Expected number of speakers (e.g., 4). Omit to auto-detect.")
+    parser.add_argument("--force-speakers", action="store_true", help="Force exact speaker count (use min_speakers=max_speakers instead of hint).")
     parser.add_argument("--speech-threshold", type=float, default=None, help="0.0-1.0. Try 0.6-0.8 to ignore music/noise.")
     parser.add_argument("--enhance-audio", action="store_true", help="Apply audio enhancement (denoising + normalization). Use for noisy recordings.")
     args = parser.parse_args()
@@ -836,7 +851,7 @@ def main():
     
     # Try diarization, but continue with single speaker if it fails
     try:
-        diar_segments = diarize_with_pyannote(wav_path, speakers_expected=args.speakers)
+        diar_segments = diarize_with_pyannote(wav_path, speakers_expected=args.speakers, force_exact_speakers=args.force_speakers)
     except Exception as e:
         print(f"⚠️  Diarization failed: {e}")
         print("   Continuing with single speaker (SPEAKER_00)...")

@@ -1544,36 +1544,87 @@ def _ensure_meeting_wav_16k(meeting_id: str, meeting: dict) -> Optional[Path]:
     return None
 
 
-def _try_learn_enrollment_from_meeting(meeting_id: str, meeting: dict, raw_speaker: str, label_name: str) -> bool:
+def _get_final_speaker_display(u: dict, raw_label_map: dict[str, str]) -> str:
     """
-    Best-effort "global learning": extract ~30s of audio for this diarization speaker and save it into enroll/
-    using a stable enrollment_key derived from the label (and/or linked username when available).
+    Get the final display name for an utterance, applying:
+    1. Per-utterance override (speaker_display_override) if set
+    2. Bulk label map (raw -> display name) otherwise
+    3. Fall back to raw label or "Unknown"
     """
-    enrollment_key = ensure_speaker_profile(label_name)
-    if not enrollment_key:
-        return False
-    _append_speaker_profile_evidence(enrollment_key, meeting_id, raw_speaker)
+    # Check for per-utterance override first
+    display_override = (u.get("speaker_display_override") or "")
+    if isinstance(display_override, str):
+        display_override = display_override.strip()
+    else:
+        display_override = ""
+    
+    if display_override:
+        return display_override
+    
+    # Otherwise use bulk label map
+    raw = (u.get("speaker") or "").strip()
+    return (raw_label_map.get(raw) or raw or "Unknown").strip()
 
+
+def _try_learn_enrollment_from_meeting(meeting_id: str, meeting: dict, speaker_display_name: str) -> bool:
+    """
+    Best-effort "global learning": extract audio for a speaker based on their FINAL DISPLAY NAME
+    (after all user corrections, splits, and overrides are applied).
+    
+    This uses effective_utterances which includes user corrections, so when users fix
+    diarization mistakes in the UI, those corrected segments are used for enrollment.
+    """
+    enrollment_key = ensure_speaker_profile(speaker_display_name)
+    if not enrollment_key:
+        print(f"[ENROLL] ❌ Could not create enrollment key for {speaker_display_name}", flush=True)
+        return False
+    _append_speaker_profile_evidence(enrollment_key, meeting_id, speaker_display_name)
+
+    # Get effective utterances (includes user splits and overrides)
+    effective_utterances = _effective_utterances_for_meeting(meeting_id, meeting)
+    if not effective_utterances:
+        print(f"[ENROLL] ❌ No effective utterances found for {meeting_id}", flush=True)
+        return False
+
+    # Build raw -> display label map for determining final speaker names
     utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
     if not utterances_path.exists():
         return False
     try:
-        utterances = json.loads(utterances_path.read_text(encoding="utf-8"))
+        src_utterances = json.loads(utterances_path.read_text(encoding="utf-8"))
     except Exception:
         return False
-    if not isinstance(utterances, list):
-        return False
+    unknown_by_raw, _, _ = _unknown_map_from_utterances(src_utterances)
+    
+    # Build effective raw -> display map
+    stored_map: dict[str, str] = meeting.get("speaker_label_map", {}) if isinstance(meeting.get("speaker_label_map"), dict) else {}
+    raw_label_map: dict[str, str] = dict(unknown_by_raw)
+    for k, v in stored_map.items():
+        if isinstance(k, str) and isinstance(v, str) and v.strip():
+            raw_label_map[k.strip()] = v.strip()
 
     wav16k = _ensure_meeting_wav_16k(meeting_id, meeting)
     if not wav16k:
+        print(f"[ENROLL] ❌ Could not get/create 16k wav for {meeting_id}", flush=True)
         return False
 
-    # Collect segments for this speaker until >= 30s total
+    # Collect segments where the FINAL display name matches (not raw diarization label)
+    # This respects user corrections made via "New Speaker" button
     segments = []
     total = 0.0
-    for u in utterances:
-        if (u.get("speaker") or "").strip() != raw_speaker:
+    skipped_overlap = 0
+    for u in effective_utterances:
+        # Get the final speaker display name after all corrections
+        final_name = _get_final_speaker_display(u, raw_label_map)
+        
+        if final_name != speaker_display_name:
             continue
+        
+        # Skip segments flagged as having speaker overlap (contaminated audio)
+        if u.get("needs_review") or u.get("speaker_overlap"):
+            skipped_overlap += 1
+            continue
+            
         start = float(u.get("start", 0.0) or 0.0)
         end = float(u.get("end", 0.0) or 0.0)
         dur = max(0.0, end - start)
@@ -1584,14 +1635,21 @@ def _try_learn_enrollment_from_meeting(meeting_id: str, meeting: dict, raw_speak
         if total >= 17.0:
             break
 
+    if skipped_overlap > 0:
+        print(f"[ENROLL] ℹ️ Skipped {skipped_overlap} segments with speaker overlap for {speaker_display_name}", flush=True)
+
     if total < 15.0:
-        # Enrollment requires >= 15s to be useful for speaker identification
+        # Enrollment requires >= 15s of clean audio to be useful
+        print(f"[ENROLL] ⏭️ Not enough clean audio for {speaker_display_name} ({total:.1f}s < 15s)", flush=True)
         return False
 
-    tmp_dir = OUTPUT_DIR / "_learn_segs" / meeting_id / raw_speaker
+    # Use a safe directory name (replace spaces and special chars)
+    safe_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in speaker_display_name)
+    tmp_dir = OUTPUT_DIR / "_learn_segs" / meeting_id / safe_name
     tmp_dir.mkdir(parents=True, exist_ok=True)
     seg_files = []
     try:
+        print(f"[ENROLL] Extracting {len(segments)} segments ({total:.1f}s) for {speaker_display_name}...", flush=True)
         for i, (start, end) in enumerate(segments):
             seg_path = tmp_dir / f"seg_{i:03d}.wav"
             dur = max(0.01, end - start)
@@ -1607,6 +1665,7 @@ def _try_learn_enrollment_from_meeting(meeting_id: str, meeting: dict, raw_speak
             ]
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode != 0:
+                print(f"[ENROLL] ❌ ffmpeg extract failed for segment {i}", flush=True)
                 return False
             seg_files.append(seg_path)
 
@@ -1624,8 +1683,10 @@ def _try_learn_enrollment_from_meeting(meeting_id: str, meeting: dict, raw_speak
         ]
         result = subprocess.run(cmd_concat, capture_output=True, text=True)
         if result.returncode != 0:
+            print(f"[ENROLL] ❌ ffmpeg concat failed", flush=True)
             return False
         if not concat_path.exists() or concat_path.stat().st_size == 0:
+            print(f"[ENROLL] ❌ Concat file empty or missing", flush=True)
             return False
 
         # Pick an available enrollment filename: key.wav, key(2).wav, ...
@@ -1636,13 +1697,14 @@ def _try_learn_enrollment_from_meeting(meeting_id: str, meeting: dict, raw_speak
             dest = ENROLL_DIR / name
             if not dest.exists():
                 shutil.copyfile(concat_path, dest)
-                print(f"[LEARN] Added enrollment sample: {dest.name} (from {meeting_id} {raw_speaker})")
+                print(f"[ENROLL] ✅ Added enrollment sample: {dest.name} ({total:.1f}s from {meeting_id})", flush=True)
                 return True
             n += 1
             if n > 25:
+                print(f"[ENROLL] ❌ Too many enrollment files for {enrollment_key}", flush=True)
                 return False
     except Exception as e:
-        print(f"[LEARN] Failed to learn enrollment sample: {e}")
+        print(f"[ENROLL] ❌ Failed to learn enrollment sample: {e}", flush=True)
         return False
     finally:
         # Clean up temp directory best-effort
@@ -1735,28 +1797,32 @@ def api_save_speaker_labels(meeting_id: str):
     except Exception as e:
         return jsonify({"error": "Regeneration failed", "message": str(e)}), 500
 
-    # Best-effort: "global learning" by adding enrollment samples when the label matches an existing user
+    # Best-effort: "global learning" by adding enrollment samples
     # Run in background threads so the UI doesn't slow down
-    def _enroll_speaker_background(m_id, m_data, raw_spk, label):
+    # IMPORTANT: Use the updated meeting data with new speaker_label_map so enrollment
+    # can correctly compute final display names including user corrections
+    meeting_for_enrollment = dict(meeting)
+    meeting_for_enrollment["speaker_label_map"] = normalized_existing
+    
+    def _enroll_speaker_background(m_id, m_data, speaker_name):
         try:
-            result = _try_learn_enrollment_from_meeting(m_id, m_data, raw_spk, label)
-            if result:
-                print(f"[ENROLL] ✅ Successfully enrolled {label} from meeting {m_id}", flush=True)
-            else:
-                print(f"[ENROLL] ⏭️ Skipped enrollment for {label} (not enough audio or already enrolled)", flush=True)
+            result = _try_learn_enrollment_from_meeting(m_id, m_data, speaker_name)
+            # Result logging is now handled inside the function
         except Exception as e:
-            print(f"[ENROLL] ❌ Failed to enroll {label}: {e}", flush=True)
+            print(f"[ENROLL] ❌ Failed to enroll {speaker_name}: {e}", flush=True)
 
+    # Get unique speaker display names to enroll (avoid duplicate enrollments)
+    speaker_names_to_enroll = set(raw_overrides.values())
     learned = {}
-    for raw, name in raw_overrides.items():
+    for name in speaker_names_to_enroll:
         print(f"[ENROLL] Starting background enrollment for {name}...", flush=True)
         thread = threading.Thread(
             target=_enroll_speaker_background,
-            args=(meeting_id, meeting, raw, name),
+            args=(meeting_id, meeting_for_enrollment, name),
             daemon=True
         )
         thread.start()
-        learned[raw] = "pending"  # Enrollment is happening in background
+        learned[name] = "pending"  # Enrollment is happening in background
 
     update_meeting(meeting_id, {
         "speaker_label_map": normalized_existing,
@@ -1871,6 +1937,24 @@ def api_save_utterance_override(meeting_id: str):
     })
 
     meeting = get_meeting(meeting_id) or meeting
+
+    # Best-effort enrollment for the new speaker (in background so UI doesn't slow down)
+    # Only trigger if a speaker name was provided (not clearing)
+    if speaker_display:
+        def _enroll_single_override_background(m_id, m_data, speaker_name):
+            try:
+                result = _try_learn_enrollment_from_meeting(m_id, m_data, speaker_name)
+                # Result logging is handled inside the function
+            except Exception as e:
+                print(f"[ENROLL] ❌ Failed to enroll {speaker_name}: {e}", flush=True)
+        
+        print(f"[ENROLL] Starting background enrollment for {speaker_display} (from utterance override)...", flush=True)
+        thread = threading.Thread(
+            target=_enroll_single_override_background,
+            args=(meeting_id, meeting, speaker_display),
+            daemon=True
+        )
+        thread.start()
 
     # Return updated utterance payload for fast UI update
     utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
@@ -2362,6 +2446,242 @@ def api_undo_utterance_split(meeting_id: str):
             "meeting_report_pdf": bool(meeting_report_pdf),
         },
         "utterance_splits_version": version,
+    }), 200
+
+
+@app.post("/api/meetings/<meeting_id>/rerun_diarization")
+def api_rerun_diarization(meeting_id: str):
+    """
+    Re-run diarization/transcription with a specified speaker count.
+    This allows users to add or remove speakers and get better diarization results.
+    
+    Request body:
+    {
+        "num_speakers": int  # Target number of speakers (>= 1)
+        "preserve_names": bool  # Optional, try to preserve speaker name mappings (default: true)
+    }
+    """
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        return jsonify({"error": "Meeting not found"}), 404
+
+    data = request.get_json() or {}
+    num_speakers = data.get("num_speakers")
+    preserve_names = data.get("preserve_names", True)
+    
+    if num_speakers is None:
+        return jsonify({"error": "num_speakers is required"}), 400
+    
+    try:
+        num_speakers = int(num_speakers)
+    except (TypeError, ValueError):
+        return jsonify({"error": "num_speakers must be an integer"}), 400
+    
+    if num_speakers < 1:
+        return jsonify({"error": "num_speakers must be at least 1"}), 400
+    
+    # Find the audio file for this meeting
+    audio_path = None
+    if meeting.get("audio_path"):
+        candidate = ROOT / str(meeting["audio_path"])
+        if candidate.exists():
+            audio_path = candidate
+    
+    # Fallback: try to find audio in input directory
+    if audio_path is None:
+        for ext in [".m4a", ".webm", ".mp4", ".wav", ".mp3", ".mov", ".aac", ".flac", ".ogg"]:
+            candidate = INPUT_DIR / f"{meeting_id}{ext}"
+            if candidate.exists():
+                audio_path = candidate
+                break
+    
+    if audio_path is None or not audio_path.exists():
+        return jsonify({"error": "Audio file not found. Cannot re-run diarization."}), 404
+    
+    print(f"[RERUN DIARIZATION] Starting for {meeting_id} with {num_speakers} speakers...")
+    print(f"[RERUN DIARIZATION] Audio path: {audio_path}")
+    
+    # Preserve existing speaker label map if requested
+    existing_label_map = {}
+    if preserve_names:
+        existing_label_map = meeting.get("speaker_label_map", {}) if isinstance(meeting.get("speaker_label_map"), dict) else {}
+        print(f"[RERUN DIARIZATION] Preserving {len(existing_label_map)} speaker name mappings")
+    
+    # Prepare environment
+    PY = sys.executable
+    env = os.environ.copy()
+    
+    # Load .env file
+    env_file = ROOT / ".env"
+    if env_file.exists():
+        try:
+            with open(env_file, 'r', encoding='utf-8-sig') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip().strip('"').strip("'")
+                        env[key] = value
+        except Exception as e:
+            print(f"[RERUN DIARIZATION] Warning: Could not load .env file: {e}")
+    
+    stem = meeting_id
+    
+    # Step 1: Re-run transcribe.py with new speaker count
+    # Use --force-speakers to force exact count (min=max=num) since user manually specified
+    cmd1 = [PY, "transcribe.py", str(audio_path), "--speakers", str(num_speakers), "--force-speakers"]
+    print(f"[RERUN DIARIZATION] Running: {' '.join(cmd1)}")
+    
+    try:
+        result1 = subprocess.run(
+            cmd1,
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=1800  # 30 minute timeout
+        )
+        if result1.returncode != 0:
+            print(f"[RERUN DIARIZATION] transcribe.py failed: {result1.stderr}")
+            return jsonify({
+                "error": "Transcription failed",
+                "details": result1.stderr[-500:] if result1.stderr else "Unknown error"
+            }), 500
+        print(f"[RERUN DIARIZATION] Transcription complete")
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Transcription timed out (30 minutes)"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Transcription error: {str(e)}"}), 500
+    
+    # Step 2: Re-run identify_speakers.py
+    cmd2 = [
+        PY, "identify_speakers.py",
+        str(OUTPUT_DIR / f"{stem}_utterances.json"),
+        str(ENROLL_DIR),
+        str(OUTPUT_DIR / f"{stem}_named_script.txt")
+    ]
+    print(f"[RERUN DIARIZATION] Running: {' '.join(cmd2)}")
+    
+    try:
+        result2 = subprocess.run(
+            cmd2,
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=600  # 10 minute timeout
+        )
+        if result2.returncode != 0:
+            print(f"[RERUN DIARIZATION] identify_speakers.py failed: {result2.stderr}")
+            # Continue anyway - utterances.json should still be valid
+        else:
+            print(f"[RERUN DIARIZATION] Speaker identification complete")
+    except Exception as e:
+        print(f"[RERUN DIARIZATION] Speaker identification error (continuing): {e}")
+    
+    # Step 3: Clear user overrides/splits (fresh start with new diarization)
+    # But preserve speaker_label_map names by trying to map them to new raw labels
+    update_data = {
+        "utterance_overrides": [],
+        "utterance_splits": {},
+        "diarization_speaker_count": num_speakers,
+        "diarization_rerun_at": datetime.now().isoformat(),
+    }
+    
+    # Load new utterances to get new speaker labels
+    utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
+    new_utterances = []
+    new_speakers_raw = set()
+    if utterances_path.exists():
+        try:
+            new_utterances = json.loads(utterances_path.read_text(encoding="utf-8"))
+            if isinstance(new_utterances, list):
+                for u in new_utterances:
+                    if isinstance(u, dict):
+                        spk = (u.get("speaker") or "").strip()
+                        if spk:
+                            new_speakers_raw.add(spk)
+        except Exception as e:
+            print(f"[RERUN DIARIZATION] Error reading new utterances: {e}")
+    
+    # Try to preserve speaker names by matching to new raw labels (best effort)
+    # New speakers are SPEAKER_00, SPEAKER_01, etc. - we can't reliably map old names
+    # without voice matching, so we clear the mapping and let user re-assign
+    if preserve_names and existing_label_map:
+        # We can't reliably map old SPEAKER_XX to new SPEAKER_XX because
+        # the diarization may have completely different speaker assignments
+        # However, we store the old mapping so the user can see previous names
+        update_data["previous_speaker_label_map"] = existing_label_map
+        print(f"[RERUN DIARIZATION] Stored previous label map for reference")
+    
+    # Clear the current label map since raw labels have changed
+    update_data["speaker_label_map"] = {}
+    
+    update_meeting(meeting_id, update_data)
+    
+    # Step 4: Regenerate transcript PDF
+    meeting = get_meeting(meeting_id) or meeting
+    try:
+        named_json_path = OUTPUT_DIR / f"{meeting_id}_named_script.json"
+        if named_json_path.exists():
+            _regenerate_transcript_pdf_from_named_json(meeting_id, named_json_path)
+            print(f"[RERUN DIARIZATION] Regenerated transcript PDF")
+    except Exception as e:
+        print(f"[RERUN DIARIZATION] Warning: Could not regenerate PDF: {e}")
+    
+    # Step 5: Build response with new utterances and speakers
+    unknown_by_raw, raw_by_unknown, speakers_in_order = _unknown_map_from_utterances(new_utterances)
+    
+    # Build speaker list for UI
+    speakers = []
+    for raw in speakers_in_order:
+        display = unknown_by_raw.get(raw, raw)
+        speakers.append({
+            "raw": raw,
+            "display": display,
+        })
+    
+    # Build effective utterances for UI
+    effective_map = _effective_raw_display_map(meeting_id, meeting, new_utterances)
+    effective_utterances = _effective_utterances_for_meeting(meeting_id, meeting)
+    
+    utterances_for_ui = []
+    for u in effective_utterances:
+        raw = (u.get("speaker") or "").strip()
+        display_override = u.get("speaker_display_override")
+        if isinstance(display_override, str):
+            display_override = display_override.strip()
+        else:
+            display_override = ""
+        
+        utt_dict = {
+            "utterance_id": (u.get("utterance_id") or ""),
+            "source_utterance_id": (u.get("source_utterance_id") or ""),
+            "start": float(u.get("start", 0.0) or 0.0),
+            "end": float(u.get("end", 0.0) or 0.0),
+            "speaker_raw": raw,
+            "speaker_display": (display_override or effective_map.get(raw, raw)),
+            "speaker_confidence_percent": int(u.get("speaker_confidence_percent") or 0),
+            "text": (u.get("text") or ""),
+        }
+        
+        if "words" in u and isinstance(u["words"], list):
+            utt_dict["words"] = u["words"]
+        
+        utterances_for_ui.append(utt_dict)
+    
+    print(f"[RERUN DIARIZATION] Complete! {len(speakers)} speakers, {len(utterances_for_ui)} utterances")
+    
+    return jsonify({
+        "status": "success",
+        "speakers": speakers,
+        "utterances": utterances_for_ui,
+        "num_speakers": num_speakers,
+        "previous_label_map": existing_label_map if preserve_names else {},
     }), 200
 
 
