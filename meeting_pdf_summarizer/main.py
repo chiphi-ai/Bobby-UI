@@ -181,10 +181,42 @@ def escape(s: str) -> str:
 
 
 
+def truncate_transcript(text: str, max_chars: int = 24000) -> str:
+    """
+    Truncate transcript to fit within model context limits.
+    Keeps beginning and end, removes middle if too long.
+    24000 chars ≈ 6000 tokens, safe for 3b models with 4k context.
+    """
+    if len(text) <= max_chars:
+        return text
+    
+    # Keep 40% from start, 40% from end, mark truncation in middle
+    keep_chars = max_chars - 100  # Leave room for truncation message
+    start_chars = int(keep_chars * 0.4)
+    end_chars = int(keep_chars * 0.4)
+    
+    start_text = text[:start_chars]
+    end_text = text[-end_chars:]
+    
+    # Find clean break points (end of utterance/line)
+    start_break = start_text.rfind('\n')
+    if start_break > start_chars * 0.8:
+        start_text = start_text[:start_break]
+    
+    end_break = end_text.find('\n')
+    if end_break > 0 and end_break < end_chars * 0.2:
+        end_text = end_text[end_break + 1:]
+    
+    truncated_chars = len(text) - len(start_text) - len(end_text)
+    print(f"[INFO] Transcript truncated: {len(text)} -> {len(start_text) + len(end_text)} chars ({truncated_chars} chars removed from middle)")
+    
+    return f"{start_text}\n\n[... {truncated_chars} characters omitted for length ...]\n\n{end_text}"
+
+
 def call_ollama(prompt: str) -> str:
     load_dotenv()
     base_url = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
-    model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+    model = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
 
     url = f"{base_url}/api/generate"
     payload = {
@@ -194,11 +226,14 @@ def call_ollama(prompt: str) -> str:
         "format": "json",
         "options": {
             "temperature": 0.2,
-            "num_predict": 2000  # Increased to handle larger responses
+            "num_predict": 1500,  # Reduced for smaller model
+            "num_ctx": 4096,      # Explicit context window
+            "num_batch": 256,     # Smaller batch size to reduce memory
         }
     }
 
-    r = requests.post(url, json=payload, timeout=300)  # Reduced from 600s for faster failure detection
+    print(f"[INFO] Calling Ollama with model: {model}")
+    r = requests.post(url, json=payload, timeout=180)  # 3 min timeout for smaller model
     r.raise_for_status()
     data = r.json()
     return data.get("response", "")
@@ -281,6 +316,9 @@ def parse_model_json(raw: str) -> dict:
 
 
 def build_prompt(transcript_text: str) -> str:
+    # Truncate long transcripts to prevent memory issues with smaller models
+    transcript_text = truncate_transcript(transcript_text, max_chars=24000)
+    
     schema = {
         "meeting_title": "string",
         "date": "string",
@@ -311,36 +349,30 @@ def build_prompt(transcript_text: str) -> str:
     }
 
     return f"""
-You are helping me update my existing AI meeting-summary code.
+You are a meeting summarizer. Extract key information from this transcript.
 
 TASK:
-Generate a clean, role-agnostic business meeting summary in the exact structure below. Be concise, skimmable, and action-oriented.
+Generate a business meeting summary in the exact JSON structure below. Be concise and action-oriented.
 
 RULES:
-- Do not quote the transcript verbatim unless absolutely necessary (max 1 short quote total).
-- Do not include any section not listed below.
-- If a section has no content, write "None" for that section's field/list.
-- Prefer concrete nouns/verbs: Decide, Ship, Approves, Blocks, Due.
-- Extract deadlines and owners when stated; if missing, use "Not specified" for due dates and "Unassigned" for owners.
-- If the transcript contradicts itself, flag that in risks_concerns_constraints.
+- Do not quote the transcript verbatim.
+- If a section has no content, use "None" or empty list [].
+- Extract deadlines and owners when stated; if missing, use "Not specified" or "Unassigned".
 - Do NOT include attendance/participants.
 
 OUTPUT:
-Return ONLY valid JSON (no extra text) matching this schema EXACTLY:
+Return ONLY valid JSON matching this schema:
 {json.dumps(schema, indent=2)}
 
 Field rules:
-- meeting_title must be 3–7 words inferred from transcript.
-- date must be "Not specified" if not mentioned.
-- executive_snapshot must be 2–4 sentences.
-- In lists: if there are zero items, use [] (empty list).
-- For follow_up_cadence: if missing, set fields to "Not specified" or "None" as appropriate.
-- If a single string field has no content, use "None" (except date/next_check_in which use "Not specified").
+- meeting_title: 3–7 words inferred from transcript.
+- date: "Not specified" if not mentioned.
+- executive_snapshot: 2–4 sentences.
+- Empty lists: use [].
+- Empty strings: use "None" (except date which uses "Not specified").
 
 TRANSCRIPT:
-<<<TRANSCRIPT>>>
 {transcript_text}
-<<<END TRANSCRIPT>>>
 """.strip()
 
 

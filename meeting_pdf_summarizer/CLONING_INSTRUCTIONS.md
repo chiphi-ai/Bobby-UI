@@ -71,7 +71,7 @@ pip install --user -r requirements.txt
 
 2. **Pull the AI model:**
    ```bash
-   ollama pull llama3.1:8b
+   ollama pull qwen2.5:3b
    ```
    
    This downloads the model (about 4.7GB). It may take a few minutes.
@@ -81,7 +81,7 @@ pip install --user -r requirements.txt
    ollama list
    ```
    
-   You should see `llama3.1:8b` in the list.
+   You should see `qwen2.5:3b` in the list.
 
 ## Step 5: Test the Installation
 
@@ -115,7 +115,7 @@ PDF created: out/test.pdf
 ### Ollama connection errors
 - Make sure Ollama is running (it should start automatically)
 - Check if the model is installed: `ollama list`
-- Try pulling the model again: `ollama pull llama3.1:8b`
+- Try pulling the model again: `ollama pull qwen2.5:3b`
 
 ## Quick Reference
 
@@ -128,7 +128,7 @@ cd REPO
 pip install -r requirements.txt
 
 # Set up Ollama
-ollama pull llama3.1:8b
+ollama pull qwen2.5:3b
 
 # Run the script
 python main.py --input transcripts/tiny.txt --output out/test.pdf

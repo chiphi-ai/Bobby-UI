@@ -101,13 +101,13 @@ def main():
                 model_names = [m.get("name", "unknown") for m in models]
                 print(f"   [OK] Ollama is running at {base_url}")
                 print(f"   [OK] Models available: {', '.join(model_names[:3])}")
-                if "llama3.1:8b" in str(models):
-                    print(f"   [OK] Required model 'llama3.1:8b' is installed")
+                if "qwen2.5:3b" in str(models):
+                    print(f"   [OK] Required model 'qwen2.5:3b' is installed")
                 else:
-                    print(f"   [WARN] Model 'llama3.1:8b' not found (install with: ollama pull llama3.1:8b)")
+                    print(f"   [WARN] Model 'qwen2.5:3b' not found (install with: ollama pull qwen2.5:3b)")
             else:
                 print(f"   [WARN] Ollama is running but no models installed")
-                print(f"   💡 Install model: ollama pull llama3.1:8b")
+                print(f"   💡 Install model: ollama pull qwen2.5:3b")
         else:
             print(f"   [WARN] Ollama API returned status {response.status_code}")
     except requests.exceptions.ConnectionError:

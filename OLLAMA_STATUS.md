@@ -8,8 +8,8 @@
 - Status: Running (Process ID: 23904)
 
 ✅ **Model is INSTALLED**
-- Model: `llama3.1:8b`
-- Size: 4.9 GB
+- Model: `qwen2.5:3b` (lightweight, ~2GB)
+- Previous: `llama3.1:8b` was too resource-intensive
 - Status: Ready to use
 
 ✅ **Ollama Service is RUNNING**
@@ -19,7 +19,20 @@
 
 ✅ **Environment Variables are CONFIGURED**
 - OLLAMA_URL: http://localhost:11434
-- OLLAMA_MODEL: llama3.1:8b
+- OLLAMA_MODEL: qwen2.5:3b
+
+## Model Change (Jan 2026)
+
+Switched from `llama3.1:8b` to `qwen2.5:3b` because:
+- **8b model was crashing computers** due to high RAM usage (~8-10GB needed)
+- **qwen2.5:3b uses ~3-4GB RAM** - much more manageable
+- Qwen excels at structured JSON output (ideal for meeting summaries)
+- Added transcript truncation (max 24k chars) to prevent memory issues
+
+To install the new model:
+```bash
+ollama pull qwen2.5:3b
+```
 
 ## What This Means
 

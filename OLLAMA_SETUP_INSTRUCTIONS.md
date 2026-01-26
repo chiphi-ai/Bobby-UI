@@ -15,7 +15,7 @@
    This script will:
    - Verify Ollama is installed
    - Start Ollama service
-   - Install the required model (llama3.1:8b)
+   - Install the required model (qwen2.5:3b)
    - Test the connection
 
 3. **Manual Setup (if script doesn't work)**
@@ -26,7 +26,7 @@
    ollama serve
    
    # In another window, install the model
-   ollama pull llama3.1:8b
+   ollama pull qwen2.5:3b
    
    # Verify it works
    ollama list
@@ -61,12 +61,12 @@ Once Ollama is installed and running:
 - **Solution**: Start Ollama by running `ollama serve` in a terminal
 
 ### "Model not found" error
-- **Solution**: Install the model: `ollama pull llama3.1:8b`
+- **Solution**: Install the model: `ollama pull qwen2.5:3b`
 
 ### PDF not being created
 - Check that Ollama is running: `ollama list`
 - Check the terminal output for error messages
-- Verify the model is installed: `ollama list` should show `llama3.1:8b`
+- Verify the model is installed: `ollama list` should show `qwen2.5:3b`
 
 ### PDF created but not emailed
 - The system only emails PDFs (no TXT files)
@@ -79,8 +79,18 @@ You can customize Ollama settings in your `.env` file:
 
 ```
 OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.1:8b
+OLLAMA_MODEL=qwen2.5:3b
 ```
+
+## Model Options
+
+| Model | Size | RAM Needed | Notes |
+|-------|------|------------|-------|
+| `qwen2.5:3b` | ~2GB | ~3-4GB | **Default** - Good balance of quality and speed |
+| `qwen2.5:1.5b` | ~1GB | ~2GB | Lighter, faster, less detailed |
+| `phi3:mini` | ~2.3GB | ~4GB | Alternative, good for structured output |
+
+**Avoid** `llama3.1:8b` or larger models on machines with limited RAM - they can crash the system.
 
 ## Notes
 
@@ -88,3 +98,4 @@ OLLAMA_MODEL=llama3.1:8b
 - The first PDF generation may be slower as the model loads
 - PDFs are only created if Ollama is running and the model is installed
 - No TXT files are sent - only PDFs
+- Long transcripts are automatically truncated to prevent memory issues

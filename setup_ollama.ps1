@@ -45,14 +45,14 @@ try {
 
 # Check for model
 Write-Host ""
-Write-Host "Step 3: Checking for model llama3.1:8b..." -ForegroundColor Yellow
+Write-Host "Step 3: Checking for model qwen2.5:3b..." -ForegroundColor Yellow
 $models = ollama list 2>&1
-if ($models -match "llama3.1:8b") {
-    Write-Host "  [OK] Model llama3.1:8b is installed!" -ForegroundColor Green
+if ($models -match "qwen2.5:3b") {
+    Write-Host "  [OK] Model qwen2.5:3b is installed!" -ForegroundColor Green
 } else {
-    Write-Host "  [INFO] Model llama3.1:8b is not installed" -ForegroundColor Yellow
-    Write-Host "  Installing model (this may take several minutes)..." -ForegroundColor Yellow
-    ollama pull llama3.1:8b
+    Write-Host "  [INFO] Model qwen2.5:3b is not installed" -ForegroundColor Yellow
+    Write-Host "  Installing model (this may take a few minutes)..." -ForegroundColor Yellow
+    ollama pull qwen2.5:3b
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  [OK] Model installed!" -ForegroundColor Green
     } else {

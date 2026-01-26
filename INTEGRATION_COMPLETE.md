@@ -117,7 +117,7 @@ pip install pypdf reportlab requests python-dotenv
 
 ### "Ollama API call failed"
 - Check Ollama is running: `ollama list`
-- Install model: `ollama pull llama3.1:8b`
+- Install model: `ollama pull qwen2.5:3b`
 - Check `.env` has `OLLAMA_URL` and `OLLAMA_MODEL`
 
 ### "No text extracted from PDF"

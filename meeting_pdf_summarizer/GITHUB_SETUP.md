@@ -103,5 +103,5 @@ After cloning, your friend should:
 
 1. Install dependencies: `pip install -r requirements.txt`
 2. Install and run Ollama: https://ollama.ai/
-3. Pull the model: `ollama pull llama3.1:8b`
+3. Pull the model: `ollama pull qwen2.5:3b`
 4. Run the script: `python main.py --input transcripts/tiny.txt --output out/test.pdf`

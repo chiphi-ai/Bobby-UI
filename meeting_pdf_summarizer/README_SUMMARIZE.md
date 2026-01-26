@@ -121,7 +121,7 @@ meeting_pdf_summarizer/
 ## Requirements
 
 - Python 3.8+
-- Ollama running locally with `llama3.1:8b` model (or configured via `.env`)
+- Ollama running locally with `qwen2.5:3b` model (or configured via `.env`)
 - See `requirements.txt` for Python dependencies
 
 ## Troubleshooting
@@ -134,7 +134,7 @@ meeting_pdf_summarizer/
 ### "Ollama API call failed"
 - Ensure Ollama is running: `ollama list`
 - Check `OLLAMA_URL` in `.env` (default: `http://localhost:11434`)
-- Verify model is installed: `ollama pull llama3.1:8b`
+- Verify model is installed: `ollama pull qwen2.5:3b`
 
 ### OCR not working
 - Install Tesseract OCR and Poppler

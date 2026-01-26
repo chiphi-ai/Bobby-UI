@@ -4766,7 +4766,7 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
                     print(f"   ")
                     print(f"   ⚠️  CRITICAL: Make sure Ollama is running!")
                     print(f"   - Check: ollama list (should show your models)")
-                    print(f"   - Install model: ollama pull llama3.1:8b")
+                    print(f"   - Install model: ollama pull qwen2.5:3b")
                     print(f"   - Start Ollama if not running")
                     print(f"   ")
                     print(f"   Without the PDF, only the transcript will be emailed/uploaded.")

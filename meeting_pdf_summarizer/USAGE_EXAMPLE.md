@@ -94,7 +94,7 @@ The summary PDF includes:
 ## Requirements
 
 - Python 3.8+
-- Ollama running with `llama3.1:8b` model
+- Ollama running with `qwen2.5:3b` model
 - Dependencies: `pypdf`, `reportlab`, `requests`, `python-dotenv`
 - Optional (for OCR): `pytesseract`, `pdf2image`, `Pillow`
 

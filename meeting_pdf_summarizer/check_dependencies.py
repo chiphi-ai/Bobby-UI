@@ -62,7 +62,7 @@ def check_dependencies() -> Tuple[bool, List[str]]:
         if response.status_code == 200:
             models = response.json().get("models", [])
             if not models:
-                warnings.append("Ollama is running but no models are installed (run: ollama pull llama3.1:8b)")
+                warnings.append("Ollama is running but no models are installed (run: ollama pull qwen2.5:3b)")
         else:
             warnings.append(f"Ollama API returned status {response.status_code}")
     except requests.exceptions.ConnectionError:

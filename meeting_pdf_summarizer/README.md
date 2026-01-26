@@ -21,7 +21,7 @@ An AI-powered tool that generates professional meeting summaries from transcript
 
 - Python 3.8 or higher
 - [Ollama](https://ollama.ai/) installed and running locally
-- An Ollama model (default: `llama3.1:8b`)
+- An Ollama model (default: `qwen2.5:3b`)
 
 ## Installation
 
@@ -53,7 +53,7 @@ An AI-powered tool that generates professional meeting summaries from transcript
    - Install Ollama from [https://ollama.ai/](https://ollama.ai/)
    - Pull the model you want to use:
      ```bash
-     ollama pull llama3.1:8b
+     ollama pull qwen2.5:3b
      ```
    - Make sure Ollama is running (it should start automatically)
 
@@ -61,7 +61,7 @@ An AI-powered tool that generates professional meeting summaries from transcript
    - Create a `.env` file in the project root if you need custom settings:
      ```
      OLLAMA_URL=http://localhost:11434
-     OLLAMA_MODEL=llama3.1:8b
+     OLLAMA_MODEL=qwen2.5:3b
      ```
 
 ## Usage
@@ -142,14 +142,14 @@ The `roles.json` file maps speaker names to roles. This is optional but helps th
 Create a `.env` file to customize:
 
 - `OLLAMA_URL`: Ollama API URL (default: `http://localhost:11434`)
-- `OLLAMA_MODEL`: Model to use (default: `llama3.1:8b`)
+- `OLLAMA_MODEL`: Model to use (default: `qwen2.5:3b`)
 
 ## Troubleshooting
 
 ### Ollama Connection Issues
 
 - Make sure Ollama is running: `ollama list`
-- Check if the model is installed: `ollama pull llama3.1:8b`
+- Check if the model is installed: `ollama pull qwen2.5:3b`
 - Verify the URL in your `.env` file matches your Ollama setup
 
 ### JSON Parsing Errors

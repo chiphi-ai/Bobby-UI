@@ -77,7 +77,7 @@ BOX_CLIENT_SECRET=your_box_client_secret
 # OPTIONAL: Ollama Configuration (for AI-powered meeting summaries)
 # ============================================
 OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.1:8b
+OLLAMA_MODEL=qwen2.5:3b
 ```
 
 ## Variable Descriptions
@@ -147,13 +147,17 @@ OLLAMA_MODEL=llama3.1:8b
 - **Required:** NO (only if you want AI-powered meeting summaries)
 - **Purpose:** Configuration for Ollama AI service used to generate structured meeting summaries
 - **OLLAMA_URL:** URL where Ollama is running (default: `http://localhost:11434`)
-- **OLLAMA_MODEL:** Model to use for summarization (default: `llama3.1:8b`)
+- **OLLAMA_MODEL:** Model to use for summarization (default: `qwen2.5:3b`)
 - **Setup:**
   1. Install Ollama from https://ollama.ai/
-  2. Pull the model: `ollama pull llama3.1:8b`
+  2. Pull the model: `ollama pull qwen2.5:3b`
   3. Make sure Ollama is running (it should start automatically)
   4. Verify: `ollama list` should show your model
-- **Note:** Without Ollama, meeting reports will use heuristic-based summaries instead of AI-powered ones
+- **Recommended models (by resource usage):**
+  - `qwen2.5:3b` - Default, good balance (~2GB, needs ~3-4GB RAM)
+  - `phi3:mini` - Alternative, also good for JSON (~2.3GB)
+  - `qwen2.5:1.5b` - Lighter option (~1GB, needs ~2GB RAM)
+- **Note:** Avoid `llama3.1:8b` or larger models on machines with limited RAM (they can crash the system)
 
 ## Example .env File (Minimal - Just Required)
 

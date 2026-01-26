@@ -19,7 +19,7 @@ OLLAMA_BASE_URL = (
     or os.environ.get("OLLAMA_URL", "").strip()
     or "http://localhost:11434"
 )
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
 
 _OLLAMA_STATUS_CACHE = {
     "ts": 0.0,

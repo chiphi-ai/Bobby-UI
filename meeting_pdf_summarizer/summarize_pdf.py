@@ -17,7 +17,7 @@ def call_ollama(prompt: str, temperature: float = 0.2, num_predict: int = 2000) 
     """Call Ollama API for summarization."""
     load_dotenv()
     base_url = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
-    model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+    model = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
     
     url = f"{base_url}/api/generate"
     payload = {
