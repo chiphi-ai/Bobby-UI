@@ -325,7 +325,7 @@
                   <button type="button" class="btn btn-sm btn-primary" id="addSpeakersBtn" style="width: 100%;">
                     ➕ Add Speakers
                   </button>
-                  <button type="button" class="btn btn-sm btn-secondary" id="removeSpeakersBtn" style="width: 100%; color: var(--danger);">
+                  <button type="button" class="btn btn-sm btn-secondary" id="removeSpeakersBtn" style="width: 100%; color: var(--error);">
                     ➖ Remove Speakers
                   </button>
                 </div>
@@ -358,6 +358,7 @@
                   </div>
                   <div class="utterance-actions">
                     <div class="timestamp">{{ '%.1f'|format(u.start) }}s</div>
+                    <button type="button" class="btn btn-sm btn-secondary utterance-edit-btn" title="Edit transcript text">Edit</button>
                     <button type="button" class="btn btn-sm btn-secondary utterance-override-btn">New Speaker</button>
                     {% if u.utterance_id == u.source_utterance_id %}
                     <button type="button" class="btn btn-sm btn-secondary utterance-split-btn">Split</button>
@@ -529,13 +530,13 @@
           <strong>Current speakers:</strong> <span id="removeSpeakersCurrentCount">0</span><br/>
           <strong>New total:</strong> <span id="removeSpeakersNewTotal">0</span>
         </div>
-        <div style="margin-top: 12px; padding: 10px; background: rgba(255, 59, 48, 0.1); border-radius: var(--border-radius); font-size: 11px; color: var(--text-secondary); border-left: 3px solid var(--danger);">
+        <div style="margin-top: 12px; padding: 10px; background: rgba(255, 59, 48, 0.1); border-radius: var(--border-radius); font-size: 11px; color: var(--text-secondary); border-left: 3px solid var(--error);">
           ⚠️ This will re-run diarization and may take a few minutes. Your speaker name assignments will be cleared.
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="removeSpeakersCancelBtn">Cancel</button>
-        <button type="button" class="btn btn-primary" id="removeSpeakersConfirmBtn" style="background: var(--danger);">Re-run Diarization</button>
+        <button type="button" class="btn btn-primary" id="removeSpeakersConfirmBtn" style="background: var(--error); border-color: var(--error);">Re-run Diarization</button>
       </div>
     </div>
   </div>
@@ -594,6 +595,113 @@
       const div = document.createElement('div');
       div.textContent = String(text ?? '');
       return div.innerHTML;
+    }
+
+    // ============================================
+    // Edit Text Mode - Inline transcript editing
+    // ============================================
+    function openEditTextMode(utteranceEl, editBtn) {
+      const textDiv = utteranceEl.querySelector('.utterance-text');
+      const utteranceId = utteranceEl.getAttribute('data-utterance-id');
+      const originalText = textDiv.getAttribute('data-utterance-text') || '';
+      
+      // Check if already in edit mode
+      if (textDiv.querySelector('.edit-mode-container')) return;
+      
+      // Store original content for cancel
+      const originalContent = textDiv.innerHTML;
+      
+      // Create edit interface
+      const editContainer = document.createElement('div');
+      editContainer.className = 'edit-mode-container';
+      editContainer.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+      
+      const textarea = document.createElement('textarea');
+      textarea.value = originalText;
+      textarea.className = 'edit-textarea';
+      textarea.style.cssText = `
+        width: 100%;
+        min-height: 80px;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: var(--border-radius);
+        font-size: var(--font-size-sm);
+        font-family: inherit;
+        line-height: 1.5;
+        resize: vertical;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+      `;
+      textarea.addEventListener('click', (e) => e.stopPropagation());
+      
+      const buttonRow = document.createElement('div');
+      buttonRow.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end;';
+      
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.className = 'btn btn-sm btn-secondary';
+      cancelBtn.style.cssText = 'padding: 4px 12px;';
+      cancelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        textDiv.innerHTML = originalContent;
+        editBtn.textContent = 'Edit';
+        editBtn.disabled = false;
+      });
+      
+      const saveBtn = document.createElement('button');
+      saveBtn.textContent = 'Save';
+      saveBtn.className = 'btn btn-sm btn-primary';
+      saveBtn.style.cssText = 'padding: 4px 12px;';
+      saveBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const newText = textarea.value.trim();
+        
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        cancelBtn.disabled = true;
+        
+        try {
+          const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/utterance_text`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ utterance_id: utteranceId, text: newText })
+          });
+          
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) throw new Error(data && (data.message || data.error) || 'Save failed');
+          
+          // Update the UI with new text
+          textDiv.setAttribute('data-utterance-text', newText);
+          textDiv.innerHTML = `<span class="normal-mode-text">${escapeHtml(newText)}</span>`;
+          
+          editBtn.textContent = 'Edit';
+          editBtn.disabled = false;
+          toast('Text saved. Transcript regenerated.');
+        } catch (err) {
+          toast(String(err.message || err));
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save';
+          cancelBtn.disabled = false;
+        }
+      });
+      
+      buttonRow.appendChild(cancelBtn);
+      buttonRow.appendChild(saveBtn);
+      
+      editContainer.appendChild(textarea);
+      editContainer.appendChild(buttonRow);
+      
+      // Replace text content with edit interface
+      textDiv.innerHTML = '';
+      textDiv.appendChild(editContainer);
+      
+      // Update edit button
+      editBtn.textContent = 'Editing...';
+      editBtn.disabled = true;
+      
+      // Focus textarea
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     }
 
     function jumpAudioTo(startSeconds) {
@@ -689,6 +797,7 @@
           </div>
           <div class="utterance-actions">
             <div class="timestamp">${Number(u.start ?? 0).toFixed(1)}s</div>
+            <button type="button" class="btn btn-sm btn-secondary utterance-edit-btn" title="Edit transcript text">Edit</button>
             <button type="button" class="btn btn-sm btn-secondary utterance-override-btn">New Speaker</button>
             ${canSplit ? `<button type="button" class="btn btn-sm btn-secondary utterance-split-btn">Split</button>` : `<button type="button" class="btn btn-sm btn-secondary utterance-add-split-btn" data-source-utterance-id="${escapeHtml(String(u.source_utterance_id ?? ''))}">Add Split</button><button type="button" class="btn btn-sm btn-secondary utterance-undo-split-btn" data-source-utterance-id="${escapeHtml(String(u.source_utterance_id ?? ''))}">Undo Split</button>`}
           </div>
@@ -706,6 +815,15 @@
     if (utteranceSection) {
       // Click handler for all utterance interactions
       utteranceSection.addEventListener('click', (e) => {
+        // Handle Edit Text button
+        const editBtn = e.target.closest('.utterance-edit-btn');
+        if (editBtn) {
+          e.stopPropagation();
+          const utteranceEl = editBtn.closest('.utterance');
+          if (utteranceEl) openEditTextMode(utteranceEl, editBtn);
+          return;
+        }
+        
         // Handle New Speaker button
         const overrideBtn = e.target.closest('.utterance-override-btn');
         if (overrideBtn) {
@@ -886,6 +1004,12 @@
         const updated = data.updated_utterance;
         const display = updated?.speaker_display ?? speakerDisplay;
         activeOverrideEl.querySelector('.speaker-display').textContent = display;
+        
+        // Add new speaker to sidebar if not already present
+        if (display) {
+          addSpeakerToSidebarIfNew(display);
+        }
+        
         toast('Saved. Transcript/PDFs regenerated.');
         closeOverrideModal();
       } catch (e) {
@@ -895,6 +1019,40 @@
         btn.textContent = 'Save';
       }
     });
+    
+    // Helper function to add a speaker to the sidebar if they don't exist
+    function addSpeakerToSidebarIfNew(speakerName) {
+      if (!speakerName) return;
+      const normalizedName = speakerName.trim().toLowerCase();
+      
+      // Check if this speaker already exists in the sidebar (by value in any input)
+      const existingInputs = document.querySelectorAll('#speakerList .speaker-row input');
+      for (const input of existingInputs) {
+        const inputValue = (input.value || '').trim().toLowerCase();
+        if (inputValue === normalizedName) {
+          return; // Speaker already exists
+        }
+      }
+      
+      // Speaker doesn't exist - add a new row to the sidebar
+      const speakerList = document.getElementById('speakerList');
+      const newRow = document.createElement('div');
+      newRow.className = 'speaker-row';
+      newRow.setAttribute('data-speaker-raw', `override_${Date.now()}`);
+      newRow.innerHTML = `
+        <input
+          type="text"
+          value="${escapeHtml(speakerName)}"
+          placeholder="Enter speaker name"
+          data-speaker-input="override_${Date.now()}"
+          data-default-display="${escapeHtml(speakerName)}"
+        />
+      `;
+      speakerList.appendChild(newRow);
+      
+      // Also add to defaultDisplayByRaw so it can be used for matching
+      defaultDisplayByRaw[`override_${Date.now()}`] = speakerName;
+    }
 
     // -------- Split utterance at timestamp --------
     const splitModal = document.getElementById('splitModal');
@@ -1256,12 +1414,20 @@
           // Insert all new parts
           newUtts.forEach((u) => {
             parent.insertBefore(buildUtteranceElement(u), before);
+            // Add new speaker to sidebar if provided
+            if (u.speaker_display) {
+              addSpeakerToSidebarIfNew(u.speaker_display);
+            }
           });
           parent.removeChild(activeSplitEl);
           
         } else {
           window.location.reload();
         }
+        
+        // Also add speakers from the input fields
+        if (aName) addSpeakerToSidebarIfNew(aName);
+        if (bName) addSpeakerToSidebarIfNew(bName);
         
         toast('Split saved. Transcript/PDFs regenerated.');
         closeSplitModal();

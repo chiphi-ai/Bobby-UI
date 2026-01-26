@@ -1291,6 +1291,15 @@ def _effective_utterances_for_meeting(meeting_id: str, meeting: dict) -> list[di
         dur = float(u.get("end", 0.0) or 0.0) - float(u.get("start", 0.0) or 0.0)
         u["speaker_confidence_percent"] = _confidence_percent_for_utterance(dur, prev_same, next_same)
 
+    # Apply text overrides (user-edited transcript text)
+    text_overrides = meeting.get("text_overrides", {})
+    if isinstance(text_overrides, dict):
+        for u in out:
+            uid = u.get("utterance_id", "")
+            if uid in text_overrides:
+                u["text"] = text_overrides[uid]
+                u["text_edited"] = True
+
     return out
 
 
@@ -2325,6 +2334,100 @@ def api_save_utterance_override(meeting_id: str):
             "meeting_report_pdf": bool(meeting_report_pdf),
         },
         "utterance_overrides_version": version,
+    }), 200
+
+
+@app.post("/api/meetings/<meeting_id>/utterance_text")
+def api_save_utterance_text(meeting_id: str):
+    """Save edited text for a specific utterance and regenerate assets."""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+
+    user = current_user()
+    editor_email = (user.get("email") if user else None) or session.get("user_email") or "unknown"
+
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        return jsonify({"error": "Meeting not found"}), 404
+
+    data = request.get_json() or {}
+    utterance_id = (data.get("utterance_id") or "").strip()
+    new_text = data.get("text")
+    
+    if not utterance_id:
+        return jsonify({"error": "utterance_id required"}), 400
+    if new_text is None or not isinstance(new_text, str):
+        return jsonify({"error": "text must be a string"}), 400
+    
+    new_text = new_text.strip()
+
+    # Get or initialize text_overrides
+    text_overrides = meeting.get("text_overrides", {})
+    if not isinstance(text_overrides, dict):
+        text_overrides = {}
+
+    now = datetime.now().isoformat()
+    
+    if new_text:
+        # Store the text override
+        text_overrides[utterance_id] = new_text
+    elif utterance_id in text_overrides:
+        # Clear the override if text is empty (revert to original)
+        del text_overrides[utterance_id]
+
+    # Track edit history
+    text_edit_history = meeting.get("text_edit_history", [])
+    if not isinstance(text_edit_history, list):
+        text_edit_history = []
+    
+    text_edit_history.append({
+        "utterance_id": utterance_id,
+        "new_text": new_text,
+        "edited_at": now,
+        "edited_by": str(editor_email),
+    })
+    
+    # Keep only last 100 edits in history
+    if len(text_edit_history) > 100:
+        text_edit_history = text_edit_history[-100:]
+
+    version = int(meeting.get("text_overrides_version", 0) or 0) + 1
+    
+    update_meeting(meeting_id, {
+        "text_overrides": text_overrides,
+        "text_overrides_version": version,
+        "text_edit_history": text_edit_history,
+    })
+
+    # Reload meeting with updated data
+    meeting = get_meeting(meeting_id)
+
+    # Get existing label overrides
+    stored_map = meeting.get("speaker_label_map", {}) if isinstance(meeting.get("speaker_label_map"), dict) else {}
+    normalized_existing = {
+        k.strip(): v.strip()
+        for k, v in stored_map.items()
+        if isinstance(k, str) and isinstance(v, str) and k.strip() and v.strip()
+    }
+
+    # Regenerate assets in background
+    def _regenerate_assets():
+        try:
+            _build_labeled_script_from_utterances(meeting_id, meeting, normalized_existing)
+            _regenerate_transcript_pdf_from_named_json(meeting_id, meeting)
+            print(f"[TEXT EDIT] ✅ Regenerated assets for {meeting_id}", flush=True)
+        except Exception as e:
+            print(f"[TEXT EDIT] ❌ Error regenerating assets: {e}", flush=True)
+    
+    threading.Thread(target=_regenerate_assets, daemon=True).start()
+
+    print(f"[TEXT EDIT] Saved text edit for utterance {utterance_id[:12]}... by {editor_email}", flush=True)
+
+    return jsonify({
+        "status": "success",
+        "utterance_id": utterance_id,
+        "new_text": new_text,
+        "text_overrides_version": version,
     }), 200
 
 
@@ -6490,11 +6593,45 @@ def meeting_transcript(meeting_id: str):
     effective_map.update(seeded_label_map)
     effective_map.update(stored_map_raw)
 
-    # Build a compact speaker list for the sidebar
-    speakers = [{"raw": raw, "display": effective_map.get(raw, raw)} for raw in speakers_in_order]
-
     # Apply splits + per-utterance overrides, and compute approximate confidence
     effective_utterances = _effective_utterances_for_meeting(meeting_id, meeting)
+    
+    # Build speaker list based on who actually has utterances after overrides
+    # Track which raw speakers still have non-overridden utterances
+    raw_speakers_with_utterances = set()
+    override_speaker_names = set()  # Track unique override speaker names
+    
+    for u in effective_utterances:
+        raw = (u.get("speaker") or "").strip()
+        override = u.get("speaker_display_override")
+        if isinstance(override, str) and override.strip():
+            # This utterance has an override - add the override name as a speaker
+            override_speaker_names.add(override.strip())
+        else:
+            # No override - this raw speaker still has utterances
+            if raw:
+                raw_speakers_with_utterances.add(raw)
+    
+    # Build speaker list: raw speakers who still have utterances + override speakers
+    speakers = []
+    seen_display_names = set()
+    
+    # First add raw speakers who still have non-overridden utterances (in original order)
+    for raw in speakers_in_order:
+        if raw in raw_speakers_with_utterances:
+            display = effective_map.get(raw, raw)
+            if display.lower() not in seen_display_names:
+                speakers.append({"raw": raw, "display": display})
+                seen_display_names.add(display.lower())
+    
+    # Then add override speakers that aren't already shown
+    override_counter = 1
+    for override_name in sorted(override_speaker_names):
+        if override_name.lower() not in seen_display_names:
+            override_key = f"override_{override_counter}"
+            speakers.append({"raw": override_key, "display": override_name})
+            seen_display_names.add(override_name.lower())
+            override_counter += 1
 
     rendered_utterances = []
     for u in effective_utterances:
@@ -7995,9 +8132,7 @@ def box_authorize():
     # Box OAuth URL
     # Use localhost explicitly for local development to match Box settings
     redirect_uri = url_for('box_callback', _external=True)
-    # Normalize to localhost if it's 127.0.0.1
-    if '127.0.0.1' in redirect_uri:
-        redirect_uri = redirect_uri.replace('127.0.0.1', 'localhost')
+    # Keep as 127.0.0.1 (don't convert to localhost - Chrome blocks localhost redirects)
     
     # Box requires redirect_uri to be URL-encoded in the authorization URL
     # Use url_encode (which is quote) from imports
@@ -8074,10 +8209,8 @@ def box_callback():
         return redirect(url_for("connect_apps_get"))
     
     try:
-        # Normalize redirect URI to match authorization request
+        # Keep redirect URI as 127.0.0.1 (must match authorization request)
         redirect_uri = url_for('box_callback', _external=True)
-        if '127.0.0.1' in redirect_uri:
-            redirect_uri = redirect_uri.replace('127.0.0.1', 'localhost')
         
         print(f"Exchanging code for token with redirect_uri: {redirect_uri}")
         

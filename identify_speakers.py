@@ -14,6 +14,25 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Load environment variables from .env (for HF_TOKEN)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# Set HF token for huggingface_hub and login
+hf_token = os.getenv('HF_TOKEN')
+if hf_token:
+    os.environ['HUGGING_FACE_HUB_TOKEN'] = hf_token
+    os.environ['HF_HUB_TOKEN'] = hf_token
+    os.environ['HF_TOKEN'] = hf_token
+    try:
+        from huggingface_hub import login
+        login(token=hf_token, add_to_git_credential=False)
+    except Exception:
+        pass
+
 import numpy as np
 import torch
 try:
@@ -171,26 +190,53 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     savedir = Path("pretrained_models/spkrec-ecapa-voxceleb")
     savedir.mkdir(parents=True, exist_ok=True)
+    
+    # Check for local cache first
+    local_cache = Path.home() / ".cache/huggingface/hub/models--speechbrain--spkrec-ecapa-voxceleb"
+    
+    classifier = None
     try:
+        # Try loading from HuggingFace with local_files_only first (use cached model)
         classifier = EncoderClassifier.from_hparams(
             source="speechbrain/spkrec-ecapa-voxceleb",
             savedir=str(savedir),
             run_opts={"device": device},
+            use_auth_token=hf_token if hf_token else None,
         )
+        print("Loaded speaker model successfully.")
     except Exception as e:
-        # Fallback: try without custom.py by using a different revision or approach
         print(f"Warning: Could not load model with default settings: {e}")
-        print("Trying alternative model loading...")
-        try:
-            classifier = EncoderClassifier.from_hparams(
-                source="speechbrain/spkrec-ecapa-voxceleb2",
-                savedir=str(savedir),
-                run_opts={"device": device},
-            )
-        except Exception as e2:
-            print(f"Error loading speaker model: {e2}")
-            print("Speaker identification will be skipped.")
-            sys.exit(1)
+        # Try loading from local cache directly
+        if local_cache.exists():
+            print("Trying to load from local cache...")
+            try:
+                # Find the snapshot directory
+                snapshots_dir = local_cache / "snapshots"
+                if snapshots_dir.exists():
+                    snapshot_dirs = list(snapshots_dir.iterdir())
+                    if snapshot_dirs:
+                        local_source = str(snapshot_dirs[0])
+                        classifier = EncoderClassifier.from_hparams(
+                            source=local_source,
+                            savedir=str(savedir),
+                            run_opts={"device": device},
+                        )
+                        print(f"Loaded speaker model from local cache: {local_source}")
+            except Exception as e2:
+                print(f"Could not load from local cache: {e2}")
+        
+        if classifier is None:
+            print("Trying alternative model loading...")
+            try:
+                classifier = EncoderClassifier.from_hparams(
+                    source="speechbrain/spkrec-ecapa-voxceleb2",
+                    savedir=str(savedir),
+                    run_opts={"device": device},
+                )
+            except Exception as e2:
+                print(f"Error loading speaker model: {e2}")
+                print("Speaker identification will be skipped.")
+                sys.exit(1)
 
     # Build enrollment embeddings
     # Use lists to store multiple embeddings per person (for averaging)
@@ -301,15 +347,17 @@ def main():
     SPEAKER_MATCH_THRESHOLD = float(os.getenv("SPEAKER_MATCH_THRESHOLD", "0.75"))  # Minimum cosine similarity
     SPEAKER_MATCH_MARGIN = float(os.getenv("SPEAKER_MATCH_MARGIN", "0.05"))  # Minimum gap between top-1 and top-2
     
-    # Track unknown speakers: map diarization speaker ID -> Speaker N
-    # We'll use the diarization speaker label (A, B, C, etc.) to track unknowns
-    unknown_speaker_map = {}  # diarization_speaker_id -> "Speaker N"
-    unknown_counter = 1  # Next unknown speaker number
+    # Two-pass approach: 
+    # 1. First pass: collect all match scores per diarization speaker
+    # 2. Vote on best speaker per diarization speaker ID
+    # 3. Apply the voted speaker to all utterances from that diarization speaker
     
-    # Track embeddings for unknown speakers to ensure consistency
-    unknown_embeddings = {}  # "Speaker N" -> list of embeddings (for averaging)
+    # First pass: collect scores for all utterances
+    utterance_data = []  # List of (utterance_info, all_scores, diarization_speaker)
+    diarization_speaker_scores = {}  # diarization_speaker -> {enrolled_name -> [scores]}
     
-    labeled = []
+    print(f"Processing {len(utterances)} utterances...")
+    
     for i, u in enumerate(utterances):
         start = float(u["start"])
         end = float(u["end"])
@@ -325,7 +373,7 @@ def main():
         slice_wav(meeting_wav, start, end, seg_wav)
         seg_emb = embed(classifier, seg_wav)
 
-        # Get diarization speaker ID (A, B, C, etc.) for tracking unknowns
+        # Get diarization speaker ID
         diarization_speaker = u.get("speaker", f"SPEAKER_{i}")
 
         # Match against enrolled speakers
@@ -333,49 +381,107 @@ def main():
         for name, e in enroll_embs.items():
             scores[name] = cosine(seg_emb, e)
         
-        # Sort by score to find best match and margin
+        # Store scores for voting
+        if diarization_speaker not in diarization_speaker_scores:
+            diarization_speaker_scores[diarization_speaker] = {n: [] for n in enroll_embs.keys()}
+        for name, score in scores.items():
+            diarization_speaker_scores[diarization_speaker][name].append(score)
+        
+        # Sort by score
         sorted_scores = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+        best_name = sorted_scores[0][0] if sorted_scores else None
+        best_score = sorted_scores[0][1] if sorted_scores else -1
         
-        best_name = None
-        best_score = -1e9
-        second_best_score = -1e9
-        
-        if sorted_scores:
-            best_name, best_score = sorted_scores[0]
-            if len(sorted_scores) > 1:
-                second_best_score = sorted_scores[1][1]
-        
-        # Check if match is confident enough
-        score_gap = best_score - second_best_score
-        is_confident_match = (best_score >= SPEAKER_MATCH_THRESHOLD and 
-                             score_gap >= SPEAKER_MATCH_MARGIN)
-        
-        # Normalize speaker name: remove (2), (3) etc. if present
-        if is_confident_match and best_name:
-            normalized_name = re.sub(r"\(\d+\)", "", best_name).strip()
-        else:
-            # Low confidence or no match -> assign to unknown speaker
-            # Use diarization speaker ID to track consistency
-            if diarization_speaker not in unknown_speaker_map:
-                # New unknown speaker - assign next number
-                unknown_speaker_map[diarization_speaker] = f"Speaker {unknown_counter}"
-                unknown_counter += 1
-            
-            normalized_name = unknown_speaker_map[diarization_speaker]
-            
-            # Store embedding for this unknown speaker (for future consistency checks)
-            if normalized_name not in unknown_embeddings:
-                unknown_embeddings[normalized_name] = []
-            unknown_embeddings[normalized_name].append(seg_emb)
-        
-        labeled.append({
+        utterance_data.append({
             "start": start,
             "end": end,
-            "speaker_name": normalized_name,
-            "score": best_score,
             "text": txt,
-            "is_unknown": normalized_name.startswith("Speaker ") and normalized_name[8:].isdigit(),
-            "diarization_speaker": diarization_speaker
+            "diarization_speaker": diarization_speaker,
+            "best_name": best_name,
+            "best_score": best_score,
+            "all_scores": scores
+        })
+    
+    # Second pass: vote on best speaker per diarization speaker
+    # Use the average of top scores for each enrolled speaker
+    diarization_to_identified = {}  # diarization_speaker -> (identified_name, avg_score)
+    
+    for diar_spk, name_scores in diarization_speaker_scores.items():
+        # Calculate average score for each enrolled speaker
+        avg_scores = {}
+        for name, scores_list in name_scores.items():
+            if scores_list:
+                # Use weighted average - weight longer utterances more
+                avg_scores[name] = sum(scores_list) / len(scores_list)
+        
+        if not avg_scores:
+            continue
+        
+        # Find best match by average score
+        sorted_avg = sorted(avg_scores.items(), key=lambda kv: kv[1], reverse=True)
+        best_name, best_avg = sorted_avg[0]
+        second_avg = sorted_avg[1][1] if len(sorted_avg) > 1 else 0
+        
+        # Check if confident enough (using lower threshold for aggregated scores - 0.65)
+        AGGREGATED_THRESHOLD = float(os.getenv("SPEAKER_AGGREGATE_THRESHOLD", "0.65"))
+        LOWER_THRESHOLD = float(os.getenv("SPEAKER_LOWER_THRESHOLD", "0.50"))
+        LARGE_MARGIN = float(os.getenv("SPEAKER_LARGE_MARGIN", "0.20"))
+        
+        # Debug: print all avg scores for this diarization speaker
+        print(f"  {diar_spk} scores: " + ", ".join(f"{n}={s:.3f}" for n, s in sorted_avg[:4]))
+        
+        margin = best_avg - second_avg
+        
+        # Accept match if:
+        # 1. Score >= 0.65 AND margin >= 0.05 (standard case), OR
+        # 2. Score >= 0.50 AND margin >= 0.20 (high confidence from large margin)
+        standard_match = best_avg >= AGGREGATED_THRESHOLD and margin >= SPEAKER_MATCH_MARGIN
+        high_margin_match = best_avg >= LOWER_THRESHOLD and margin >= LARGE_MARGIN
+        
+        if standard_match or high_margin_match:
+            normalized_name = re.sub(r"\(\d+\)", "", best_name).strip()
+            diarization_to_identified[diar_spk] = (normalized_name, best_avg)
+            match_type = "standard" if standard_match else "high-margin"
+            print(f"    ✓ {diar_spk} -> {normalized_name} (avg: {best_avg:.3f}, margin: {margin:.3f}, {match_type})")
+        else:
+            if best_avg < LOWER_THRESHOLD:
+                reason = f"score too low ({best_avg:.3f} < {LOWER_THRESHOLD})"
+            elif best_avg < AGGREGATED_THRESHOLD and margin < LARGE_MARGIN:
+                reason = f"below threshold ({best_avg:.3f} < {AGGREGATED_THRESHOLD}) and margin not large enough ({margin:.3f} < {LARGE_MARGIN})"
+            else:
+                reason = f"margin too small ({margin:.3f} < {SPEAKER_MATCH_MARGIN})"
+            print(f"    ✗ {diar_spk} not identified: {reason}")
+    
+    # Track unknown speakers for those not identified
+    unknown_speaker_map = {}  # diarization_speaker_id -> "Speaker N"
+    unknown_counter = 1
+    
+    # Third pass: apply voted speaker names to all utterances
+    labeled = []
+    for ud in utterance_data:
+        diar_spk = ud["diarization_speaker"]
+        
+        if diar_spk in diarization_to_identified:
+            normalized_name, avg_score = diarization_to_identified[diar_spk]
+            is_unknown = False
+            score = ud["best_score"]
+        else:
+            # Unknown speaker - use consistent numbering
+            if diar_spk not in unknown_speaker_map:
+                unknown_speaker_map[diar_spk] = f"Speaker {unknown_counter}"
+                unknown_counter += 1
+            normalized_name = unknown_speaker_map[diar_spk]
+            is_unknown = True
+            score = ud["best_score"]
+        
+        labeled.append({
+            "start": ud["start"],
+            "end": ud["end"],
+            "speaker_name": normalized_name,
+            "score": score,
+            "text": ud["text"],
+            "is_unknown": is_unknown,
+            "diarization_speaker": diar_spk
         })
 
     # Merge consecutive lines for readability
