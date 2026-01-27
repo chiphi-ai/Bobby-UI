@@ -284,6 +284,40 @@
       {% endif %}
     </div>
 
+    <!-- Google Calendar Card -->
+    <div class="card">
+      <div class="app-card">
+        <div class="app-info">
+          <h3>📅 Google Calendar</h3>
+          <p>Auto-fill meeting participants from your calendar events</p>
+        </div>
+        <div class="app-status">
+          {% if connected_apps.get('googlecalendar') %}
+            {% if connected_apps['googlecalendar'].get('needs_reauth') %}
+            <span class="badge badge-warning">⚠️ Needs Reconnect</span>
+            <a href="{{ url_for('googlecalendar_authorize') }}" class="btn btn-primary">Reconnect Calendar</a>
+            <button onclick="disconnectApp('googlecalendar')" class="btn btn-danger">Disconnect</button>
+            {% else %}
+            <span class="badge badge-success">✓ Connected</span>
+            <button onclick="disconnectApp('googlecalendar')" class="btn btn-danger">Disconnect</button>
+            {% endif %}
+          {% else %}
+          <span class="badge badge-neutral">Not Connected</span>
+          <a href="{{ url_for('googlecalendar_authorize') }}" class="btn btn-primary">Connect Google Calendar</a>
+          {% endif %}
+        </div>
+      </div>
+      
+      {% if connected_apps.get('googlecalendar') %}
+      <div class="config-section">
+        <div class="info-box">
+          <strong>Connected:</strong> {{ connected_apps['googlecalendar'].get('connected_at', '')[:10] }}<br>
+          When uploading or recording meetings, you can select a calendar event to auto-fill participants.
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
     <!-- Box Card -->
     <div class="card">
       <div class="app-card">
@@ -457,7 +491,13 @@
     }
 
     async function disconnectApp(appName) {
-      const appDisplayName = appName === 'googledrive' ? 'Google Drive' : appName.charAt(0).toUpperCase() + appName.slice(1);
+      const displayNames = {
+        'googledrive': 'Google Drive',
+        'googlecalendar': 'Google Calendar',
+        'dropbox': 'Dropbox',
+        'box': 'Box'
+      };
+      const appDisplayName = displayNames[appName] || appName.charAt(0).toUpperCase() + appName.slice(1);
       const confirmed = await showConfirmModal(
         `Disconnect ${appDisplayName}`,
         `Are you sure you want to disconnect ${appDisplayName}? Meeting files will no longer be automatically saved to your account.`,

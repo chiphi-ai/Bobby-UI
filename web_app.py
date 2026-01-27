@@ -6434,6 +6434,140 @@ def api_user_by_username():
     
     return jsonify({"error": "User not found"}), 404
 
+@app.post("/api/parse_calendar")
+def api_parse_calendar():
+    """Parse an uploaded .ics calendar file and return recent events with attendees."""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+    
+    if not file.filename.lower().endswith('.ics'):
+        return jsonify({"error": "Please upload a .ics calendar file"}), 400
+    
+    try:
+        from icalendar import Calendar
+        from datetime import datetime, timedelta
+        import pytz
+        
+        # Read and parse the calendar file
+        ics_content = file.read()
+        cal = Calendar.from_ical(ics_content)
+        
+        # Get events from the last 7 days and next 1 day
+        now = datetime.now(pytz.UTC) if hasattr(datetime.now(), 'tzinfo') else datetime.utcnow()
+        cutoff_past = now - timedelta(days=7)
+        cutoff_future = now + timedelta(days=1)
+        
+        events = []
+        for component in cal.walk():
+            if component.name != "VEVENT":
+                continue
+            
+            # Get start time
+            dtstart = component.get('dtstart')
+            if not dtstart:
+                continue
+            
+            start_time = dtstart.dt
+            
+            # Handle date vs datetime
+            if hasattr(start_time, 'hour'):
+                # It's a datetime
+                if start_time.tzinfo is None:
+                    # Naive datetime, assume UTC
+                    start_time = start_time.replace(tzinfo=pytz.UTC)
+            else:
+                # It's a date, convert to datetime at midnight
+                start_time = datetime.combine(start_time, datetime.min.time()).replace(tzinfo=pytz.UTC)
+            
+            # Filter by date range
+            try:
+                if start_time < cutoff_past or start_time > cutoff_future:
+                    continue
+            except TypeError:
+                # Comparison failed (timezone issues), include the event
+                pass
+            
+            # Extract attendees
+            attendees = []
+            attendee_list = component.get('attendee', [])
+            # Handle single attendee (not a list)
+            if not isinstance(attendee_list, list):
+                attendee_list = [attendee_list]
+            
+            for attendee in attendee_list:
+                if attendee:
+                    email = str(attendee).replace('mailto:', '').lower()
+                    name = email.split('@')[0]  # Default to email prefix
+                    # Try to get display name from params
+                    if hasattr(attendee, 'params') and attendee.params:
+                        cn = attendee.params.get('CN')
+                        if cn:
+                            name = str(cn)
+                    attendees.append({"email": email, "name": name})
+            
+            # Extract organizer
+            organizer = None
+            organizer_raw = component.get('organizer')
+            if organizer_raw:
+                org_email = str(organizer_raw).replace('mailto:', '').lower()
+                org_name = org_email.split('@')[0]
+                if hasattr(organizer_raw, 'params') and organizer_raw.params:
+                    cn = organizer_raw.params.get('CN')
+                    if cn:
+                        org_name = str(cn)
+                organizer = {"email": org_email, "name": org_name}
+            
+            # Get end time
+            dtend = component.get('dtend')
+            end_time = None
+            if dtend:
+                end_time = dtend.dt
+                if hasattr(end_time, 'hour'):
+                    end_time_str = end_time.strftime('%Y-%m-%dT%H:%M:%S')
+                else:
+                    end_time_str = end_time.strftime('%Y-%m-%d')
+            else:
+                end_time_str = None
+            
+            # Format start time
+            if hasattr(start_time, 'hour'):
+                start_time_str = start_time.strftime('%Y-%m-%dT%H:%M:%S')
+                display_time = start_time.strftime('%b %d, %I:%M %p')
+            else:
+                start_time_str = start_time.strftime('%Y-%m-%d')
+                display_time = start_time.strftime('%b %d')
+            
+            events.append({
+                "title": str(component.get('summary', 'Untitled')),
+                "start": start_time_str,
+                "end": end_time_str,
+                "display_time": display_time,
+                "organizer": organizer,
+                "attendees": attendees,
+                "attendee_count": len(attendees)
+            })
+        
+        # Sort by start time, most recent first
+        events.sort(key=lambda x: x['start'], reverse=True)
+        
+        # Limit to 50 most recent events
+        events = events[:50]
+        
+        return jsonify({"events": events, "count": len(events)})
+        
+    except ImportError:
+        return jsonify({"error": "Calendar parsing library not installed. Please run: pip install icalendar"}), 500
+    except Exception as e:
+        print(f"Error parsing calendar: {e}")
+        return jsonify({"error": f"Could not parse calendar file: {str(e)}"}), 400
+
 @app.get("/upload_success")
 def upload_success():
     """Upload success page"""
@@ -8154,6 +8288,292 @@ def googledrive_callback():
         flash(f"Error connecting Google Drive: {str(e)}")
         return redirect(url_for("connect_apps_get"))
 
+# Google Calendar OAuth Routes
+@app.get("/connect/googlecalendar/authorize")
+def googlecalendar_authorize():
+    """Initiate Google Calendar OAuth flow"""
+    if not require_login():
+        session['oauth_connect_googlecalendar'] = True
+        return redirect(url_for("login_get"))
+    
+    # Use the same Google credentials as Drive
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_DRIVE_CLIENT_ID")
+    if not GOOGLE_CLIENT_ID:
+        flash("Google Calendar integration not configured. Please configure Google OAuth credentials.")
+        return redirect(url_for("connect_apps_get"))
+    
+    user = current_user()
+    user_email = user.get("email", "").strip().lower()
+    
+    state = secrets.token_urlsafe(32)
+    session['googlecalendar_oauth_state'] = state
+    session['googlecalendar_oauth_user'] = user_email
+    
+    # Use localhost explicitly for local development
+    redirect_uri = url_for('googlecalendar_callback', _external=True)
+    if '127.0.0.1' in redirect_uri:
+        redirect_uri = redirect_uri.replace('127.0.0.1', 'localhost')
+    
+    # Request calendar.readonly scope
+    google_auth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth?"
+        f"client_id={GOOGLE_CLIENT_ID}&"
+        f"redirect_uri={redirect_uri}&"
+        f"response_type=code&"
+        f"scope=https://www.googleapis.com/auth/calendar.readonly&"
+        f"state={state}&"
+        f"access_type=offline&"
+        f"prompt=consent"
+    )
+    
+    return redirect(google_auth_url)
+
+@app.get("/connect/googlecalendar/callback")
+def googlecalendar_callback():
+    """Handle Google Calendar OAuth callback"""
+    state = request.args.get('state')
+    code = request.args.get('code')
+    error = request.args.get('error')
+    
+    if not require_login():
+        session['oauth_connect_googlecalendar_after_login'] = True
+        session['oauth_return_to'] = request.url
+        flash("Please log in to complete Google Calendar connection.")
+        return redirect(url_for("login_get"))
+    
+    if state != session.get('googlecalendar_oauth_state'):
+        flash("Invalid state token.")
+        return redirect(url_for("connect_apps_get"))
+    
+    session.pop('googlecalendar_oauth_state', None)
+    session.pop('googlecalendar_oauth_user', None)
+    session.pop('oauth_return_to', None)
+    
+    if not code:
+        flash("Authorization failed.")
+        return redirect(url_for("connect_apps_get"))
+    
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_DRIVE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_DRIVE_CLIENT_SECRET")
+    
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        flash("Google Calendar integration not configured.")
+        return redirect(url_for("connect_apps_get"))
+    
+    try:
+        redirect_uri = url_for('googlecalendar_callback', _external=True)
+        if '127.0.0.1' in redirect_uri:
+            redirect_uri = redirect_uri.replace('127.0.0.1', 'localhost')
+        
+        token_response = requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code"
+            }
+        )
+        
+        if token_response.status_code != 200:
+            flash("Failed to connect Google Calendar.")
+            return redirect(url_for("connect_apps_get"))
+        
+        token_data = token_response.json()
+        access_token = token_data.get("access_token")
+        refresh_token = token_data.get("refresh_token")
+        expires_in = token_data.get("expires_in", 3600)
+        
+        if not access_token:
+            flash("Failed to get access token from Google Calendar.")
+            return redirect(url_for("connect_apps_get"))
+        
+        user = current_user()
+        users = read_users()
+        
+        if "connected_apps" not in users[user["email"]]:
+            users[user["email"]]["connected_apps"] = {}
+        
+        encrypted_token = encrypt_token(access_token)
+        encrypted_refresh = encrypt_token(refresh_token) if refresh_token else None
+        
+        users[user["email"]]["connected_apps"]["googlecalendar"] = {
+            "access_token_encrypted": encrypted_token,
+            "refresh_token_encrypted": encrypted_refresh,
+            "token_expires_at": int(datetime.now().timestamp()) + expires_in,
+            "connected_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        }
+        
+        write_users(users)
+        
+        flash("Google Calendar connected successfully!")
+        return redirect(url_for("connect_apps_get"))
+    except Exception as e:
+        print(f"Error connecting Google Calendar: {e}")
+        flash(f"Error connecting Google Calendar: {str(e)}")
+        return redirect(url_for("connect_apps_get"))
+
+@app.post("/connect/googlecalendar/disconnect")
+def googlecalendar_disconnect():
+    """Disconnect Google Calendar"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    users = read_users()
+    user_email = user["email"].lower()
+    
+    if user_email not in users:
+        return jsonify({"error": "User not found"}), 404
+    
+    if "connected_apps" not in users[user_email]:
+        users[user_email]["connected_apps"] = {}
+    
+    users[user_email]["connected_apps"].pop("googlecalendar", None)
+    write_users(users)
+    
+    return jsonify({"status": "disconnected"}), 200
+
+@app.get("/api/calendar_events")
+def api_calendar_events():
+    """Fetch calendar events from connected Google Calendar"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    
+    user = current_user()
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    connected_apps = user.get("connected_apps", {})
+    calendar_config = connected_apps.get("googlecalendar")
+    
+    if not calendar_config:
+        return jsonify({"error": "Google Calendar not connected", "not_connected": True}), 400
+    
+    access_token = decrypt_token(calendar_config.get("access_token_encrypted", ""))
+    refresh_token = decrypt_token(calendar_config.get("refresh_token_encrypted", "")) if calendar_config.get("refresh_token_encrypted") else None
+    token_expires_at = calendar_config.get("token_expires_at", 0)
+    
+    if not access_token:
+        return jsonify({"error": "No access token", "not_connected": True}), 400
+    
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_DRIVE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_DRIVE_CLIENT_SECRET")
+    
+    # Check if token needs refresh
+    if token_expires_at and int(datetime.now().timestamp()) >= token_expires_at - 300:
+        if refresh_token and GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET:
+            try:
+                refresh_response = requests.post(
+                    "https://oauth2.googleapis.com/token",
+                    data={
+                        "client_id": GOOGLE_CLIENT_ID,
+                        "client_secret": GOOGLE_CLIENT_SECRET,
+                        "refresh_token": refresh_token,
+                        "grant_type": "refresh_token"
+                    }
+                )
+                if refresh_response.status_code == 200:
+                    new_tokens = refresh_response.json()
+                    access_token = new_tokens.get("access_token", access_token)
+                    new_expires_in = new_tokens.get("expires_in", 3600)
+                    
+                    # Update stored tokens
+                    users = read_users()
+                    user_email = user["email"].lower()
+                    if user_email in users:
+                        users[user_email]["connected_apps"]["googlecalendar"]["access_token_encrypted"] = encrypt_token(access_token)
+                        users[user_email]["connected_apps"]["googlecalendar"]["token_expires_at"] = int(datetime.now().timestamp()) + new_expires_in
+                        write_users(users)
+            except Exception as e:
+                print(f"Error refreshing Google Calendar token: {e}")
+    
+    try:
+        from datetime import timedelta
+        import pytz
+        
+        # Get events from the last 7 days and next 1 day
+        now = datetime.now(pytz.UTC)
+        time_min = (now - timedelta(days=7)).isoformat()
+        time_max = (now + timedelta(days=1)).isoformat()
+        
+        # Fetch events from Google Calendar API
+        response = requests.get(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            headers={"Authorization": f"Bearer {access_token}"},
+            params={
+                "timeMin": time_min,
+                "timeMax": time_max,
+                "singleEvents": "true",
+                "orderBy": "startTime",
+                "maxResults": 50
+            }
+        )
+        
+        if response.status_code == 401:
+            return jsonify({"error": "Calendar access token expired. Please reconnect.", "needs_reauth": True}), 401
+        
+        if response.status_code != 200:
+            return jsonify({"error": f"Failed to fetch calendar events: {response.status_code}"}), 400
+        
+        data = response.json()
+        events = []
+        
+        for item in data.get("items", []):
+            # Extract attendees
+            attendees = []
+            for attendee in item.get("attendees", []):
+                attendees.append({
+                    "email": attendee.get("email", "").lower(),
+                    "name": attendee.get("displayName", attendee.get("email", "").split("@")[0])
+                })
+            
+            # Extract organizer
+            organizer = None
+            if item.get("organizer"):
+                organizer = {
+                    "email": item["organizer"].get("email", "").lower(),
+                    "name": item["organizer"].get("displayName", item["organizer"].get("email", "").split("@")[0])
+                }
+            
+            # Parse start time
+            start = item.get("start", {})
+            start_time = start.get("dateTime") or start.get("date")
+            
+            # Format display time
+            display_time = ""
+            if start.get("dateTime"):
+                try:
+                    dt = datetime.fromisoformat(start["dateTime"].replace("Z", "+00:00"))
+                    display_time = dt.strftime("%b %d, %I:%M %p")
+                except:
+                    display_time = start["dateTime"][:16]
+            elif start.get("date"):
+                display_time = start["date"]
+            
+            events.append({
+                "title": item.get("summary", "Untitled"),
+                "start": start_time,
+                "end": item.get("end", {}).get("dateTime") or item.get("end", {}).get("date"),
+                "display_time": display_time,
+                "organizer": organizer,
+                "attendees": attendees,
+                "attendee_count": len(attendees)
+            })
+        
+        # Sort by start time, most recent first
+        events.sort(key=lambda x: x.get("start", ""), reverse=True)
+        
+        return jsonify({"events": events, "count": len(events), "connected": True})
+        
+    except Exception as e:
+        print(f"Error fetching calendar events: {e}")
+        return jsonify({"error": f"Error fetching events: {str(e)}"}), 500
+
 @app.post("/connect/googledrive/disconnect")
 def googledrive_disconnect():
     """Disconnect Google Drive"""
@@ -8975,5 +9395,5 @@ if __name__ == "__main__":
     ensure_dirs()
     start_upload_worker()
     start_dev_watcher()
-    app.run(debug=True, host="127.0.0.1", port=5000, use_reloader=False)
+    app.run(debug=True, host="localhost", port=5001, use_reloader=False)
 

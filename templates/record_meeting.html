@@ -373,6 +373,61 @@
         Add participants who should receive this meeting's transcript. They will be sent an email and can access it in their account.
       </div>
       
+      <!-- Calendar Import Section -->
+      <div id="calendarImportSection" style="margin-top: 16px; padding: 16px; background: var(--bg-secondary); border-radius: 8px; border: 1px dashed var(--border);">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+          <span style="font-size: 20px;">📅</span>
+          <div>
+            <strong style="font-size: 15px;">Import from Calendar</strong>
+            <p id="calendarSubtitle" style="font-size: 13px; color: var(--text-secondary); margin: 2px 0 0 0;">Select a meeting to auto-fill participants</p>
+          </div>
+        </div>
+        
+        <!-- Connected Calendar Controls -->
+        <div id="connectedCalendarControls" style="display: none;">
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px;">
+            <span class="badge badge-success" style="padding: 4px 10px; font-size: 12px;">✓ Google Calendar Connected</span>
+            <button type="button" onclick="fetchConnectedCalendarEvents()" class="btn" style="font-size: 13px; padding: 6px 12px;">
+              🔄 Refresh Events
+            </button>
+          </div>
+        </div>
+        
+        <!-- Not Connected Controls -->
+        <div id="notConnectedCalendarControls">
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <a href="{{ url_for('googlecalendar_authorize') }}" class="btn btn-primary" style="font-size: 14px;">
+              🔗 Connect Google Calendar
+            </a>
+            <span style="color: var(--text-secondary); font-size: 13px;">or</span>
+            <input type="file" id="calendarFile" accept=".ics" style="display: none;">
+            <button type="button" onclick="document.getElementById('calendarFile').click()" class="btn" style="font-size: 14px;">
+              📁 Upload .ics File
+            </button>
+            <span id="calendarFileName" style="font-size: 13px; color: var(--text-secondary);"></span>
+          </div>
+          
+          <div class="info-box" style="margin-top: 12px; padding: 10px 12px; font-size: 12px; background: transparent; border: none;">
+            <strong>How to export .ics:</strong> 
+            <span style="color: var(--text-secondary);">
+              Google (Settings → Import & Export) · 
+              Apple (File → Export) · 
+              Outlook (File → Save Calendar)
+            </span>
+          </div>
+        </div>
+        
+        <!-- Calendar Events List -->
+        <div id="calendarEventsContainer" style="display: none; margin-top: 16px;">
+          <label style="font-size: 14px; font-weight: 500; display: block; margin-bottom: 8px;">Select a meeting:</label>
+          <div id="calendarEventsList" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: white;"></div>
+        </div>
+        
+        <div id="calendarLoading" style="display: none; margin-top: 12px; text-align: center; color: var(--text-secondary);">
+          Loading calendar events...
+        </div>
+      </div>
+      
       <div id="participantSelection" style="margin-top: 16px;">
         <div style="display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px;">
           <button type="button" id="addParticipantsBtn" class="btn" onclick="openParticipantModal()" style="flex: 1;">+ Add Participants</button>
@@ -654,6 +709,170 @@ function addParticipant(email, name, sourceOrg = null) {
     }
     updateParticipantDisplay();
   }
+}
+
+// Calendar import functionality
+let calendarEvents = [];
+let selectedCalendarEventIndex = -1;
+let calendarConnected = false;
+
+// Check if Google Calendar is connected and fetch events on page load
+async function initCalendar() {
+  try {
+    const response = await fetch('/api/calendar_events');
+    const data = await response.json();
+    
+    if (response.ok && data.connected) {
+      // Calendar is connected
+      calendarConnected = true;
+      document.getElementById('connectedCalendarControls').style.display = 'block';
+      document.getElementById('notConnectedCalendarControls').style.display = 'none';
+      document.getElementById('calendarSubtitle').textContent = 'Select a meeting to auto-fill participants';
+      
+      if (data.events && data.events.length > 0) {
+        calendarEvents = data.events;
+        displayCalendarEvents(data.events);
+      }
+    } else {
+      // Not connected or error
+      calendarConnected = false;
+      document.getElementById('connectedCalendarControls').style.display = 'none';
+      document.getElementById('notConnectedCalendarControls').style.display = 'block';
+      document.getElementById('calendarSubtitle').textContent = 'Connect your calendar or upload a .ics file to auto-fill participants';
+    }
+  } catch (err) {
+    console.log('Calendar not connected or error:', err);
+    calendarConnected = false;
+  }
+}
+
+// Fetch events from connected Google Calendar
+async function fetchConnectedCalendarEvents() {
+  const loadingEl = document.getElementById('calendarLoading');
+  loadingEl.style.display = 'block';
+  document.getElementById('calendarEventsContainer').style.display = 'none';
+  
+  try {
+    const response = await fetch('/api/calendar_events');
+    const data = await response.json();
+    
+    if (response.ok && data.events) {
+      calendarEvents = data.events;
+      displayCalendarEvents(data.events);
+    } else if (data.needs_reauth) {
+      alert('Your Google Calendar session has expired. Please reconnect.');
+      window.location.href = '{{ url_for("googlecalendar_authorize") }}';
+    } else {
+      alert(data.error || 'Failed to fetch calendar events');
+    }
+  } catch (err) {
+    console.error('Calendar fetch error:', err);
+    alert('Error fetching calendar events. Please try again.');
+  } finally {
+    loadingEl.style.display = 'none';
+  }
+}
+
+// Initialize calendar on page load
+document.addEventListener('DOMContentLoaded', initCalendar);
+
+// Handle .ics file upload (fallback for non-connected users)
+document.getElementById('calendarFile').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  document.getElementById('calendarFileName').textContent = file.name;
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  try {
+    const response = await fetch('/api/parse_calendar', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok && data.events) {
+      calendarEvents = data.events;
+      displayCalendarEvents(data.events);
+    } else {
+      alert(data.error || 'Failed to parse calendar file');
+      document.getElementById('calendarEventsContainer').style.display = 'none';
+    }
+  } catch (err) {
+    console.error('Calendar parse error:', err);
+    alert('Error parsing calendar file. Please try again.');
+  }
+});
+
+function displayCalendarEvents(events) {
+  const container = document.getElementById('calendarEventsContainer');
+  const list = document.getElementById('calendarEventsList');
+  
+  if (events.length === 0) {
+    list.innerHTML = '<div style="padding: 16px; text-align: center; color: var(--text-secondary);">No recent meetings found in calendar</div>';
+    container.style.display = 'block';
+    return;
+  }
+  
+  list.innerHTML = events.map((event, idx) => `
+    <div class="calendar-event-item" data-index="${idx}" onclick="selectCalendarEvent(${idx})" 
+         style="padding: 12px 16px; border-bottom: 1px solid var(--border-light); cursor: pointer; transition: background 0.2s;"
+         onmouseover="this.style.background='var(--bg-secondary)'" 
+         onmouseout="this.style.background=selectedCalendarEventIndex===${idx}?'var(--accent-blue-light)':'white'">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <strong style="font-size: 14px;">${escapeHtml(event.title)}</strong>
+          <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+            ${event.display_time}
+          </div>
+        </div>
+        <span style="font-size: 12px; color: var(--text-secondary); white-space: nowrap; margin-left: 12px;">
+          👥 ${event.attendee_count} attendee${event.attendee_count !== 1 ? 's' : ''}
+        </span>
+      </div>
+    </div>
+  `).join('');
+  
+  container.style.display = 'block';
+}
+
+function selectCalendarEvent(idx) {
+  const event = calendarEvents[idx];
+  if (!event) return;
+  
+  selectedCalendarEventIndex = idx;
+  
+  // Update visual selection
+  document.querySelectorAll('.calendar-event-item').forEach((item, i) => {
+    item.style.background = i === idx ? 'var(--accent-blue-light)' : 'white';
+  });
+  
+  // Auto-fill meeting name if empty
+  const meetingNameInput = document.getElementById('meetingName');
+  if (meetingNameInput && !meetingNameInput.value.trim()) {
+    meetingNameInput.value = event.title;
+  }
+  
+  // Add all attendees as participants
+  const allPeople = [...(event.attendees || [])];
+  if (event.organizer && !allPeople.find(a => a.email === event.organizer.email)) {
+    allPeople.unshift(event.organizer);
+  }
+  
+  allPeople.forEach(person => {
+    if (person && person.email) {
+      addParticipant(person.email, person.name || person.email.split('@')[0], 'calendar');
+    }
+  });
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 async function addParticipantByUsername() {
