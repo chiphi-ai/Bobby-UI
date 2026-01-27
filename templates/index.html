@@ -108,7 +108,7 @@
             <a class="btn btn-primary" href="{{ url_for('record_meeting') }}">Record Meeting</a>
             <a class="btn btn-secondary" href="{{ url_for('enroll_get') }}">Voice Enrollment</a>
             <a class="btn btn-secondary" href="{{ url_for('account_get') }}">Account Settings</a>
-            <a class="btn btn-subtle" href="{{ url_for('logout') }}">Logout</a>
+            <a class="btn btn-subtle" href="{{ url_for('logout') }}" onclick="return confirm('Are you sure you want to logout?')">Logout</a>
           {% else %}
             <a class="btn btn-primary" href="{{ url_for('signup_get') }}">Create Account</a>
             <a class="btn btn-secondary" href="{{ url_for('login_get') }}">Login</a>

@@ -357,13 +357,11 @@ a:hover {
 }
 
 .header-inner {
-  max-width: var(--max-width);
-  margin: 0 auto;
-  padding: var(--space-md) var(--space-md);
+  width: 100%;
+  padding: var(--space-md) var(--space-lg);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-lg);
 }
 
 .header-brand {
@@ -372,6 +370,7 @@ a:hover {
   gap: var(--space-md);
   text-decoration: none;
   color: var(--text-primary);
+  flex-shrink: 0;
 }
 
 .header-brand > *:not(.header-logo) {
@@ -413,9 +412,6 @@ a:hover {
   display: flex;
   align-items: center;
   gap: var(--space-xs);
-  flex: 1;
-  justify-content: flex-end;
-  margin-left: var(--space-xl);
 }
 
 .header-link {

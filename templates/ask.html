@@ -479,7 +479,7 @@
           {% endif %}
           <a href="{{ url_for('connect_apps_get') }}" class="header-link">Connect Apps</a>
           <a href="{{ url_for('account_get') }}" class="header-link">Settings</a>
-          <a href="{{ url_for('logout') }}" class="header-link">Logout</a>
+          <a href="{{ url_for('logout') }}" class="header-link" onclick="return confirm('Are you sure you want to logout?')">Logout</a>
         </nav>
       </div>
     </header>
