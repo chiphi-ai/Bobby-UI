@@ -698,6 +698,48 @@ def require_login():
         return False
     return True
 
+def get_speaker_thresholds(user_email: str = None) -> dict:
+    """Get speaker identification thresholds based on user preference.
+    
+    Returns dict with environment variable names and values:
+    - SPEAKER_AGGREGATE_THRESHOLD: Main threshold for aggregated scores
+    - SPEAKER_LOWER_THRESHOLD: Minimum acceptable score
+    - SPEAKER_MATCH_MARGIN: Required margin between top matches
+    """
+    # Default to 'normal' if no user or preference
+    preference = "normal"
+    if user_email:
+        users = read_users()
+        user = users.get(user_email.lower())
+        if user:
+            preference = user.get("speaker_confidence", "normal")
+    
+    # Map preference to threshold values
+    thresholds = {
+        "strict": {
+            "SPEAKER_AGGREGATE_THRESHOLD": "0.75",
+            "SPEAKER_LOWER_THRESHOLD": "0.60",
+            "SPEAKER_MATCH_MARGIN": "0.08",
+        },
+        "normal": {
+            "SPEAKER_AGGREGATE_THRESHOLD": "0.65",
+            "SPEAKER_LOWER_THRESHOLD": "0.50",
+            "SPEAKER_MATCH_MARGIN": "0.05",
+        },
+        "relaxed": {
+            "SPEAKER_AGGREGATE_THRESHOLD": "0.55",
+            "SPEAKER_LOWER_THRESHOLD": "0.40",
+            "SPEAKER_MATCH_MARGIN": "0.04",
+        },
+        "permissive": {
+            "SPEAKER_AGGREGATE_THRESHOLD": "0.45",
+            "SPEAKER_LOWER_THRESHOLD": "0.30",
+            "SPEAKER_MATCH_MARGIN": "0.03",
+        },
+    }
+    
+    return thresholds.get(preference, thresholds["normal"])
+
 # ----------------------------
 # Reset tokens
 # ----------------------------
@@ -2172,6 +2214,34 @@ def api_save_speaker_labels(meeting_id: str):
     }), 200
 
 
+@app.post("/api/meetings/<meeting_id>/rename")
+def api_rename_meeting(meeting_id: str):
+    """Rename a meeting and update its display name."""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+
+    meeting = get_meeting(meeting_id)
+    if not meeting:
+        return jsonify({"error": "Meeting not found"}), 404
+
+    data = request.get_json() or {}
+    new_name = (data.get("name") or "").strip()
+    
+    if not new_name:
+        return jsonify({"error": "Name cannot be empty"}), 400
+    
+    # Update meeting name
+    update_meeting(meeting_id, {
+        "name": new_name,
+        "name_updated_at": datetime.now().isoformat(),
+    })
+    
+    return jsonify({
+        "success": True,
+        "name": new_name,
+    }), 200
+
+
 @app.post("/api/meetings/<meeting_id>/utterance_overrides")
 def api_save_utterance_override(meeting_id: str):
     """Save a per-utterance speaker display override (single instance) and regenerate assets."""
@@ -2998,6 +3068,13 @@ def api_rerun_diarization(meeting_id: str):
         str(OUTPUT_DIR / f"{stem}_named_script.txt")
     ]
     print(f"[RERUN DIARIZATION] Running: {' '.join(cmd2)}")
+    
+    # Add user's speaker confidence thresholds to environment
+    user = current_user()
+    if user:
+        thresholds = get_speaker_thresholds(user.get("email"))
+        env.update(thresholds)
+        print(f"[RERUN DIARIZATION] Using speaker confidence: {user.get('speaker_confidence', 'normal')}")
     
     try:
         result2 = subprocess.run(
@@ -4649,6 +4726,15 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
     if user_email:
         env["VOCABULARY_USER_EMAIL"] = user_email
         print(f"Using custom vocabulary for user: {user_email}")
+    
+    # Add user's speaker confidence thresholds to environment
+    if user_email:
+        thresholds = get_speaker_thresholds(user_email)
+        env.update(thresholds)
+        users = read_users()
+        user_data = users.get(user_email.lower(), {})
+        confidence_level = user_data.get("speaker_confidence", "normal")
+        print(f"Using speaker confidence level: {confidence_level}")
 
     # Enable chunked Whisper transcription so we can report "% of meeting transcribed" progress.
     # (Keep this configurable: users can override via env var.)
@@ -6502,6 +6588,11 @@ def account_post():
     
     # Get receive_meeting_emails preference from form (default to True if not set)
     receive_meeting_emails = request.form.get("receive_meeting_emails") == "on"
+    
+    # Get speaker confidence threshold preference
+    speaker_confidence = request.form.get("speaker_confidence", "normal").strip()
+    if speaker_confidence not in ["strict", "normal", "relaxed", "permissive"]:
+        speaker_confidence = "normal"
 
     # apply update
     if email != old_email:
@@ -6516,7 +6607,8 @@ def account_post():
         "organizations": organizations,
         "username": preserved_username,
         "connected_apps": preserved_connected_apps,
-        "receive_meeting_emails": receive_meeting_emails
+        "receive_meeting_emails": receive_meeting_emails,
+        "speaker_confidence": speaker_confidence
     }
     write_users(users)
     sync_emails_csv(users)

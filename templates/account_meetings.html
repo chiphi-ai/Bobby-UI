@@ -162,8 +162,14 @@
           {% if meetings %}
             <div class="meeting-list">
               {% for meeting in meetings %}
-              <div class="meeting-item enter" style="animation-delay: {{ loop.index0 * 0.05 }}s;">
-                <h3>{{ meeting.name or meeting.id }}</h3>
+              <div class="meeting-item enter" style="animation-delay: {{ loop.index0 * 0.05 }}s;" data-meeting-id="{{ meeting.id }}">
+                <div style="display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-sm);">
+                  <h3 style="margin: 0;" class="meeting-title-display">{{ meeting.name or meeting.id }}</h3>
+                  <input type="text" class="meeting-title-input" value="{{ meeting.name or meeting.id }}" style="display: none; font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); padding: 4px 8px; border: 1px solid var(--accent); border-radius: var(--border-radius-sm); background: var(--bg-primary); width: 300px;">
+                  <button class="btn btn-sm btn-secondary rename-btn" style="border-radius: 999px; padding: 2px 10px; font-size: 11px;">Rename</button>
+                  <button class="btn btn-sm btn-primary save-rename-btn" style="display: none; border-radius: 999px; padding: 2px 10px; font-size: 11px;">Save</button>
+                  <button class="btn btn-sm btn-secondary cancel-rename-btn" style="display: none; border-radius: 999px; padding: 2px 10px; font-size: 11px;">Cancel</button>
+                </div>
                 <div class="meta">
                   <span>📅 Date: {{ meeting.processed_at[:10] if meeting.processed_at else 'N/A' }}</span>
                   <span>⏰ Time: {{ meeting.processed_at[11:16] if meeting.processed_at and 'T' in meeting.processed_at else 'N/A' }}</span>
@@ -690,6 +696,89 @@
         };
       });
     }
+
+    // ============================================
+    // Meeting Rename Functionality
+    // ============================================
+    document.querySelectorAll('.meeting-item').forEach(item => {
+      const meetingId = item.getAttribute('data-meeting-id');
+      const titleDisplay = item.querySelector('.meeting-title-display');
+      const titleInput = item.querySelector('.meeting-title-input');
+      const renameBtn = item.querySelector('.rename-btn');
+      const saveBtn = item.querySelector('.save-rename-btn');
+      const cancelBtn = item.querySelector('.cancel-rename-btn');
+      
+      let originalTitle = titleDisplay.textContent;
+      
+      function enterEditMode() {
+        titleDisplay.style.display = 'none';
+        titleInput.style.display = 'inline-block';
+        titleInput.value = titleDisplay.textContent;
+        titleInput.focus();
+        titleInput.select();
+        renameBtn.style.display = 'none';
+        saveBtn.style.display = 'inline-block';
+        cancelBtn.style.display = 'inline-block';
+      }
+      
+      function exitEditMode() {
+        titleDisplay.style.display = 'inline';
+        titleInput.style.display = 'none';
+        renameBtn.style.display = 'inline-block';
+        saveBtn.style.display = 'none';
+        cancelBtn.style.display = 'none';
+      }
+      
+      renameBtn.addEventListener('click', enterEditMode);
+      
+      cancelBtn.addEventListener('click', () => {
+        titleInput.value = originalTitle;
+        exitEditMode();
+      });
+      
+      saveBtn.addEventListener('click', async () => {
+        const newTitle = titleInput.value.trim();
+        if (!newTitle) {
+          alert('Title cannot be empty');
+          return;
+        }
+        if (newTitle === originalTitle) {
+          exitEditMode();
+          return;
+        }
+        
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        
+        try {
+          const resp = await fetch(`/api/meetings/${encodeURIComponent(meetingId)}/rename`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newTitle })
+          });
+          const data = await resp.json();
+          if (!resp.ok) throw new Error(data.error || data.message || 'Rename failed');
+          
+          titleDisplay.textContent = newTitle;
+          originalTitle = newTitle;
+          exitEditMode();
+        } catch (err) {
+          alert('Error: ' + err.message);
+        } finally {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Save';
+        }
+      });
+      
+      titleInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveBtn.click();
+        } else if (e.key === 'Escape') {
+          cancelBtn.click();
+        }
+      });
+    });
   </script>
 </body>
 </html>

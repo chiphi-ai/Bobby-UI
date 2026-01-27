@@ -204,6 +204,24 @@
 
           <hr style="margin: var(--space-xl) 0; border: none; border-top: 1px solid var(--border-light);">
 
+          <div class="section-label">Speaker Identification</div>
+          <div class="form-group">
+            <label for="speaker_confidence" class="form-label">Confidence Threshold</label>
+            <div style="padding: var(--space-md); background: var(--bg-secondary); border-radius: var(--border-radius);">
+              <select id="speaker_confidence" name="speaker_confidence" class="form-input" style="margin-bottom: var(--space-sm);">
+                <option value="strict" {% if user.get('speaker_confidence', 'normal') == 'strict' %}selected{% endif %}>Strict (0.75) — Fewer matches, higher accuracy</option>
+                <option value="normal" {% if user.get('speaker_confidence', 'normal') == 'normal' %}selected{% endif %}>Normal (0.65) — Balanced (default)</option>
+                <option value="relaxed" {% if user.get('speaker_confidence', 'normal') == 'relaxed' %}selected{% endif %}>Relaxed (0.55) — More matches, may have errors</option>
+                <option value="permissive" {% if user.get('speaker_confidence', 'normal') == 'permissive' %}selected{% endif %}>Permissive (0.45) — Most matches, lower accuracy</option>
+              </select>
+              <div style="font-size: var(--font-size-xs); color: var(--text-secondary); line-height: 1.5;">
+                Lower thresholds will identify more speakers but may make mistakes. Use "Relaxed" or "Permissive" if speakers are frequently showing as "Unknown" despite having enrollment audio.
+              </div>
+            </div>
+          </div>
+
+          <hr style="margin: var(--space-xl) 0; border: none; border-top: 1px solid var(--border-light);">
+
           <div class="section-label">Email Preferences</div>
           <div class="form-group">
             <label style="display: flex; align-items: center; gap: var(--space-md); padding: var(--space-md); background: var(--bg-secondary); border-radius: var(--border-radius); cursor: pointer;">
