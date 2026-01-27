@@ -1308,31 +1308,6 @@ async function handleUploadClick() {
       return;
     }
     
-    const participantsJson = participantsJsonEl.value;
-    let participants = [];
-    try {
-      participants = JSON.parse(participantsJson);
-      console.log("[Upload] Participants:", participants.length);
-    } catch (e) {
-      console.warn("[Upload] Error parsing participants JSON:", e);
-      participants = [];
-    }
-    
-    // Warn if no participants
-    if (participants.length === 0) {
-      console.log("[Upload] No participants - showing confirmation");
-      const confirmed = await showConfirmModal(
-        "No Participants Selected",
-        "Are you sure you want to upload this meeting with no other participants? Only you will receive the transcript.",
-        "Continue Anyway",
-        "Add Participants"
-      );
-      if (!confirmed) {
-        console.log("[Upload] User cancelled - no participants");
-        return;
-      }
-    }
-    
     // Get selected file
     const file = fileInputEl.files[0];
     console.log("[Upload] File input files:", fileInputEl.files.length);

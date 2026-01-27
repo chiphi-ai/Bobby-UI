@@ -427,8 +427,8 @@
         {{ prompt_script }}
       </div>
       <div class="info-box">
-        <b>💡 Instructions:</b> Read this script naturally at a comfortable pace. This should take approximately 30-45 seconds to complete. Speak clearly and use your normal conversational voice.<br><br>
-        <b>⚠️ Important:</b> Your enrollment recording must be at least 30 seconds long to be valid. You can record multiple times and delete poor recordings, but you must have at least one recording that is 30 seconds or longer.
+        <b>💡 Instructions:</b> Read this script naturally at a comfortable pace. Speak clearly and use your normal conversational voice.<br><br>
+        <b>⚠️ Important:</b> Your enrollment recording must be at least 15 seconds long to be valid. You can record multiple times and delete poor recordings, but you must have at least one recording that is 15 seconds or longer.
       </div>
     </div>
 
@@ -668,10 +668,10 @@ document.getElementById("uploadFile").onclick = async () => {
   // Check duration before uploading
   try {
     const duration = await checkBlobDuration(f);
-    if (duration < 30.0) {
+    if (duration < 15.0) {
       await showConfirmModal(
         "File Too Short",
-        `The audio file "${f.name}" is only ${Math.round(duration)} seconds long. Enrollment audio must be at least 30 seconds. Please upload a longer audio file.`,
+        `The audio file "${f.name}" is only ${Math.round(duration)} seconds long. Enrollment audio must be at least 15 seconds. Please upload a longer audio file.`,
         "OK"
       );
       // Clear file input
@@ -791,11 +791,11 @@ async function checkRecordingDurations() {
           }, 10000);
         });
         
-        if (duration < 30.0) {
+        if (duration < 15.0) {
           const filename = item.getAttribute("data-filename") || "recording";
           return { 
             valid: false, 
-            message: `Your recording "${filename}" is only ${Math.round(duration)} seconds long. Enrollment audio must be at least 30 seconds. Please record or upload a longer audio file.` 
+            message: `Your recording "${filename}" is only ${Math.round(duration)} seconds long. Enrollment audio must be at least 15 seconds. Please record or upload a longer audio file.` 
           };
         }
       } catch (error) {
@@ -878,10 +878,10 @@ submitBtn.onclick = async () => {
   
   // Validate duration if we got one
   if (duration && isFinite(duration) && !isNaN(duration) && duration > 0 && duration !== Infinity) {
-    if (duration < 30.0) {
+    if (duration < 15.0) {
       await showConfirmModal(
         "Recording Too Short",
-        "Less than 30 seconds. Please record a different audio take.",
+        "Less than 15 seconds. Please record a different audio take.",
         "OK"
       );
       submitBtn.disabled = false;
@@ -892,11 +892,11 @@ submitBtn.onclick = async () => {
     console.log("Duration check passed:", duration, "seconds");
   } else {
     // If we couldn't get duration client-side, proceed and let server validate
-    // Server will check and reject if < 30 seconds
+    // Server will check and reject if < 15 seconds
     console.log("Could not determine duration client-side, proceeding - server will validate");
   }
   
-  // Duration is valid (>= 30 seconds), upload it
+  // Duration is valid (>= 15 seconds), upload it
   submitBtn.textContent = "Uploading...";
   setStatus("Uploading recording...", "");
   

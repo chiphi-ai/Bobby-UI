@@ -5344,7 +5344,7 @@ def account_home():
     user = current_user()
     meetings = get_user_meetings(user["email"])
     
-    # Check if user has enrollment audio (using firstname,lastname or username) - must be >= 30 seconds
+    # Check if user has enrollment audio (using firstname,lastname or username) - must be >= 15 seconds
     username = user.get("username", "").strip().lower()
     first = user.get("first", "").strip().lower()
     last = user.get("last", "").strip().lower()
@@ -5365,7 +5365,7 @@ def account_home():
                     
                     if matches and f.stat().st_size > 0:
                         duration = get_audio_duration(f)
-                        if duration >= 30.0:
+                        if duration >= 15.0:
                             has_enrollment = True
                             break
     
@@ -6075,7 +6075,7 @@ def delete_recording():
     if not enrollment_file_matches_user(filename, user):
         return jsonify({"error": "Unauthorized"}), 403
     
-    # Check how many valid recordings (>= 30 seconds) the user has
+    # Check how many valid recordings (>= 15 seconds) the user has
     enroll_dir = ENROLL_DIR
     valid_recordings = []
     if enroll_dir.exists():
@@ -6083,12 +6083,12 @@ def delete_recording():
             if f.is_file() and f.suffix.lower() in ALLOWED_UPLOAD_EXT:
                 if enrollment_file_matches_user(f.name, user) and f.stat().st_size > 0:
                     duration = get_audio_duration(f)
-                    if duration >= 30.0:
+                    if duration >= 15.0:
                         valid_recordings.append(f.name)
     
     # Prevent deleting if it would leave no valid recordings
     if len(valid_recordings) <= 1:
-        return jsonify({"error": "Cannot delete this recording. You must have at least one enrollment recording that is 30 seconds or longer."}), 400
+        return jsonify({"error": "Cannot delete this recording. You must have at least one enrollment recording that is 15 seconds or longer."}), 400
     
     file_path = ENROLL_DIR / filename
     if file_path.exists():
@@ -6111,7 +6111,7 @@ def save_recordings():
     if not username:
         return jsonify({"error": "Username not set"}), 400
     
-    # Check that user has at least one recording >= 30 seconds
+    # Check that user has at least one recording >= 15 seconds
     enroll_dir = ENROLL_DIR
     valid_recordings = []
     if enroll_dir.exists():
@@ -6119,12 +6119,12 @@ def save_recordings():
             if f.is_file() and f.suffix.lower() in ALLOWED_UPLOAD_EXT:
                 if enrollment_file_matches_user(f.name, user) and f.stat().st_size > 0:
                     duration = get_audio_duration(f)
-                    if duration >= 30.0:
+                    if duration >= 15.0:
                         valid_recordings.append(f.name)
     
     if not valid_recordings:
         return jsonify({
-            "error": "You must have at least one enrollment recording that is 30 seconds or longer. Please record or upload a longer audio file."
+            "error": "You must have at least one enrollment recording that is 15 seconds or longer. Please record or upload a longer audio file."
         }), 400
     
     return jsonify({"status": "saved"}), 200

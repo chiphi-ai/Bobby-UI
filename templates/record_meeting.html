@@ -1299,28 +1299,6 @@ document.getElementById("uploadRecording").addEventListener("click", async () =>
     return;
   }
   
-  // Check participants
-  const participantsJson = document.getElementById("participantsJson").value;
-  let participants = [];
-  try {
-    participants = JSON.parse(participantsJson);
-  } catch (e) {
-    participants = [];
-  }
-  
-  // Warn if no participants
-  if (participants.length === 0) {
-    const confirmed = await showConfirmModal(
-      "No Participants Selected",
-      "Are you sure you want to upload this meeting with no other participants? Only you will receive the transcript.",
-      "Continue Anyway",
-      "Add Participants"
-    );
-    if (!confirmed) {
-      return;
-    }
-  }
-  
   await uploadMeeting(recordedBlob);
 });
 
