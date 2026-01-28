@@ -156,14 +156,23 @@
       {% endwith %}
 
       <!-- Enrollment Warning -->
-      {% if not has_enrollment %}
-      <div class="alert alert-warning enter enter-delay-1">
+      {% if not has_enrollment and not enrollment_dismissed %}
+      <div class="alert alert-warning enter enter-delay-1" id="enrollment-warning">
         <strong>⚠️ Voice Enrollment Recommended</strong><br>
         You can use the app without this, but you’ll need voice enrollment before recording/uploading meetings so we can identify you in transcripts.
-        <div style="margin-top: var(--space-md);">
+        <div style="margin-top: var(--space-md); display: flex; gap: var(--space-sm); flex-wrap: wrap;">
           <a class="btn btn-primary" href="{{ url_for('enroll_get') }}">Record Voice Enrollment</a>
+          <button type="button" class="btn btn-secondary" onclick="dismissEnrollmentWarning()">Dismiss</button>
         </div>
       </div>
+      <script>
+        function dismissEnrollmentWarning() {
+          fetch('/api/dismiss_enrollment_warning', { method: 'POST' })
+            .then(() => {
+              document.getElementById('enrollment-warning').style.display = 'none';
+            });
+        }
+      </script>
       {% endif %}
 
       <!-- Hero Section -->

@@ -53,6 +53,10 @@ OUTPUT_DIR = ROOT / "output"
 ENROLL_DIR = ROOT / "enroll"
 AUDIO_LIBRARY_DIR = ROOT / "audio_library"
 STATIC_DIR = ROOT / "static"
+
+# Feature flag: Set to False to disable automatic audio library updates from meetings
+# This can be re-enabled by setting to True when you want the system to learn from corrections
+ENABLE_AUTO_AUDIO_LIBRARY = False
 UPLOAD_JOBS_DIR = OUTPUT_DIR / "jobs"
 MEETING_JOBS_DIR = UPLOAD_JOBS_DIR / "meetings"
 SPEAKER_PROFILES_JSON = OUTPUT_DIR / "speaker_profiles.json"
@@ -467,7 +471,7 @@ def search_organizations(query: str) -> list:
 def init_users_csv():
     if not USERS_CSV.exists():
         with open(USERS_CSV, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=["first", "last", "email", "password_hash", "organizations_json", "username", "connected_apps_json", "receive_meeting_emails"])
+            w = csv.DictWriter(f, fieldnames=["first", "last", "email", "password_hash", "organizations_json", "username", "connected_apps_json", "receive_meeting_emails", "enrollment_warning_dismissed"])
             w.writeheader()
     else:
         # Migrate existing CSV to include organizations and username fields
@@ -476,7 +480,7 @@ def init_users_csv():
             fieldnames = reader.fieldnames or []
             
             # Check if migration needed
-            if "organizations_json" not in fieldnames or "position" in fieldnames or "username" not in fieldnames or "receive_meeting_emails" not in fieldnames:
+            if "organizations_json" not in fieldnames or "position" in fieldnames or "username" not in fieldnames or "receive_meeting_emails" not in fieldnames or "enrollment_warning_dismissed" not in fieldnames:
                 users = {}
                 f.seek(0)
                 for row in reader:
@@ -532,6 +536,7 @@ def init_users_csv():
                         "username": username,
                         "connected_apps": {},
                         "receive_meeting_emails": True,  # Default to True for existing users
+                        "enrollment_warning_dismissed": False,  # Default to False for existing users
                     }
                 write_users(users)
 
@@ -592,6 +597,10 @@ def read_users() -> dict:
             receive_emails_str = (row.get("receive_meeting_emails") or "true").strip().lower()
             receive_meeting_emails = receive_emails_str == "true"
             
+            # Get enrollment_warning_dismissed preference, default to False
+            enrollment_dismissed_str = (row.get("enrollment_warning_dismissed") or "false").strip().lower()
+            enrollment_warning_dismissed = enrollment_dismissed_str == "true"
+            
             users[email] = {
                 "first": (row.get("first") or "").strip(),
                 "last": (row.get("last") or "").strip(),
@@ -601,6 +610,7 @@ def read_users() -> dict:
                 "username": username,
                 "connected_apps": connected_apps,
                 "receive_meeting_emails": receive_meeting_emails,
+                "enrollment_warning_dismissed": enrollment_warning_dismissed,
             }
     return users
 
@@ -608,7 +618,7 @@ def write_users(users: dict):
     """Write users to CSV. Stores organizations as JSON string."""
     rows = sorted(users.values(), key=lambda u: (u["last"].lower(), u["first"].lower(), u["email"]))
     with open(USERS_CSV, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["first", "last", "email", "password_hash", "organizations_json", "username", "connected_apps_json", "receive_meeting_emails"])
+        w = csv.DictWriter(f, fieldnames=["first", "last", "email", "password_hash", "organizations_json", "username", "connected_apps_json", "receive_meeting_emails", "enrollment_warning_dismissed"])
         w.writeheader()
         for row in rows:
             # Convert organizations list to JSON string
@@ -626,6 +636,13 @@ def write_users(users: dict):
             else:
                 receive_meeting_emails_str = str(receive_meeting_emails).lower()
             
+            # Get enrollment_warning_dismissed preference, default to False
+            enrollment_dismissed = row.get("enrollment_warning_dismissed", False)
+            if isinstance(enrollment_dismissed, bool):
+                enrollment_dismissed_str = "true" if enrollment_dismissed else "false"
+            else:
+                enrollment_dismissed_str = str(enrollment_dismissed).lower()
+            
             w.writerow({
                 "first": row["first"],
                 "last": row["last"],
@@ -635,6 +652,7 @@ def write_users(users: dict):
                 "username": row.get("username", "").lower(),
                 "connected_apps_json": connected_apps_json,
                 "receive_meeting_emails": receive_meeting_emails_str,
+                "enrollment_warning_dismissed": enrollment_dismissed_str,
             })
 
 def sync_emails_csv(users: dict):
@@ -2178,15 +2196,19 @@ def api_save_speaker_labels(meeting_id: str):
         learned[name] = "pending"  # Enrollment is happening in background
 
     # Also update audio library for all speakers (in background)
-    effective_utterances = _effective_utterances_for_meeting(meeting_id, meeting_for_enrollment)
-    if effective_utterances and speaker_names_to_enroll:
-        print(f"[AUDIO LIBRARY] Starting background audio library update for {len(speaker_names_to_enroll)} speaker(s)...", flush=True)
-        audio_lib_thread = threading.Thread(
-            target=_background_update_audio_library,
-            args=(meeting_id, meeting_for_enrollment, list(speaker_names_to_enroll), effective_utterances, normalized_existing),
-            daemon=True
-        )
-        audio_lib_thread.start()
+    # This is controlled by ENABLE_AUTO_AUDIO_LIBRARY flag at top of file
+    if ENABLE_AUTO_AUDIO_LIBRARY:
+        effective_utterances = _effective_utterances_for_meeting(meeting_id, meeting_for_enrollment)
+        if effective_utterances and speaker_names_to_enroll:
+            print(f"[AUDIO LIBRARY] Starting background audio library update for {len(speaker_names_to_enroll)} speaker(s)...", flush=True)
+            audio_lib_thread = threading.Thread(
+                target=_background_update_audio_library,
+                args=(meeting_id, meeting_for_enrollment, list(speaker_names_to_enroll), effective_utterances, normalized_existing),
+                daemon=True
+            )
+            audio_lib_thread.start()
+    else:
+        print(f"[AUDIO LIBRARY] Auto-update disabled (ENABLE_AUTO_AUDIO_LIBRARY=False)", flush=True)
 
     update_meeting(meeting_id, {
         "speaker_label_map": normalized_existing,
@@ -2349,21 +2371,23 @@ def api_save_utterance_override(meeting_id: str):
         thread.start()
         
         # Also update audio library for this speaker (in background)
-        def _update_audio_lib_single(m_id, m_data, speaker_name):
-            try:
-                effective_utts = _effective_utterances_for_meeting(m_id, m_data)
-                stored_map = m_data.get("speaker_label_map", {}) if isinstance(m_data.get("speaker_label_map"), dict) else {}
-                _update_audio_library_for_speaker(m_id, m_data, speaker_name, effective_utts, stored_map)
-            except Exception as e:
-                print(f"[AUDIO LIBRARY] ❌ Error updating library for {speaker_name}: {e}", flush=True)
-        
-        print(f"[AUDIO LIBRARY] Starting background update for {speaker_display}...", flush=True)
-        audio_thread = threading.Thread(
-            target=_update_audio_lib_single,
-            args=(meeting_id, meeting, speaker_display),
-            daemon=True
-        )
-        audio_thread.start()
+        # This is controlled by ENABLE_AUTO_AUDIO_LIBRARY flag at top of file
+        if ENABLE_AUTO_AUDIO_LIBRARY:
+            def _update_audio_lib_single(m_id, m_data, speaker_name):
+                try:
+                    effective_utts = _effective_utterances_for_meeting(m_id, m_data)
+                    stored_map = m_data.get("speaker_label_map", {}) if isinstance(m_data.get("speaker_label_map"), dict) else {}
+                    _update_audio_library_for_speaker(m_id, m_data, speaker_name, effective_utts, stored_map)
+                except Exception as e:
+                    print(f"[AUDIO LIBRARY] ❌ Error updating library for {speaker_name}: {e}", flush=True)
+            
+            print(f"[AUDIO LIBRARY] Starting background update for {speaker_display}...", flush=True)
+            audio_thread = threading.Thread(
+                target=_update_audio_lib_single,
+                args=(meeting_id, meeting, speaker_display),
+                daemon=True
+            )
+            audio_thread.start()
 
     # Return updated utterance payload for fast UI update
     utterances_path = OUTPUT_DIR / f"{meeting_id}_utterances.json"
@@ -3017,6 +3041,16 @@ def api_rerun_diarization(meeting_id: str):
     PY = sys.executable
     env = os.environ.copy()
     
+    # IMPORTANT: Limit ALL threading libraries to prevent stack overflow on M1/M2 Macs
+    env["OPENBLAS_NUM_THREADS"] = "1"
+    env["OMP_NUM_THREADS"] = "1"
+    env["MKL_NUM_THREADS"] = "1"
+    env["NUMEXPR_NUM_THREADS"] = "1"
+    env["VECLIB_MAXIMUM_THREADS"] = "1"  # macOS Accelerate framework
+    env["TORCH_NUM_THREADS"] = "1"
+    env["GOTO_NUM_THREADS"] = "1"  # GotoBLAS (OpenBLAS predecessor)
+    env["BLIS_NUM_THREADS"] = "1"  # BLIS library
+    
     # Load .env file
     env_file = ROOT / ".env"
     if env_file.exists():
@@ -3337,6 +3371,17 @@ def run_cmd(cmd: list, cwd=None):
     """Run a command and return exit code. Passes environment variables including from .env."""
     # Load .env file manually to handle BOM
     env = os.environ.copy()
+    
+    # IMPORTANT: Limit ALL threading libraries to prevent stack overflow on M1/M2 Macs
+    env["OPENBLAS_NUM_THREADS"] = "1"
+    env["OMP_NUM_THREADS"] = "1"
+    env["MKL_NUM_THREADS"] = "1"
+    env["NUMEXPR_NUM_THREADS"] = "1"
+    env["VECLIB_MAXIMUM_THREADS"] = "1"  # macOS Accelerate framework
+    env["TORCH_NUM_THREADS"] = "1"
+    env["GOTO_NUM_THREADS"] = "1"  # GotoBLAS (OpenBLAS predecessor)
+    env["BLIS_NUM_THREADS"] = "1"  # BLIS library
+    
     env_file = ROOT / ".env"
     if env_file.exists():
         try:
@@ -4707,6 +4752,17 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
     # Prepare environment with user email for vocabulary
     import os
     env = os.environ.copy()
+    
+    # IMPORTANT: Limit ALL threading libraries to prevent stack overflow on M1/M2 Macs
+    env["OPENBLAS_NUM_THREADS"] = "1"
+    env["OMP_NUM_THREADS"] = "1"
+    env["MKL_NUM_THREADS"] = "1"
+    env["NUMEXPR_NUM_THREADS"] = "1"
+    env["VECLIB_MAXIMUM_THREADS"] = "1"  # macOS Accelerate framework
+    env["TORCH_NUM_THREADS"] = "1"
+    env["GOTO_NUM_THREADS"] = "1"  # GotoBLAS (OpenBLAS predecessor)
+    env["BLIS_NUM_THREADS"] = "1"  # BLIS library
+    
     # Load .env file manually (same as run_cmd does)
     env_file = ROOT / ".env"
     if env_file.exists():
@@ -5369,7 +5425,27 @@ def account_home():
                             has_enrollment = True
                             break
     
-    return render_template("account_home.html", user=user, total_meetings=len(meetings), has_enrollment=has_enrollment)
+    # Check if user dismissed the enrollment warning
+    enrollment_dismissed = user.get("enrollment_warning_dismissed", False)
+    
+    return render_template("account_home.html", user=user, total_meetings=len(meetings), has_enrollment=has_enrollment, enrollment_dismissed=enrollment_dismissed)
+
+@app.post("/api/dismiss_enrollment_warning")
+def dismiss_enrollment_warning():
+    """Dismiss the voice enrollment warning for the logged-in user"""
+    if not require_login():
+        return jsonify({"error": "Not logged in"}), 401
+    user = current_user()
+    if not user:
+        return jsonify({"error": "User not found"}), 400
+    
+    # Update user record to mark warning as dismissed
+    users = read_users()
+    user_email = user["email"].lower()
+    if user_email in users:
+        users[user_email]["enrollment_warning_dismissed"] = True
+        write_users(users)
+    return jsonify({"status": "success"})
 
 @app.get("/account/meetings")
 def account_meetings():

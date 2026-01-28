@@ -6,6 +6,18 @@
 #   pip install speechbrain torch torchaudio soundfile numpy
 #   ffmpeg in PATH (for converting + slicing)
 
+# IMPORTANT: Limit ALL threading libraries to prevent stack overflow on M1/M2 Macs
+# This MUST be set BEFORE importing numpy, torch, or speechbrain
+import os
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # macOS Accelerate framework
+os.environ["TORCH_NUM_THREADS"] = "1"
+os.environ["GOTO_NUM_THREADS"] = "1"  # GotoBLAS (OpenBLAS predecessor)
+os.environ["BLIS_NUM_THREADS"] = "1"  # BLIS library
+
 import json
 import math
 import os
@@ -35,6 +47,11 @@ if hf_token:
 
 import numpy as np
 import torch
+
+# Force single-threaded PyTorch operations to prevent stack overflow
+torch.set_num_threads(1)
+torch.set_num_interop_threads(1)
+
 try:
     # Newer SpeechBrain (some installs)
     from speechbrain.inference.speaker import EncoderClassifier  # type: ignore
@@ -268,10 +285,10 @@ def main():
 
     for p in sorted(enroll_dir.iterdir()):
         if p.is_file() and p.suffix.lower() in [".wav", ".mp3", ".m4a", ".mp4", ".mov", ".aac", ".flac", ".ogg", ".webm"]:
-            # Only use files >= 15 seconds for voice recognition
+            # Only use files >= 2 seconds for voice recognition (lowered from 15s for demo)
             duration = get_audio_duration(p)
-            if duration < 15.0:
-                print(f"Skipping enrollment file (too short: {duration:.1f}s < 15s): {p.name}")
+            if duration < 2.0:
+                print(f"Skipping enrollment file (too short: {duration:.1f}s < 2s): {p.name}")
                 continue
             
             # Extract name from filename: "firstname,lastname.ext" or "username.ext" or with (2), (3), etc.

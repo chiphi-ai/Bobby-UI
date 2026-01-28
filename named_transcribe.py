@@ -16,6 +16,18 @@
 #   ffmpeg in PATH
 #   set env var ASSEMBLYAI_API_KEY or create .env file with ASSEMBLYAI_API_KEY=your-key
 
+# IMPORTANT: Limit ALL threading libraries to prevent stack overflow on M1/M2 Macs
+# This MUST be set BEFORE importing numpy, torch, or speechbrain
+import os
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # macOS Accelerate framework
+os.environ["TORCH_NUM_THREADS"] = "1"
+os.environ["GOTO_NUM_THREADS"] = "1"  # GotoBLAS (OpenBLAS predecessor)
+os.environ["BLIS_NUM_THREADS"] = "1"  # BLIS library
+
 import argparse
 import json
 import os
