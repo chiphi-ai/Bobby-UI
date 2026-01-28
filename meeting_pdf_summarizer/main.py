@@ -225,10 +225,10 @@ def call_ollama(prompt: str) -> str:
         "stream": False,
         "format": "json",
         "options": {
-            "temperature": 0.2,
-            "num_predict": 1500,  # Reduced for smaller model
-            "num_ctx": 4096,      # Explicit context window
-            "num_batch": 256,     # Smaller batch size to reduce memory
+            "temperature": 0.1,   # Lower temperature for more deterministic output
+            "num_predict": 2500,  # More tokens for complete JSON
+            "num_ctx": 8192,      # Larger context window
+            "num_batch": 512,     # Batch size
         }
     }
 
@@ -317,63 +317,17 @@ def parse_model_json(raw: str) -> dict:
 
 def build_prompt(transcript_text: str) -> str:
     # Truncate long transcripts to prevent memory issues with smaller models
-    transcript_text = truncate_transcript(transcript_text, max_chars=24000)
+    transcript_text = truncate_transcript(transcript_text, max_chars=20000)
     
-    schema = {
-        "meeting_title": "string",
-        "date": "string",
-        "one_line_purpose": "string",
-        "executive_snapshot": "string",
-        "key_decisions_made": [
-            {"decision": "string", "owner": "string", "effective_date": "string"}
-        ],
-        "action_items_next_steps": [
-            {"action": "string", "owner": "string", "due": "string", "dependencies": "string"}
-        ],
-        "open_questions_unresolved": [
-            {"question_or_issue": "string", "owner": "string", "target_resolution_date": "string"}
-        ],
-        "risks_concerns_constraints": [
-            {"risk": "string", "severity": "Low|Med|High", "owner": "string", "mitigation_next_step": "string"}
-        ],
-        "important_context_rationale": [
-            {"tradeoff_or_constraint": "string", "rationale": "string"}
-        ],
-        "key_metrics_dates_milestones": [
-            {"item": "string", "value_or_date": "string", "notes": "string"}
-        ],
-        "follow_up_cadence": {
-            "next_check_in": "string",
-            "what_will_be_covered": "string"
-        }
-    }
+    return f"""Summarize this meeting transcript as JSON.
 
-    return f"""
-You are a meeting summarizer. Extract key information from this transcript.
+Return ONLY this JSON structure (no markdown, no schema.org):
+{{"meeting_title":"short title","date":"date or Not specified","one_line_purpose":"purpose","executive_snapshot":"2-3 sentence summary","key_decisions_made":[{{"decision":"text","owner":"name","effective_date":"date"}}],"action_items_next_steps":[{{"action":"task","owner":"name","due":"date","dependencies":"deps"}}],"open_questions_unresolved":[{{"question_or_issue":"question","owner":"name","target_resolution_date":"date"}}],"risks_concerns_constraints":[{{"risk":"text","severity":"Low/Med/High","owner":"name","mitigation_next_step":"action"}}],"important_context_rationale":[{{"tradeoff_or_constraint":"text","rationale":"why"}}],"key_metrics_dates_milestones":[{{"item":"metric","value_or_date":"value","notes":"info"}}],"follow_up_cadence":{{"next_check_in":"date","what_will_be_covered":"topics"}}}}
 
-TASK:
-Generate a business meeting summary in the exact JSON structure below. Be concise and action-oriented.
+Use [] for empty arrays. Use "None" or "Not specified" for missing values.
 
-RULES:
-- Do not quote the transcript verbatim.
-- If a section has no content, use "None" or empty list [].
-- Extract deadlines and owners when stated; if missing, use "Not specified" or "Unassigned".
-- Do NOT include attendance/participants.
-
-OUTPUT:
-Return ONLY valid JSON matching this schema:
-{json.dumps(schema, indent=2)}
-
-Field rules:
-- meeting_title: 3–7 words inferred from transcript.
-- date: "Not specified" if not mentioned.
-- executive_snapshot: 2–4 sentences.
-- Empty lists: use [].
-- Empty strings: use "None" (except date which uses "Not specified").
-
-TRANSCRIPT:
-{transcript_text}
-""".strip()
+Transcript:
+{transcript_text}""".strip()
 
 
 
@@ -460,6 +414,35 @@ def main():
         raise RuntimeError("Failed to parse JSON from Ollama response. Check the debug output above for details.")
 
     print("[DEBUG] Parsed data keys:", list(data.keys()) if isinstance(data, dict) else "Not a dict")
+
+    # Validate that we got the expected format (not schema.org or other formats)
+    expected_keys = {"meeting_title", "executive_snapshot", "one_line_purpose"}
+    invalid_keys = {"@context", "@type", "mainEntity"}  # schema.org format
+    
+    if any(k in data for k in invalid_keys):
+        print("[ERROR] Model returned schema.org format instead of expected meeting summary format")
+        print("[INFO] Retrying with stricter prompt...")
+        # Create a minimal valid structure so PDF isn't blank
+        data = {
+            "meeting_title": "Meeting Summary (AI extraction failed)",
+            "date": "Not specified",
+            "one_line_purpose": "AI model returned incorrect format. Please try regenerating.",
+            "executive_snapshot": "The AI model did not follow the expected output format. The transcript was processed but the summary could not be extracted properly. Try regenerating the summary or use a different model.",
+            "key_decisions_made": [],
+            "action_items_next_steps": [],
+            "open_questions_unresolved": [],
+            "risks_concerns_constraints": [],
+            "important_context_rationale": [],
+            "key_metrics_dates_milestones": [],
+            "follow_up_cadence": {"next_check_in": "Not specified", "what_will_be_covered": "None"}
+        }
+    elif not any(k in data for k in expected_keys):
+        print(f"[WARN] Response missing expected keys. Got: {list(data.keys())}")
+        # Try to salvage what we can
+        if not data.get("meeting_title"):
+            data["meeting_title"] = "Meeting Summary"
+        if not data.get("executive_snapshot"):
+            data["executive_snapshot"] = "Summary extraction incomplete."
 
     # Override date with upload date if provided
     if args.upload_date:
@@ -678,8 +661,15 @@ def generate_pdf_from_data(output_path: str, data: dict) -> None:
     if not isinstance(cadence, dict):
         cadence = {}
 
-    next_check_in = (cadence.get("next_check_in") or "Not specified").strip()
-    covered = (cadence.get("what_will_be_covered") or "None").strip()
+    next_check_in = cadence.get("next_check_in") or "Not specified"
+    if isinstance(next_check_in, list):
+        next_check_in = ", ".join(str(x) for x in next_check_in) if next_check_in else "Not specified"
+    next_check_in = str(next_check_in).strip()
+    
+    covered = cadence.get("what_will_be_covered") or "None"
+    if isinstance(covered, list):
+        covered = ", ".join(str(x) for x in covered) if covered else "None"
+    covered = str(covered).strip()
 
     p(f"- Next check-in date/time (if stated; otherwise “Not specified”): {next_check_in or 'Not specified'}")
     p(f"- What will be covered: {covered or 'None'}")
