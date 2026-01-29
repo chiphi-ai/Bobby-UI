@@ -496,8 +496,19 @@ def generate_pdf_from_data(output_path: str, data: dict) -> None:
         val = data.get(key, default)
         if val is None:
             return default
+        # Handle lists by joining them
+        if isinstance(val, list):
+            val = ", ".join(str(v) for v in val)
         val = str(val).strip()
         return val if val else default
+
+    def safe_str(val, default: str = "") -> str:
+        """Convert a value to string, handling lists and None."""
+        if val is None:
+            return default
+        if isinstance(val, list):
+            return ", ".join(str(v) for v in val)
+        return str(val).strip() or default
 
     def list_or_empty(key: str):
         val = data.get(key, [])
@@ -531,9 +542,9 @@ def generate_pdf_from_data(output_path: str, data: dict) -> None:
         none_line()
     else:
         for d in decisions:
-            decision = (d.get("decision") or "").strip() if isinstance(d, dict) else ""
-            owner = (d.get("owner") or "Unassigned").strip() if isinstance(d, dict) else "Unassigned"
-            eff = (d.get("effective_date") or "Not specified").strip() if isinstance(d, dict) else "Not specified"
+            decision = safe_str(d.get("decision"), "") if isinstance(d, dict) else ""
+            owner = safe_str(d.get("owner"), "Unassigned") if isinstance(d, dict) else "Unassigned"
+            eff = safe_str(d.get("effective_date"), "Not specified") if isinstance(d, dict) else "Not specified"
             # Format as a single indented block for better readability
             story.append(Paragraph(f"• {escape(decision or 'None')}", styles["BodyText"]))
             if owner and owner != "Unassigned":
@@ -554,10 +565,15 @@ def generate_pdf_from_data(output_path: str, data: dict) -> None:
         for a in actions:
             if not isinstance(a, dict):
                 continue
-            action = (a.get("action") or "").strip()
-            owner = (a.get("owner") or "Unassigned").strip()
-            due = (a.get("due") or "Not specified").strip()
-            deps = (a.get("dependencies") or "None").strip()
+            # Handle fields that might be lists instead of strings
+            action_val = a.get("action") or ""
+            action = ", ".join(action_val) if isinstance(action_val, list) else str(action_val).strip()
+            owner_val = a.get("owner") or "Unassigned"
+            owner = ", ".join(owner_val) if isinstance(owner_val, list) else str(owner_val).strip()
+            due_val = a.get("due") or "Not specified"
+            due = ", ".join(due_val) if isinstance(due_val, list) else str(due_val).strip()
+            deps_val = a.get("dependencies") or "None"
+            deps = ", ".join(deps_val) if isinstance(deps_val, list) else str(deps_val).strip()
             
             # Include dependencies in task if present
             task_text = action or "None"
@@ -599,9 +615,9 @@ def generate_pdf_from_data(output_path: str, data: dict) -> None:
         none_line()
     else:
         for q in oq:
-            issue = (q.get("question_or_issue") or "").strip() if isinstance(q, dict) else ""
-            owner = (q.get("owner") or "Unassigned").strip() if isinstance(q, dict) else "Unassigned"
-            target = (q.get("target_resolution_date") or "Not specified").strip() if isinstance(q, dict) else "Not specified"
+            issue = safe_str(q.get("question_or_issue"), "") if isinstance(q, dict) else ""
+            owner = safe_str(q.get("owner"), "Unassigned") if isinstance(q, dict) else "Unassigned"
+            target = safe_str(q.get("target_resolution_date"), "Not specified") if isinstance(q, dict) else "Not specified"
             story.append(Paragraph(f"• {escape(issue or 'None')}", styles["BodyText"]))
             if owner and owner != "Unassigned":
                 story.append(Paragraph(f"    Owner: {escape(owner)}", styles["BodyText"]))
@@ -615,10 +631,10 @@ def generate_pdf_from_data(output_path: str, data: dict) -> None:
         none_line()
     else:
         for r in risks:
-            risk = (r.get("risk") or "").strip() if isinstance(r, dict) else ""
-            severity = (r.get("severity") or "Med").strip() if isinstance(r, dict) else "Med"
-            owner = (r.get("owner") or "Unassigned").strip() if isinstance(r, dict) else "Unassigned"
-            mit = (r.get("mitigation_next_step") or "None").strip() if isinstance(r, dict) else "None"
+            risk = safe_str(r.get("risk"), "") if isinstance(r, dict) else ""
+            severity = safe_str(r.get("severity"), "Med") if isinstance(r, dict) else "Med"
+            owner = safe_str(r.get("owner"), "Unassigned") if isinstance(r, dict) else "Unassigned"
+            mit = safe_str(r.get("mitigation_next_step"), "None") if isinstance(r, dict) else "None"
             story.append(Paragraph(f"• {escape(risk or 'None')}", styles["BodyText"]))
             story.append(Paragraph(f"    Severity: {escape(severity or 'Med')}", styles["BodyText"]))
             if owner and owner != "Unassigned":
@@ -633,8 +649,8 @@ def generate_pdf_from_data(output_path: str, data: dict) -> None:
         none_line()
     else:
         for c in ctx:
-            tradeoff = (c.get("tradeoff_or_constraint") or "").strip() if isinstance(c, dict) else ""
-            rationale = (c.get("rationale") or "").strip() if isinstance(c, dict) else ""
+            tradeoff = safe_str(c.get("tradeoff_or_constraint"), "") if isinstance(c, dict) else ""
+            rationale = safe_str(c.get("rationale"), "") if isinstance(c, dict) else ""
             story.append(Paragraph(f"• {escape(tradeoff or 'None')}", styles["BodyText"]))
             if rationale and rationale != "None":
                 story.append(Paragraph(f"    Rationale: {escape(rationale)}", styles["BodyText"]))
@@ -646,9 +662,9 @@ def generate_pdf_from_data(output_path: str, data: dict) -> None:
         none_line()
     else:
         for m in kms:
-            item = (m.get("item") or "").strip() if isinstance(m, dict) else ""
-            val = (m.get("value_or_date") or "").strip() if isinstance(m, dict) else ""
-            notes = (m.get("notes") or "None").strip() if isinstance(m, dict) else "None"
+            item = safe_str(m.get("item"), "") if isinstance(m, dict) else ""
+            val = safe_str(m.get("value_or_date"), "") if isinstance(m, dict) else ""
+            notes = safe_str(m.get("notes"), "None") if isinstance(m, dict) else "None"
             story.append(Paragraph(f"• {escape(item or 'None')}", styles["BodyText"]))
             if val and val != "Not specified":
                 story.append(Paragraph(f"    Value/Date: {escape(val)}", styles["BodyText"]))

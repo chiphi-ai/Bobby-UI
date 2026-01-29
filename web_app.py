@@ -5161,6 +5161,8 @@ def run_pipeline(audio_path: Path, cfg: dict, participants: list = None):
             "speaker_count": len(speakers),
             "participants": participant_emails,  # For email/account access
             "speaker_label_map": initial_speaker_label_map,  # Pre-populate labels from speaker identification
+            "ai_summary_generated": pdf_exists,  # True if Ollama successfully generated the meeting report PDF
+            "ai_summary_generated_at": datetime.now().isoformat() if pdf_exists else None,
         }
         save_meeting(meeting_data)
         print(f"\n📝 Meeting metadata saved: {meeting_name}")

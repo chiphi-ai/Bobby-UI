@@ -268,9 +268,9 @@
             {% set connected_apps = user.get('connected_apps', {}) %}
             <ul class="widget-list">
               <li class="widget-list-item">
-                <span>📦 Dropbox</span>
-                {% if connected_apps.get('dropbox') %}
-                  {% if connected_apps['dropbox'].get('needs_reauth') %}
+                <span>📅 Google Calendar</span>
+                {% if connected_apps.get('googlecalendar') %}
+                  {% if connected_apps['googlecalendar'].get('needs_reauth') %}
                     <span class="app-status-pill needs-reconnect">
                       <span class="app-status-dot"></span>
                       Needs Reconnect
@@ -286,7 +286,25 @@
                 {% endif %}
               </li>
               <li class="widget-list-item">
-                <span>📁 Google Drive</span>
+                <span>📁 Box</span>
+                {% if connected_apps.get('box') %}
+                  {% if connected_apps['box'].get('needs_reauth') %}
+                    <span class="app-status-pill needs-reconnect">
+                      <span class="app-status-dot"></span>
+                      Needs Reconnect
+                    </span>
+                  {% else %}
+                    <span class="app-status-pill connected">
+                      <span class="app-status-dot"></span>
+                      Connected
+                    </span>
+                  {% endif %}
+                {% else %}
+                  <span class="app-status-pill not-connected">Not Connected</span>
+                {% endif %}
+              </li>
+              <li class="widget-list-item">
+                <span>☁️ Google Drive</span>
                 {% if connected_apps.get('googledrive') %}
                   {% if connected_apps['googledrive'].get('needs_reauth') %}
                     <span class="app-status-pill needs-reconnect">
@@ -304,9 +322,9 @@
                 {% endif %}
               </li>
               <li class="widget-list-item">
-                <span>📦 Box</span>
-                {% if connected_apps.get('box') %}
-                  {% if connected_apps['box'].get('needs_reauth') %}
+                <span>📦 Dropbox</span>
+                {% if connected_apps.get('dropbox') %}
+                  {% if connected_apps['dropbox'].get('needs_reauth') %}
                     <span class="app-status-pill needs-reconnect">
                       <span class="app-status-dot"></span>
                       Needs Reconnect

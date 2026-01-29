@@ -204,86 +204,6 @@
       <p>Connect your cloud storage accounts to automatically save meeting transcripts and PDFs. Files will be uploaded to your personal account after each meeting is processed.</p>
     </div>
 
-    <!-- Dropbox Card -->
-    <div class="card">
-      <div class="app-card">
-        <div class="app-info">
-          <h3>📦 Dropbox</h3>
-          <p>Save meetings to your Dropbox folder</p>
-        </div>
-        <div class="app-status">
-          {% if connected_apps.get('dropbox') %}
-            {% if connected_apps['dropbox'].get('needs_reauth') %}
-            <span class="badge badge-warning">⚠️ Needs Reconnect</span>
-            <a href="{{ url_for('dropbox_authorize') }}" class="btn btn-primary">Reconnect Dropbox</a>
-            <button onclick="disconnectApp('dropbox')" class="btn btn-danger">Disconnect</button>
-            {% else %}
-            <span class="badge badge-success">✓ Connected</span>
-            <button onclick="disconnectApp('dropbox')" class="btn btn-danger">Disconnect</button>
-            {% endif %}
-          {% else %}
-          <span class="badge badge-neutral">Not Connected</span>
-          <a href="{{ url_for('dropbox_authorize') }}" class="btn btn-primary">Connect Dropbox</a>
-          {% endif %}
-        </div>
-      </div>
-      
-      {% if connected_apps.get('dropbox') %}
-      <div class="config-section">
-        {% if connected_apps['dropbox'].get('needs_reauth') %}
-        <div class="info-box" style="background: #fff3cd; border-color: #ffc107; color: #856404;">
-          <strong>⚠️ Action Required:</strong> Your Dropbox access token expired and cannot be refreshed because we don't have a refresh token (or app credentials) to refresh it.<br><br>
-          <strong>To fix:</strong> Click "Reconnect Dropbox" above, or Disconnect then Connect again. After reconnecting, run one test upload to confirm.
-        </div>
-        {% endif %}
-        <label>Folder Path</label>
-        <input type="text" id="dropbox_folder" value="{{ connected_apps['dropbox'].get('folder_path', '/PhiAI/Meetings') }}" placeholder="/PhiAI/Meetings">
-        <button onclick="updateAppConfig('dropbox')" class="btn btn-primary">Update Folder Path</button>
-        <div class="info-box">
-          <strong>Connected:</strong> {{ connected_apps['dropbox'].get('connected_at', '')[:10] }}<br>
-          Files will be saved to this folder path in your Dropbox account.
-        </div>
-      </div>
-      {% endif %}
-    </div>
-
-    <!-- Google Drive Card -->
-    <div class="card">
-      <div class="app-card">
-        <div class="app-info">
-          <h3>☁️ Google Drive</h3>
-          <p>Save meetings to your Google Drive</p>
-        </div>
-        <div class="app-status">
-          {% if connected_apps.get('googledrive') %}
-            {% if connected_apps['googledrive'].get('needs_reauth') %}
-            <span class="badge badge-warning">⚠️ Needs Reconnect</span>
-            <a href="{{ url_for('googledrive_authorize') }}" class="btn btn-primary">Reconnect Google Drive</a>
-            <button onclick="disconnectApp('googledrive')" class="btn btn-danger">Disconnect</button>
-            {% else %}
-            <span class="badge badge-success">✓ Connected</span>
-            <button onclick="disconnectApp('googledrive')" class="btn btn-danger">Disconnect</button>
-            {% endif %}
-          {% else %}
-          <span class="badge badge-neutral">Not Connected</span>
-          <a href="{{ url_for('googledrive_authorize') }}" class="btn btn-primary">Connect Google Drive</a>
-          {% endif %}
-        </div>
-      </div>
-      
-      {% if connected_apps.get('googledrive') %}
-      <div class="config-section">
-        <label>Folder Name</label>
-        <input type="text" id="googledrive_folder" value="{{ connected_apps['googledrive'].get('folder_name', 'PhiAI Meetings') }}" placeholder="PhiAI Meetings">
-        <button onclick="updateAppConfig('googledrive')" class="btn btn-primary">Update Folder Name</button>
-        <div class="info-box">
-          <strong>Connected:</strong> {{ connected_apps['googledrive'].get('connected_at', '')[:10] }}<br>
-          A folder with this name will be created in your Google Drive (if it doesn't exist).
-        </div>
-      </div>
-      {% endif %}
-    </div>
-
     <!-- Google Calendar Card -->
     <div class="card">
       <div class="app-card">
@@ -431,6 +351,86 @@
         <div class="info-box">
           <strong>Connected:</strong> {{ connected_apps['box'].get('connected_at', '')[:10] }}<br>
           A folder with this name will be created in your Box account (if it doesn't exist).
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Google Drive Card -->
+    <div class="card">
+      <div class="app-card">
+        <div class="app-info">
+          <h3>☁️ Google Drive</h3>
+          <p>Save meetings to your Google Drive</p>
+        </div>
+        <div class="app-status">
+          {% if connected_apps.get('googledrive') %}
+            {% if connected_apps['googledrive'].get('needs_reauth') %}
+            <span class="badge badge-warning">⚠️ Needs Reconnect</span>
+            <a href="{{ url_for('googledrive_authorize') }}" class="btn btn-primary">Reconnect Google Drive</a>
+            <button onclick="disconnectApp('googledrive')" class="btn btn-danger">Disconnect</button>
+            {% else %}
+            <span class="badge badge-success">✓ Connected</span>
+            <button onclick="disconnectApp('googledrive')" class="btn btn-danger">Disconnect</button>
+            {% endif %}
+          {% else %}
+          <span class="badge badge-neutral">Not Connected</span>
+          <a href="{{ url_for('googledrive_authorize') }}" class="btn btn-primary">Connect Google Drive</a>
+          {% endif %}
+        </div>
+      </div>
+      
+      {% if connected_apps.get('googledrive') %}
+      <div class="config-section">
+        <label>Folder Name</label>
+        <input type="text" id="googledrive_folder" value="{{ connected_apps['googledrive'].get('folder_name', 'PhiAI Meetings') }}" placeholder="PhiAI Meetings">
+        <button onclick="updateAppConfig('googledrive')" class="btn btn-primary">Update Folder Name</button>
+        <div class="info-box">
+          <strong>Connected:</strong> {{ connected_apps['googledrive'].get('connected_at', '')[:10] }}<br>
+          A folder with this name will be created in your Google Drive (if it doesn't exist).
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Dropbox Card -->
+    <div class="card">
+      <div class="app-card">
+        <div class="app-info">
+          <h3>📦 Dropbox</h3>
+          <p>Save meetings to your Dropbox folder</p>
+        </div>
+        <div class="app-status">
+          {% if connected_apps.get('dropbox') %}
+            {% if connected_apps['dropbox'].get('needs_reauth') %}
+            <span class="badge badge-warning">⚠️ Needs Reconnect</span>
+            <a href="{{ url_for('dropbox_authorize') }}" class="btn btn-primary">Reconnect Dropbox</a>
+            <button onclick="disconnectApp('dropbox')" class="btn btn-danger">Disconnect</button>
+            {% else %}
+            <span class="badge badge-success">✓ Connected</span>
+            <button onclick="disconnectApp('dropbox')" class="btn btn-danger">Disconnect</button>
+            {% endif %}
+          {% else %}
+          <span class="badge badge-neutral">Not Connected</span>
+          <a href="{{ url_for('dropbox_authorize') }}" class="btn btn-primary">Connect Dropbox</a>
+          {% endif %}
+        </div>
+      </div>
+      
+      {% if connected_apps.get('dropbox') %}
+      <div class="config-section">
+        {% if connected_apps['dropbox'].get('needs_reauth') %}
+        <div class="info-box" style="background: #fff3cd; border-color: #ffc107; color: #856404;">
+          <strong>⚠️ Action Required:</strong> Your Dropbox access token expired and cannot be refreshed because we don't have a refresh token (or app credentials) to refresh it.<br><br>
+          <strong>To fix:</strong> Click "Reconnect Dropbox" above, or Disconnect then Connect again. After reconnecting, run one test upload to confirm.
+        </div>
+        {% endif %}
+        <label>Folder Path</label>
+        <input type="text" id="dropbox_folder" value="{{ connected_apps['dropbox'].get('folder_path', '/PhiAI/Meetings') }}" placeholder="/PhiAI/Meetings">
+        <button onclick="updateAppConfig('dropbox')" class="btn btn-primary">Update Folder Path</button>
+        <div class="info-box">
+          <strong>Connected:</strong> {{ connected_apps['dropbox'].get('connected_at', '')[:10] }}<br>
+          Files will be saved to this folder path in your Dropbox account.
         </div>
       </div>
       {% endif %}
